@@ -1,9 +1,10 @@
 # GuardSchool
 
-**Local school schedule and bell system for TVs and PCs in the browser.**  
+**Self-hosted schedules, bells, and signage in the browser.** The product is **designed around a school lesson timetable** (classes, bells, days), but the underlying pattern is generic: **time + structured data** on one or more screens. The same setup can show **duty rosters**, **shift plans**, room booking-style boards, or any other table you feed through the same import and widget flow—not only “lessons.”
+
 Runs **fully offline** after setup: data, settings, and media stay on your machine — **no mandatory cloud or external APIs**. Administration is **inside your network (LAN)**; you choose whether and how to expose HTTP access.
 
-The same stack fits **any venue** that needs timetables, announcements, or rich content on wall displays—not only schools (offices, campuses, factories, public areas), as long as a browser can open the screen URL.
+**Clients are just web pages:** a **mini PC + monitor**, a **smart TV** with a built-in browser, a **tablet** on a reception counter — if it can open a URL in fullscreen, it can be a display. No vendor app store required.
 
 Admin UI: **English and Russian** (language switch in the header). Settings include **timezone** (for “today” in schedules and date/time on displays) and **clock offset in minutes** if TV clocks drift.
 
@@ -25,8 +26,8 @@ Admin UI: **English and Russian** (language switch in the header). Settings incl
 
 ## Features
 
-- Multi-screen admin (tabs per TV), widget grid, schedules, bells, backgrounds
-- One URL per display: `/screen/{slug}`
+- Multi-screen admin (one tab per display), widget grid, schedules, bells, backgrounds
+- One URL per display: `/screen/{slug}` — open the same server from every screen on the LAN
 - Local admin authentication
 - **ZIP export/import** for backup and migration without cloud
 - Optional **PC audio** path (ffmpeg / scheduled bells) — see admin “PC audio” tab
@@ -88,14 +89,15 @@ Samples and auto-import from `data/import/` follow the same rules as in previous
 
 ## Русский
 
-**README для GitHub:** репозиторий ориентирован на публичное описание проекта; блок ниже — краткая русская версия для школ и интеграторов.
+**README для GitHub:** репозиторий ориентирован на публичное описание проекта; блок ниже — краткая русская версия для школ, интеграторов и других площадок.
 
 ### GuardSchool — что это
 
-**Локальная система показа школьного расписания и звонка на ТВ и ПК в браузере.**  
+**Локально развёртываемое расписание и сигналы (звонки) на экранах в браузере.** Ядро модели — **школа: уроки, классы, звонки**; дальше это тот же принцип **«время + данные»** на экранах: **дежурства**, **смены**, приём по кабинетам или любая таблица, которую вы заводите через тот же импорт и виджеты — не обязательно «уроки».
+
 После установки работает **полностью офлайн**: данные и медиа хранятся у вас, **без обязательного облака и внешних API**. Управление — **внутри вашей сети (LAN)**.
 
-Тот же подход подходит **не только школам**: любые объекты, где на внешних экранах нужно расписание, объявления или медиа (офисы, кампусы, производство, общественные зоны), если на панели доступен браузер.
+**Экран** — любое устройство с браузером: старый монитор с мини-ПК, Smart TV, планшет на стойке в приёмной; достаточно открыть URL экрана в полноэкранном режиме.
 
 Интерфейс админки: **русский и английский** (переключатель в шапке). В настройках — **часовой пояс** и **сдвиг времени в минутах**, если часы на ТВ расходятся с реальностью.
 
