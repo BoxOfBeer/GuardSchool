@@ -8,6 +8,7 @@ import {
   downloadBinaryFile,
 } from "./admin/api-client.js";
 import { populateAdminTimezoneSelect } from "./admin/timezone.js";
+import { escapeHtml, escapeHtmlAttr } from "./admin/escape-html.js";
 
 const WIDGET_TYPE_KEYS = new Set([
   "date",
@@ -513,21 +514,6 @@ function pcPlayerStep(delta) {
   if (!n) return;
   state.pcPlayerSelectedIndex = (state.pcPlayerSelectedIndex + delta + n) % n;
   renderPcPlayerFileList();
-}
-
-function escapeHtmlAttr(s) {
-  return String(s)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
-function escapeHtml(s) {
-  return String(s ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
 }
 
 function breakMusicVolumesFromForm() {

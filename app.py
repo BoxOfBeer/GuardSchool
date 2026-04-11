@@ -10,7 +10,6 @@ import json
 import re
 import secrets
 import shutil
-import sys
 import time
 import zipfile
 from datetime import date, datetime
@@ -24,69 +23,40 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 from openpyxl import Workbook, load_workbook
 
-
-def admin_ui_lang(request: Request) -> str:
-    return "en" if request.headers.get("X-UI-Locale", "").strip().lower() == "en" else "ru"
-
-
-def admin_msg(lang: str, ru: str, en: str) -> str:
-    return en if lang == "en" else ru
-
-
-def session_cookie_secure(request: Request) -> bool:
-    xfp = str(request.headers.get("x-forwarded-proto", "")).strip().lower()
-    if xfp.startswith("https"):
-        return True
-    try:
-        return request.url.scheme == "https"
-    except Exception:
-        return False
-
-
-if getattr(sys, "frozen", False):
-    APP_DIR = Path(sys.executable).resolve().parent
-    RESOURCE_DIR = Path(getattr(sys, "_MEIPASS", APP_DIR))
-else:
-    APP_DIR = Path(__file__).resolve().parent
-    RESOURCE_DIR = APP_DIR
-
-def resolve_brand_logo_path() -> Path | None:
-    for candidate in (APP_DIR / "ico.png", RESOURCE_DIR / "ico.png"):
-        if candidate.is_file():
-            return candidate
-    return None
-
-
-DATA_DIR = APP_DIR / "data"
-UPLOADS_DIR = DATA_DIR / "uploads"
-BELL_SOUNDS_DIR = UPLOADS_DIR / "bells"
-BACKGROUND_UPLOAD_IMAGE_SUFFIXES = frozenset(
-    {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".avif"}
+from gs_admin_http import admin_msg, admin_ui_lang, session_cookie_secure
+from gs_jsonio import read_json, write_json
+from gs_paths import (
+    ANNOUNCEMENTS_PATH,
+    APP_VERSION,
+    AUTH_PATH,
+    AUTO_ANNOUNCEMENTS_IMPORT_PATH,
+    AUTO_FULL_SCHEDULE_IMPORT_PATH,
+    AUTO_HOLIDAYS_IMPORT_PATH,
+    AUTO_MARQUEE_IMPORT_PATH,
+    AUTO_SCHEDULE_IMPORT_PATH,
+    AUTO_SCHEDULE_SAMPLE_IMPORT_PATH,
+    BACKGROUND_UPLOAD_IMAGE_SUFFIXES,
+    BELL_SCHEDULES_PATH,
+    BELL_SOUNDS_DIR,
+    BREAK_MUSIC_DIR,
+    CHANGE_LOG_PATH,
+    CONFIG_PATH,
+    DATA_DIR,
+    FULL_SCHEDULE_PATH,
+    FULL_SCHEDULE_SAMPLE_XLSX,
+    HOLIDAYS_PATH,
+    IMPORT_DIR,
+    IMPORT_STATE_PATH,
+    MARQUEE_PATH,
+    OVERRIDES_PATH,
+    SCHEDULE_PATH,
+    SCHEDULE_SAMPLE_PATH,
+    SESSION_COOKIE,
+    STATIC_DIR,
+    UPLOADS_DIR,
+    resolve_brand_logo_path,
 )
-BREAK_MUSIC_DIR = DATA_DIR / "break_music"
-IMPORT_DIR = DATA_DIR / "import"
-STATIC_DIR = RESOURCE_DIR / "static"
-CONFIG_PATH = DATA_DIR / "config.json"
-AUTH_PATH = DATA_DIR / "auth.json"
-SCHEDULE_PATH = DATA_DIR / "schedule.json"
-FULL_SCHEDULE_PATH = DATA_DIR / "full_schedule.json"
-SCHEDULE_SAMPLE_PATH = DATA_DIR / "schedule_sample.json"
-HOLIDAYS_PATH = DATA_DIR / "holidays.json"
-ANNOUNCEMENTS_PATH = DATA_DIR / "announcements.json"
-MARQUEE_PATH = DATA_DIR / "marquee.json"
-OVERRIDES_PATH = DATA_DIR / "overrides.json"
-BELL_SCHEDULES_PATH = DATA_DIR / "bell_schedules.json"
-CHANGE_LOG_PATH = DATA_DIR / "change_log.json"
-APP_VERSION = "1.01.002"
-IMPORT_STATE_PATH = DATA_DIR / "import_state.json"
-AUTO_SCHEDULE_IMPORT_PATH = IMPORT_DIR / "schedule.xlsx"
-AUTO_FULL_SCHEDULE_IMPORT_PATH = IMPORT_DIR / "full_schedule.xlsx"
-AUTO_SCHEDULE_SAMPLE_IMPORT_PATH = IMPORT_DIR / "schedule_sample.xlsx"
-FULL_SCHEDULE_SAMPLE_XLSX = IMPORT_DIR / "full_schedule_sample.xlsx"
-AUTO_HOLIDAYS_IMPORT_PATH = IMPORT_DIR / "holidays.xlsx"
-AUTO_ANNOUNCEMENTS_IMPORT_PATH = IMPORT_DIR / "announcements.xlsx"
-AUTO_MARQUEE_IMPORT_PATH = IMPORT_DIR / "marquee.xlsx"
-SESSION_COOKIE = "gornii_session"
+
 GRID_COLS = 32
 GRID_ROWS = 26
 WIDGET_IMAGES_SUBDIR = "widget_images"
@@ -730,16 +700,6 @@ def default_bell_schedules() -> dict[str, Any]:
         "weekday_overrides": {},
         "sound_defaults": {"start": None, "end": None},
     }
-
-
-def read_json(path: Path, fallback: Any) -> Any:
-    if not path.exists():
-        return fallback
-    return json.loads(path.read_text(encoding="utf-8"))
-
-
-def write_json(path: Path, payload: Any) -> None:
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def load_change_log() -> list[dict[str, Any]]:
