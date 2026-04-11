@@ -85,7 +85,7 @@ Samples and auto-import from `data/import/` follow the same rules as in previous
 - **Screen API**: `GET /api/screen/{slug}` returns schedule and display JSON **without auth** (for TV browsers on the LAN). Treat network access accordingly.
 - **Admin POSTs**: no separate CSRF tokens; browsers rely on **SameSite** session cookies. For high-threat deployments, add tokens or restrict origins.
 - **Process model**: run **one** uvicorn worker if you rely on in-process PC audio state (`local_audio_worker` globals); multiple workers do not share that state.
-- **Code layout**: admin UI is `static/app.js` (ES module) plus `static/admin/*.js`; load order in `index.html` is **`i18n.js` → `screen_widgets.js` → `app.js` (module)**. `app.py` is split incrementally: **`gs_paths.py`** (data/static paths, `APP_VERSION`), **`gs_admin_http.py`** (admin locale / cookie secure), **`gs_jsonio.py`** (read/write JSON). Admin helpers include **`static/admin/escape-html.js`** (shared `escapeHtml` / `escapeHtmlAttr`).
+- **Code layout**: admin UI is `static/app.js` (ES module) plus `static/admin/*.js`; load order in `index.html` is **`i18n.js` → `screen_widgets.js` → `app.js` (module)**. `app.py` is split incrementally: **`gs_paths.py`**, **`gs_admin_http.py`**, **`gs_jsonio.py`**, **`gs_fs.py`** (`clear_directory`), **`gs_change_log_bootstrap.py`**, **`gs_weekly_template.py`**, **`gs_ensure_dirs.py`**, **`gs_import_bundle.py`** (full + weekly ZIP). Admin helpers include **`static/admin/escape-html.js`**.
 - **Branding**: logo, `ico.png`, custom copy.
 - **Telemetry**: the app does not phone home by default; any analytics would require explicit consent and opt-out.
 
@@ -140,7 +140,7 @@ uvicorn app:app --host 0.0.0.0 --port 8000 --reload
 - Сессия админки: флаг **`Secure`** у cookie включается при HTTPS или заголовке **`X-Forwarded-Proto: https`** у прокси.
 - **Один процесс** uvicorn, если используете звук на ПК через `local_audio_worker` — у нескольких воркеров общее состояние не разделяется.
 - Скрипты админки: **`i18n.js` → `screen_widgets.js` → `app.js` (type=module)`** — порядок важен для превью и локализации.
-- Бэкенд постепенно выносится из **`app.py`**: `gs_paths.py` (пути, `APP_VERSION`), `gs_admin_http.py`, `gs_jsonio.py`; в модуле админки — **`static/admin/escape-html.js`**.
+- Бэкенд постепенно выносится из **`app.py`**: `gs_paths.py`, `gs_admin_http.py`, `gs_jsonio.py`, `gs_fs.py`, `gs_change_log_bootstrap.py`, `gs_weekly_template.py`, `gs_ensure_dirs.py`, `gs_import_bundle.py` (ZIP); **`static/admin/escape-html.js`** на фронте.
 
 ### Сборка exe
 
