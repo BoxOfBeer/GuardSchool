@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GuardSchool Screen</title>
+  <!-- Базовая тема до загрузки styles.css: иначе при обрыве/кэше ТВ рисуется «как сырой HTML» -->
+  <style>
+    :root {
+      --bg: #0f172a;
+      --text: #f8fafc;
+      --muted: #cbd5e1;
+      --accent: #38bdf8;
+    }
+    html { background: var(--bg); }
+    body.screen-body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, "Segoe UI", Arial, sans-serif;
+      font-size: 16px;
+      line-height: 1.35;
+      -webkit-font-smoothing: antialiased;
+    }
+    #screen-root.tv-screen {
+      min-height: 100vh;
+      box-sizing: border-box;
+    }
+    /* Критичный фоллбек: если внешние стили не применились, не уходим в «серый» дефолт. */
+    .screen-widget,
+    .screen-widget * {
+      color: var(--text) !important;
+    }
+    .schedule-table,
+    .schedule-table th,
+    .schedule-table td {
+      color: #0f172a !important;
+      background: #ffffff !important;
+    }
+    .schedule-table th {
+      background: #1e3a5f !important;
+      color: #ffffff !important;
+    }
+    .schedule-table tbody,
+    .schedule-table tbody tr,
+    .schedule-table tbody td {
+      background: #ffffff !important;
+    }
+    .schedule-past { color: #64748b !important; }
+    .schedule-current { background: rgba(191, 219, 254, 0.9) !important; font-weight: 700; }
+    .schedule-override { background: #fecaca !important; font-weight: 700; }
+    .gs-audio-hint {
+      color: #e2e8f0;
+      font-size: 15px;
+    }
+  </style>
+  <!-- ТВ-браузеры иногда ломают применение CSS при 304 Not Modified. Грузим статику с cache-bust параметром. -->
+  <link rel="stylesheet" href="/static/styles.css?tvts=20260411-v2" id="tv-styles">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+</head>
+<body class="screen-body">
+  <div id="gs-audio-hint" class="gs-audio-hint" role="status">
+    Коснитесь экрана или нажмите любую клавишу один раз — чтобы браузер разрешил звук звонков.
+  </div>
+  <div id="screen-root" class="tv-screen"></div>
+  <script>
+    (function () {
+      try {
+        var ts = Date.now();
+        var s1 = document.createElement("script");
+        s1.src = "/static/screen_widgets.js?tvts=" + ts;
+        s1.defer = true;
+        document.body.appendChild(s1);
+        var s2 = document.createElement("script");
+        s2.src = "/static/screen.js?tvts=" + ts;
+        s2.defer = true;
+        document.body.appendChild(s2);
+      } catch (_) {}
+    })();
+  </script>
+</body>
+</html>

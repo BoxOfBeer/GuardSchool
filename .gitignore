@@ -1,0 +1,15 @@
+__pycache__/
+.venv/
+data/
+
+# Build / distribution artifacts (source repo; keep binaries out of Git)
+dist/
+build/
+build_full/
+full/
+
+# C#: артефакты сборки в CApp (каталог сохраняем)
+CApp/**
+!CApp/.gitkeep
+CCode/**/obj/
+CCode/**/bin/
