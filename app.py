@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
-import hashlib
-import hmac
 import io
 import ipaddress
 import json
@@ -23,6 +21,14 @@ from fastapi.staticfiles import StaticFiles
 from openpyxl import load_workbook
 
 from gs_admin_http import admin_msg, admin_ui_lang, session_cookie_secure
+from gs_auth import (
+    create_session_token,
+    hash_password,
+    is_authenticated,
+    load_auth,
+    password_is_valid,
+    require_auth,
+)
 from gs_ensure_dirs import ensure_dirs
 from gs_import_bundle import (
     export_bundle_bytes,
@@ -943,61 +949,6 @@ def sanitize_config(config: dict[str, Any]) -> dict[str, Any]:
         off = 0
     config["clock_offset_minutes"] = max(-720, min(720, off))
     return config
-
-
-def load_auth() -> dict[str, Any]:
-    return read_json(AUTH_PATH, {})
-
-
-def hash_password(password: str, salt: str) -> str:
-    raw = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 150000)
-    return raw.hex()
-
-
-def password_is_valid(password: str) -> bool:
-    return len(password) >= 8 and any(ch.isalpha() for ch in password) and any(ch.isdigit() for ch in password)
-
-
-def create_session_token(username: str, auth: dict[str, Any]) -> str:
-    signature = hmac.new(
-        auth["password_hash"].encode("utf-8"),
-        username.encode("utf-8"),
-        hashlib.sha256,
-    ).hexdigest()
-    return f"{username}:{signature}"
-
-
-def verify_session_token(token: str | None, auth: dict[str, Any]) -> bool:
-    if not token or ":" not in token or not auth:
-        return False
-    username, signature = token.split(":", 1)
-    if username != auth.get("username"):
-        return False
-    expected = create_session_token(username, auth).split(":", 1)[1]
-    return hmac.compare_digest(signature, expected)
-
-
-def is_authenticated(request: Request) -> bool:
-    token = request.cookies.get(SESSION_COOKIE)
-    return verify_session_token(token, load_auth())
-
-
-def require_auth(request: Request) -> None:
-    loc = admin_ui_lang(request)
-    if not load_auth():
-        raise HTTPException(
-            status_code=428,
-            detail=admin_msg(
-                loc,
-                "Требуется первичная настройка администратора.",
-                "Complete initial administrator setup first.",
-            ),
-        )
-    if not is_authenticated(request):
-        raise HTTPException(
-            status_code=401,
-            detail=admin_msg(loc, "Требуется вход.", "Sign in required."),
-        )
 
 
 def load_schedule() -> list[dict[str, Any]]:
