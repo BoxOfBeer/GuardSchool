@@ -25,6 +25,117 @@ const WIDGET_TYPE_KEYS = new Set([
   "image",
 ]);
 
+/** Порядок чекбоксов «показывать в списке виджетов» в настройках программы. */
+const PALETTE_TYPES_ORDER = [
+  "date",
+  "time",
+  "text",
+  "bell_status",
+  "bell_countdown",
+  "schedule",
+  "carousel",
+  "holidays",
+  "announcements",
+  "marquee",
+  "emergency",
+  "image",
+];
+
+function ensureAdminPaletteHidden() {
+  if (!state.config) return;
+  if (!Array.isArray(state.config.admin_palette_hidden_types)) {
+    state.config.admin_palette_hidden_types = [];
+  }
+}
+
+function isWidgetTypeHiddenInAdminPalette(wtype) {
+  if (!state.config) return false;
+  const raw = state.config.admin_palette_hidden_types;
+  if (!Array.isArray(raw)) return false;
+  return raw.includes(String(wtype || ""));
+}
+
+function setWidgetTypeHiddenInPalette(wtype, hidden) {
+  ensureAdminPaletteHidden();
+  const typ = String(wtype || "");
+  if (!WIDGET_TYPE_KEYS.has(typ)) return;
+  let arr = [...state.config.admin_palette_hidden_types];
+  const idx = arr.indexOf(typ);
+  if (hidden && idx < 0) arr.push(typ);
+  if (!hidden && idx >= 0) arr.splice(idx, 1);
+  arr = arr.filter((x) => WIDGET_TYPE_KEYS.has(x));
+  state.config.admin_palette_hidden_types = arr;
+  renderWidgets();
+}
+
+function syncProgramSettingsFieldsFromState() {
+  if (!state.config) return;
+  if (elements.adminLocaleSelect) {
+    elements.adminLocaleSelect.value = state.config.ui_locale === "en" ? "en" : "ru";
+  }
+  populateAdminTimezoneSelect();
+  if (elements.adminClockOffset) {
+    const o = Number(state.config.clock_offset_minutes);
+    elements.adminClockOffset.value = String(Number.isFinite(o) ? o : 0);
+  }
+}
+
+function renderProgramPaletteCheckboxes() {
+  const wrap = elements.programSettingsPaletteWrap;
+  if (!wrap || !state.config) return;
+  ensureAdminPaletteHidden();
+  wrap.innerHTML = PALETTE_TYPES_ORDER.filter((typ) => WIDGET_TYPE_KEYS.has(typ))
+    .map((typ) => {
+      const id = `palette-show-${typ}`;
+      const checked = !isWidgetTypeHiddenInAdminPalette(typ);
+      const lab = t(`widget.type.${typ}`);
+      const label = lab !== `widget.type.${typ}` ? lab : typ;
+      return `<label class="toggle-label"><input type="checkbox" id="${escapeHtmlAttr(id)}" data-palette-type="${escapeHtmlAttr(typ)}" ${checked ? "checked" : ""}><span>${escapeHtml(label)}</span></label>`;
+    })
+    .join("");
+  wrap.querySelectorAll("input[data-palette-type]").forEach((inp) => {
+    inp.addEventListener("change", () => {
+      const typ = inp.getAttribute("data-palette-type");
+      if (!typ) return;
+      setWidgetTypeHiddenInPalette(typ, !inp.checked);
+    });
+  });
+}
+
+function openProgramSettingsModal() {
+  if (!elements.programSettingsModal) return;
+  closeWidgetModal();
+  syncProgramSettingsFieldsFromState();
+  renderProgramPaletteCheckboxes();
+  try {
+    GuardSchoolI18n.applyDom(elements.programSettingsModal);
+  } catch (_) {}
+  elements.programSettingsModal.hidden = false;
+  elements.programSettingsModal.setAttribute("aria-hidden", "false");
+}
+
+function closeProgramSettingsModal() {
+  const m = elements.programSettingsModal;
+  if (!m) return;
+  m.hidden = true;
+  m.setAttribute("aria-hidden", "true");
+}
+
+function bindProgramSettingsModalOnce() {
+  if (bindProgramSettingsModalOnce._done) return;
+  bindProgramSettingsModalOnce._done = true;
+  elements.programSettingsOpenBtn?.addEventListener("click", (e) => {
+    e.preventDefault();
+    openProgramSettingsModal();
+  });
+  document.addEventListener("click", (e) => {
+    if (e.target.closest("[data-close-program-settings]")) {
+      e.preventDefault();
+      closeProgramSettingsModal();
+    }
+  });
+}
+
 function widgetDisplayTitle(widget) {
   if (!widget) return "";
   const typ = widget.type;
@@ -1141,21 +1252,25 @@ function bindWidgetModalOnce() {
     }
   });
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && state.widgetModalWidgetId) closeWidgetModal();
+    if (e.key !== "Escape") return;
+    if (state.widgetModalWidgetId) closeWidgetModal();
+    else if (elements.programSettingsModal && !elements.programSettingsModal.hidden) closeProgramSettingsModal();
   });
 }
 
 function renderWidgets() {
   const screen = selectedScreen();
   elements.widgetList.innerHTML = "";
-  screen.widgets.forEach((widget) => {
-    const div = document.createElement("div");
-    div.className = "widget-item widget-item-compact";
-    const wid = escapeHtmlAttr(String(widget.id));
-    const w = Number(widget.w);
-    const h = Number(widget.h);
-    const wh = `${Number.isFinite(w) ? w : "?"}×${Number.isFinite(h) ? h : "?"}`;
-    div.innerHTML = `
+  screen.widgets
+    .filter((widget) => !isWidgetTypeHiddenInAdminPalette(widget.type))
+    .forEach((widget) => {
+      const div = document.createElement("div");
+      div.className = "widget-item widget-item-compact";
+      const wid = escapeHtmlAttr(String(widget.id));
+      const w = Number(widget.w);
+      const h = Number(widget.h);
+      const wh = `${Number.isFinite(w) ? w : "?"}×${Number.isFinite(h) ? h : "?"}`;
+      div.innerHTML = `
       <div class="widget-title-row">
         <h3>${escapeHtmlAttr(widgetDisplayTitle(widget))}</h3>
         <div class="widget-actions">
@@ -1164,8 +1279,8 @@ function renderWidgets() {
       </div>
       <div class="widget-item-meta"><span class="widget-item-type">${escapeHtmlAttr(String(widget.type))}</span> · ${tf("widget.gridMeta", { wh: escapeHtmlAttr(wh) })}</div>
     `;
-    elements.widgetList.appendChild(div);
-  });
+      elements.widgetList.appendChild(div);
+    });
 }
 
 function renderForm() {
@@ -1193,14 +1308,8 @@ function renderForm() {
   renderBellTemplateOptions();
   renderClassCheckboxes();
   renderBackgroundGallery().catch(() => {});
-  if (elements.adminLocaleSelect) {
-    elements.adminLocaleSelect.value = state.config.ui_locale === "en" ? "en" : "ru";
-  }
-  populateAdminTimezoneSelect();
-  if (elements.adminClockOffset) {
-    const o = Number(state.config.clock_offset_minutes);
-    elements.adminClockOffset.value = String(Number.isFinite(o) ? o : 0);
-  }
+  syncProgramSettingsFieldsFromState();
+  renderProgramPaletteCheckboxes();
 }
 
 function renderClassCheckboxes() {
@@ -2324,6 +2433,7 @@ async function init() {
     api("/api/admin/bell-sounds").catch(() => ({ files: [] })),
   ]);
   state.config = config;
+  ensureAdminPaletteHidden();
   ensureAudioStreamConfig();
   /* Иначе скрытые поля «Стрим» остаются пустыми до первого открытия вкладки — сохранение с ТВ затирало бы audio_stream */
   syncAudioStreamFormFromState();
@@ -2349,6 +2459,7 @@ async function init() {
   bindPcPlayerOnce();
   bindSettingsSoundTestsOnce();
   bindWidgetModalOnce();
+  bindProgramSettingsModalOnce();
   render();
   setInterval(() => {
     if (window.GuardSchoolScreen && state.activeSection === "preview") {

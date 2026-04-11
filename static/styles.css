@@ -932,6 +932,29 @@ button {
   padding: 12px 14px 18px;
 }
 
+.program-settings-panel {
+  width: min(640px, 100%);
+}
+
+.program-settings-body {
+  max-height: min(85vh, 840px);
+  overflow-y: auto;
+}
+
+.program-settings-palette-head {
+  margin-top: 1rem;
+}
+
+.program-settings-palette-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 8px 14px;
+}
+
+.program-settings-palette-grid .toggle-label {
+  align-items: flex-start;
+}
+
 .widget-editor-modal-body .settings-grid {
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
 }

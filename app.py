@@ -99,6 +99,24 @@ SINGLETON_WIDGET_IDS = {
     "image": "image",
 }
 
+# Типы виджетов, которые можно скрыть из списка в админке (не влияет на ТВ и на сетку превью).
+ADMIN_PALETTE_WIDGET_TYPES = frozenset(
+    {
+        "date",
+        "time",
+        "text",
+        "bell_status",
+        "bell_countdown",
+        "schedule",
+        "carousel",
+        "holidays",
+        "announcements",
+        "marquee",
+        "emergency",
+        "image",
+    }
+)
+
 DEFAULT_BELL_TRIGGER_SEC_WINDOW = 25
 PRE_BELL_LEAD_MINUTES = 1
 PRE_BELL_FIRE_SEC_WINDOW = 12
@@ -535,6 +553,7 @@ def default_config() -> dict[str, Any]:
         "ui_locale": "ru",
         "timezone": "Europe/Moscow",
         "clock_offset_minutes": 0,
+        "admin_palette_hidden_types": [],
         "screens": [default_screen("ТВ-1", "tv-1")],
         "audio_stream": default_audio_stream_settings(),
     }
@@ -849,6 +868,13 @@ def load_config() -> dict[str, Any]:
     except (TypeError, ValueError):
         _off0 = 0
     config["clock_offset_minutes"] = max(-720, min(720, _off0))
+    _raw_hidden = config.get("admin_palette_hidden_types")
+    if not isinstance(_raw_hidden, list):
+        config["admin_palette_hidden_types"] = []
+    else:
+        config["admin_palette_hidden_types"] = [
+            str(x).strip() for x in _raw_hidden if str(x).strip() in ADMIN_PALETTE_WIDGET_TYPES
+        ]
     return config
 
 
@@ -945,6 +971,13 @@ def sanitize_config(config: dict[str, Any]) -> dict[str, Any]:
     except (TypeError, ValueError):
         off = 0
     config["clock_offset_minutes"] = max(-720, min(720, off))
+    raw_hidden = config.get("admin_palette_hidden_types")
+    if not isinstance(raw_hidden, list):
+        config["admin_palette_hidden_types"] = []
+    else:
+        config["admin_palette_hidden_types"] = [
+            str(x).strip() for x in raw_hidden if str(x).strip() in ADMIN_PALETTE_WIDGET_TYPES
+        ]
     return config
 
 
