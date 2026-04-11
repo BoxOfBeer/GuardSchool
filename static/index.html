@@ -28,44 +28,7 @@
             <div class="settings-popover-grid">
               <h4 class="settings-popover-subhead" data-i18n="regional.title">Язык, время и пояс</h4>
               <label class="settings-row"><span data-i18n="regional.timezone">Часовой пояс</span>
-                <select id="admin-timezone" class="standard-input wide-input">
-                  <optgroup label="UTC">
-                    <option value="UTC">UTC</option>
-                  </optgroup>
-                  <optgroup label="Europe">
-                    <option value="Europe/Moscow">Europe/Moscow</option>
-                    <option value="Europe/Kaliningrad">Europe/Kaliningrad</option>
-                    <option value="Europe/Samara">Europe/Samara</option>
-                    <option value="Europe/Kyiv">Europe/Kyiv</option>
-                    <option value="Europe/Minsk">Europe/Minsk</option>
-                    <option value="Europe/Warsaw">Europe/Warsaw</option>
-                    <option value="Europe/Berlin">Europe/Berlin</option>
-                    <option value="Europe/London">Europe/London</option>
-                  </optgroup>
-                  <optgroup label="Asia">
-                    <option value="Asia/Yekaterinburg">Asia/Yekaterinburg</option>
-                    <option value="Asia/Omsk">Asia/Omsk</option>
-                    <option value="Asia/Novosibirsk">Asia/Novosibirsk</option>
-                    <option value="Asia/Krasnoyarsk">Asia/Krasnoyarsk</option>
-                    <option value="Asia/Irkutsk">Asia/Irkutsk</option>
-                    <option value="Asia/Yakutsk">Asia/Yakutsk</option>
-                    <option value="Asia/Vladivostok">Asia/Vladivostok</option>
-                    <option value="Asia/Magadan">Asia/Magadan</option>
-                    <option value="Asia/Kamchatka">Asia/Kamchatka</option>
-                    <option value="Asia/Almaty">Asia/Almaty</option>
-                    <option value="Asia/Tashkent">Asia/Tashkent</option>
-                    <option value="Asia/Tbilisi">Asia/Tbilisi</option>
-                    <option value="Asia/Yerevan">Asia/Yerevan</option>
-                    <option value="Asia/Baku">Asia/Baku</option>
-                    <option value="Asia/Dubai">Asia/Dubai</option>
-                  </optgroup>
-                  <optgroup label="America">
-                    <option value="America/New_York">America/New_York</option>
-                    <option value="America/Chicago">America/Chicago</option>
-                    <option value="America/Denver">America/Denver</option>
-                    <option value="America/Los_Angeles">America/Los_Angeles</option>
-                  </optgroup>
-                </select>
+                <select id="admin-timezone" class="standard-input wide-input" title="IANA timezone"></select>
               </label>
               <label class="settings-row" data-i18n-title="regional.offsetHint"><span data-i18n="regional.offset">Сдвиг времени (мин)</span>
                 <input type="number" id="admin-clock-offset" class="standard-input" min="-720" max="720" step="1" value="0">
@@ -90,6 +53,7 @@
               <label class="settings-row" data-i18n="top.bgFile">Фон ТВ (файл)
                 <input id="background-input" type="file" accept="image/*">
               </label>
+              <p class="hint settings-file-input-hint" data-i18n="top.filePickerHint">Подпись кнопки выбора файла задаётся браузером/ОС и может не совпадать с языком интерфейса.</p>
             </div>
           </div>
         </details>
@@ -106,7 +70,10 @@
         <div class="card editor-card-screen-main" data-section="main">
           <div class="card-header screen-main-card-header">
             <h2 data-i18n="screen.paramsTitle">Параметры экрана</h2>
-            <button id="delete-screen-btn" class="danger-btn compact-btn" data-i18n="screen.deleteTab">Удалить вкладку</button>
+            <div class="screen-main-card-actions">
+              <button id="duplicate-screen-btn" type="button" class="secondary-btn compact-btn" data-i18n="screen.duplicateTab">Дублировать</button>
+              <button id="delete-screen-btn" class="danger-btn compact-btn" data-i18n="screen.deleteTab">Удалить вкладку</button>
+            </div>
           </div>
           <div class="editor-group screen-main-group">
             <h3 class="editor-group-title" data-i18n="screen.basic">Основное</h3>
@@ -322,7 +289,7 @@
         </div>
 
         <div class="card span-2" data-section="history">
-          <h2 data-i18n="history.title">Версии и изменения в программе</h2>
+          <h2 data-i18n="section.changelogTitle">Изменения программы</h2>
           <div id="history-list" class="history-list"></div>
         </div>
       </section>

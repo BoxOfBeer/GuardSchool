@@ -25,6 +25,14 @@ from fastapi.staticfiles import StaticFiles
 from openpyxl import Workbook, load_workbook
 
 
+def admin_ui_lang(request: Request) -> str:
+    return "en" if request.headers.get("X-UI-Locale", "").strip().lower() == "en" else "ru"
+
+
+def admin_msg(lang: str, ru: str, en: str) -> str:
+    return en if lang == "en" else ru
+
+
 if getattr(sys, "frozen", False):
     APP_DIR = Path(sys.executable).resolve().parent
     RESOURCE_DIR = Path(getattr(sys, "_MEIPASS", APP_DIR))
@@ -59,7 +67,6 @@ MARQUEE_PATH = DATA_DIR / "marquee.json"
 OVERRIDES_PATH = DATA_DIR / "overrides.json"
 BELL_SCHEDULES_PATH = DATA_DIR / "bell_schedules.json"
 CHANGE_LOG_PATH = DATA_DIR / "change_log.json"
-# Версия поставки (major.minor.patch). Журнал change_log.json — только что нового в программе, не действия пользователя.
 APP_VERSION = "1.01.002"
 IMPORT_STATE_PATH = DATA_DIR / "import_state.json"
 AUTO_SCHEDULE_IMPORT_PATH = IMPORT_DIR / "schedule.xlsx"
@@ -72,7 +79,6 @@ AUTO_MARQUEE_IMPORT_PATH = IMPORT_DIR / "marquee.xlsx"
 SESSION_COOKIE = "gornii_session"
 GRID_COLS = 32
 GRID_ROWS = 26
-# Картинки виджета «Изображение» — отдельно от фонов экрана (корень uploads).
 WIDGET_IMAGES_SUBDIR = "widget_images"
 SINGLETON_WIDGET_IDS = {
     "date": "date",
@@ -88,20 +94,16 @@ SINGLETON_WIDGET_IDS = {
     "image": "image",
 }
 
-# Окно «первые N секунд минуты звонка» для ТВ и ПК (poll раз в 1 с).
 DEFAULT_BELL_TRIGGER_SEC_WINDOW = 25
-# Предзвонок только на ПК: за минуту до начала/конца интервала (тот же файл, что основной звонок).
 PRE_BELL_LEAD_MINUTES = 1
 PRE_BELL_FIRE_SEC_WINDOW = 12
 PRE_BELL_MAX_DURATION_SEC = 52
 PRE_BELL_AFADE_IN_SEC = 3.0
 
-# Оркестрация перемены на ПК (при «фон на переменах»): в уроке тишина; в перемене — конец урока → музыка → затухание → тишина → начало след. урока (всё укладывается до старта урока).
 BREAK_ORCH_HEAD_SEC = 60
 BREAK_ORCH_FADE_SEC = 120
 BREAK_ORCH_SILENCE_SEC = 60
 BREAK_ORCH_START_BELL_SEC = 60
-# Столько минут до первого урока включать тот же сценарий (без «звонка конца» — только музыка и хвост перед началом).
 MORNING_PRE_FIRST_LESSON_MIN = 30
 
 
@@ -117,7 +119,6 @@ def audio_trigger_sec_window(audio: dict[str, Any]) -> int:
 
 
 def _safe_rel_uploads_subdir(raw: Any) -> str:
-    """Относительная подпапка в uploads ('' = корень). Без '..' и абсолютных путей."""
     s = str(raw or "").strip().replace("\\", "/").strip("/")
     if not s or s in (".",):
         return ""
@@ -233,19 +234,29 @@ def export_weekly_schedule_bundle_bytes() -> bytes:
     return buffer.getvalue()
 
 
-def import_weekly_schedule_bundle_bytes(raw_bytes: bytes) -> None:
+def import_weekly_schedule_bundle_bytes(raw_bytes: bytes, *, lang: str = "ru") -> None:
     with zipfile.ZipFile(io.BytesIO(raw_bytes), "r") as archive:
         found: set[str] = set()
         for name in archive.namelist():
             if Path(name).is_absolute() or ".." in Path(name).parts:
-                raise HTTPException(status_code=400, detail="Недопустимый путь в архиве.")
+                raise HTTPException(
+                    status_code=400,
+                    detail=admin_msg(lang, "Недопустимый путь в архиве.", "Invalid path in archive."),
+                )
             base = Path(name).name
             if base not in ("full_schedule.json", "schedule_sample.json"):
                 continue
             raw = archive.read(name)
             data = json.loads(raw.decode("utf-8"))
             if not isinstance(data, list):
-                raise HTTPException(status_code=400, detail=f"{base}: ожидается JSON-массив.")
+                raise HTTPException(
+                    status_code=400,
+                    detail=admin_msg(
+                        lang,
+                        f"{base}: ожидается JSON-массив.",
+                        f"{base}: expected a JSON array.",
+                    ),
+                )
             if base == "full_schedule.json":
                 write_json(FULL_SCHEDULE_PATH, data)
             else:
@@ -254,12 +265,15 @@ def import_weekly_schedule_bundle_bytes(raw_bytes: bytes) -> None:
         if not found:
             raise HTTPException(
                 status_code=400,
-                detail="В архиве нет full_schedule.json или schedule_sample.json.",
+                detail=admin_msg(
+                    lang,
+                    "В архиве нет full_schedule.json или schedule_sample.json.",
+                    "The archive must contain full_schedule.json and/or schedule_sample.json.",
+                ),
             )
 
 
 def first_bell_sound_path() -> Path | None:
-    """Первый файл в uploads/bells по имени (тот же порядок, что у /api/admin/bell-sounds)."""
     ensure_dirs()
     if not BELL_SOUNDS_DIR.exists():
         return None
@@ -753,8 +767,8 @@ def ensure_default_change_log() -> None:
                 "version": APP_VERSION,
                 "timestamp": datetime.now().isoformat(timespec="seconds"),
                 "message": (
-                    "Недельное расписание для предзагрузки (full_schedule, образец отличий), экспорт/импорт ZIP; "
-                    "порядок фона и перемен в админке; правки оркестрации звука на ПК."
+                    "Первая установка: журнал выпусков в data/change_log.json. При каждом релизе поднимайте APP_VERSION "
+                    "и добавляйте сюда краткое описание изменений."
                 ),
             },
         ],
@@ -806,7 +820,7 @@ def export_bundle_bytes() -> bytes:
     return buffer.getvalue()
 
 
-def import_bundle_bytes(raw_bytes: bytes) -> None:
+def import_bundle_bytes(raw_bytes: bytes, *, lang: str = "ru") -> None:
     with zipfile.ZipFile(io.BytesIO(raw_bytes), "r") as archive:
         names = archive.namelist()
         allowed_files = {
@@ -822,11 +836,21 @@ def import_bundle_bytes(raw_bytes: bytes) -> None:
         for name in names:
             path = Path(name)
             if path.is_absolute() or ".." in path.parts:
-                raise HTTPException(status_code=400, detail="Архив содержит недопустимые пути.")
+                raise HTTPException(
+                    status_code=400,
+                    detail=admin_msg(lang, "Архив содержит недопустимые пути.", "The archive contains invalid paths."),
+                )
             if path.parts and path.parts[0] == "uploads":
                 continue
             if path.name not in allowed_files or len(path.parts) != 1:
-                raise HTTPException(status_code=400, detail=f"Неизвестный файл в архиве: {name}")
+                raise HTTPException(
+                    status_code=400,
+                    detail=admin_msg(
+                        lang,
+                        f"Неизвестный файл в архиве: {name}",
+                        f"Unknown file in archive: {name}",
+                    ),
+                )
 
         clear_directory(UPLOADS_DIR)
         ensure_dirs()
@@ -1709,7 +1733,6 @@ def _discover_lesson_specs(
     class_col_idx: int,
     data_rows: list[list[Any]],
 ) -> list[tuple[int, int]]:
-    """(индекс столбца 0-based, номер урока). Без dict(zip): при пустых заголовках ключи «» не схлопываются."""
     n = len(headers)
     explicit: list[tuple[int, int]] = []
     for j in range(class_col_idx + 1, n):
@@ -1736,12 +1759,14 @@ def _discover_lesson_specs(
     return specs
 
 
-def parse_weekly_schedule_excel(file_path: Path) -> list[dict[str, Any]]:
-    """Расписание по дням недели: колонка «День недели», «Класс», Урок1… (как в schedule.xlsx, но без дат)."""
+def parse_weekly_schedule_excel(file_path: Path, *, lang: str = "ru") -> list[dict[str, Any]]:
     workbook = load_workbook(file_path, data_only=True)
     sheet = workbook.active
     if sheet.max_row is None or sheet.max_row < 2:
-        raise HTTPException(status_code=400, detail="Файл Excel пуст.")
+        raise HTTPException(
+            status_code=400,
+            detail=admin_msg(lang, "Файл Excel пуст.", "The Excel file is empty."),
+        )
     max_col = int(sheet.max_column or 1)
     last_row = int(sheet.max_row)
     rows_raw = list(
@@ -1766,14 +1791,25 @@ def parse_weekly_schedule_excel(file_path: Path) -> list[dict[str, Any]]:
     if weekday_col_idx is None or "Класс" not in headers:
         raise HTTPException(
             status_code=400,
-            detail="Ожидаются колонки «День недели» (или Weekday) и «Класс».",
+            detail=admin_msg(
+                lang,
+                "Ожидаются колонки «День недели» (или Weekday) и «Класс».",
+                "Expected columns «День недели» (or Weekday) and «Класс».",
+            ),
         )
 
     class_col_idx = headers.index("Класс")
     data_rows = rows[1:]
     lesson_specs = _discover_lesson_specs(headers, class_col_idx, data_rows)
     if not lesson_specs:
-        raise HTTPException(status_code=400, detail="Нужны колонки 'Урок1', 'Урок2' и т.д.")
+        raise HTTPException(
+            status_code=400,
+            detail=admin_msg(
+                lang,
+                "Нужны колонки 'Урок1', 'Урок2' и т.д.",
+                "Lesson columns are required (e.g. Урок1, Урок2, …).",
+            ),
+        )
 
     result: list[dict[str, Any]] = []
     for row in data_rows:
@@ -1799,11 +1835,14 @@ def parse_weekly_schedule_excel(file_path: Path) -> list[dict[str, Any]]:
     return result
 
 
-def parse_excel(file_path: Path) -> list[dict[str, Any]]:
+def parse_excel(file_path: Path, *, lang: str = "ru") -> list[dict[str, Any]]:
     workbook = load_workbook(file_path, data_only=True)
     sheet = workbook.active
     if sheet.max_row is None or sheet.max_row < 2:
-        raise HTTPException(status_code=400, detail="Файл Excel пуст.")
+        raise HTTPException(
+            status_code=400,
+            detail=admin_msg(lang, "Файл Excel пуст.", "The Excel file is empty."),
+        )
     max_col = int(sheet.max_column or 1)
     last_row = int(sheet.max_row)
     rows_raw = list(
@@ -1818,14 +1857,28 @@ def parse_excel(file_path: Path) -> list[dict[str, Any]]:
     rows = [_pad_row_to_width(r, max_col) for r in rows_raw]
     headers = [str(cell).strip() if cell is not None else "" for cell in rows[0]]
     if "Дата" not in headers or "Класс" not in headers:
-        raise HTTPException(status_code=400, detail="Ожидаются колонки 'Дата' и 'Класс'.")
+        raise HTTPException(
+            status_code=400,
+            detail=admin_msg(
+                lang,
+                "Ожидаются колонки 'Дата' и 'Класс'.",
+                "Expected columns 'Дата' and 'Класс'.",
+            ),
+        )
 
     class_col_idx = headers.index("Класс")
     date_col_idx = headers.index("Дата")
     data_rows = rows[1:]
     lesson_specs = _discover_lesson_specs(headers, class_col_idx, data_rows)
     if not lesson_specs:
-        raise HTTPException(status_code=400, detail="Нужны колонки 'Урок1', 'Урок2' и т.д.")
+        raise HTTPException(
+            status_code=400,
+            detail=admin_msg(
+                lang,
+                "Нужны колонки 'Урок1', 'Урок2' и т.д.",
+                "Lesson columns are required (e.g. Урок1, Урок2, …).",
+            ),
+        )
 
     result: list[dict[str, Any]] = []
     for row in data_rows:
@@ -1857,17 +1910,27 @@ def parse_excel(file_path: Path) -> list[dict[str, Any]]:
     return result
 
 
-def parse_holidays_excel(file_path: Path) -> list[dict[str, Any]]:
+def parse_holidays_excel(file_path: Path, *, lang: str = "ru") -> list[dict[str, Any]]:
     workbook = load_workbook(file_path, data_only=True)
     sheet = workbook.active
     rows = list(sheet.iter_rows(values_only=True))
     if not rows:
-        raise HTTPException(status_code=400, detail="Файл праздников Excel пуст.")
+        raise HTTPException(
+            status_code=400,
+            detail=admin_msg(lang, "Файл праздников Excel пуст.", "The holidays Excel file is empty."),
+        )
 
     headers = [str(cell).strip() if cell is not None else "" for cell in rows[0]]
     required = {"Дата", "Название", "Описание"}
     if not required.issubset(set(headers)):
-        raise HTTPException(status_code=400, detail="Ожидаются колонки 'Дата', 'Название', 'Описание'.")
+        raise HTTPException(
+            status_code=400,
+            detail=admin_msg(
+                lang,
+                "Ожидаются колонки 'Дата', 'Название', 'Описание'.",
+                "Expected columns 'Дата', 'Название', 'Описание'.",
+            ),
+        )
 
     result: list[dict[str, Any]] = []
     for row in rows[1:]:
@@ -1988,13 +2051,15 @@ def maybe_import_holidays_from_folder() -> None:
     save_import_state(state)
 
 
-def parse_announcements_excel(file_path: Path) -> list[dict[str, Any]]:
-    """Excel: каждая строка — строка текста; блоки разделяются строкой '!!!'; комментарии начинаются с // или #."""
+def parse_announcements_excel(file_path: Path, *, lang: str = "ru") -> list[dict[str, Any]]:
     workbook = load_workbook(file_path, data_only=True)
     sheet = workbook.active
     rows = list(sheet.iter_rows(values_only=True))
     if not rows:
-        raise HTTPException(status_code=400, detail="Файл объявлений Excel пуст.")
+        raise HTTPException(
+            status_code=400,
+            detail=admin_msg(lang, "Файл объявлений Excel пуст.", "The announcements Excel file is empty."),
+        )
 
     # Берём первую колонку; заголовок может быть любым, пропускаем первую строку если похожа на заголовок.
     lines: list[str] = []
@@ -2051,13 +2116,15 @@ def maybe_import_announcements_from_folder() -> None:
     save_import_state(state)
 
 
-def parse_marquee_excel(file_path: Path) -> list[str]:
-    """Excel: 1 строка = 1 сообщение бегущей строки; комментарии начинаются с // или #."""
+def parse_marquee_excel(file_path: Path, *, lang: str = "ru") -> list[str]:
     workbook = load_workbook(file_path, data_only=True)
     sheet = workbook.active
     rows = list(sheet.iter_rows(values_only=True))
     if not rows:
-        raise HTTPException(status_code=400, detail="Файл бегущей строки Excel пуст.")
+        raise HTTPException(
+            status_code=400,
+            detail=admin_msg(lang, "Файл бегущей строки Excel пуст.", "The marquee Excel file is empty."),
+        )
     out: list[str] = []
     for i, row in enumerate(rows):
         if row is None:
@@ -2658,7 +2725,6 @@ async def upload_background(request: Request, file: UploadFile = File(...)) -> d
 
 @app.post("/api/admin/upload-widget-image")
 async def upload_widget_image(request: Request, file: UploadFile = File(...)) -> dict[str, str]:
-    """Загрузка для виджета «Изображение» — только подпапка widget_images (не смешивать с фонами)."""
     require_auth(request)
     ensure_dirs()
     sub = UPLOADS_DIR / WIDGET_IMAGES_SUBDIR
@@ -2672,10 +2738,11 @@ async def upload_widget_image(request: Request, file: UploadFile = File(...)) ->
 @app.post("/api/admin/upload-holidays")
 async def upload_holidays(request: Request, file: UploadFile = File(...)) -> dict[str, Any]:
     require_auth(request)
+    lang = admin_ui_lang(request)
     suffix = Path(file.filename or "holidays.xlsx").suffix or ".xlsx"
     temp = UPLOADS_DIR / f"holidays_import{suffix}"
     temp.write_bytes(await file.read())
-    parsed = parse_holidays_excel(temp)
+    parsed = parse_holidays_excel(temp, lang=lang)
     write_json(HOLIDAYS_PATH, parsed)
     return {"status": "ok", "rows": len(parsed)}
 
@@ -2683,10 +2750,11 @@ async def upload_holidays(request: Request, file: UploadFile = File(...)) -> dic
 @app.post("/api/admin/upload-announcements")
 async def upload_announcements(request: Request, file: UploadFile = File(...)) -> dict[str, Any]:
     require_auth(request)
+    lang = admin_ui_lang(request)
     suffix = Path(file.filename or "announcements.xlsx").suffix or ".xlsx"
     temp = UPLOADS_DIR / f"announcements_import{suffix}"
     temp.write_bytes(await file.read())
-    parsed = parse_announcements_excel(temp)
+    parsed = parse_announcements_excel(temp, lang=lang)
     write_json(ANNOUNCEMENTS_PATH, parsed)
     return {"status": "ok", "rows": len(parsed)}
 
@@ -2694,10 +2762,11 @@ async def upload_announcements(request: Request, file: UploadFile = File(...)) -
 @app.post("/api/admin/upload-marquee")
 async def upload_marquee(request: Request, file: UploadFile = File(...)) -> dict[str, Any]:
     require_auth(request)
+    lang = admin_ui_lang(request)
     suffix = Path(file.filename or "marquee.xlsx").suffix or ".xlsx"
     temp = UPLOADS_DIR / f"marquee_import{suffix}"
     temp.write_bytes(await file.read())
-    parsed = parse_marquee_excel(temp)
+    parsed = parse_marquee_excel(temp, lang=lang)
     write_json(MARQUEE_PATH, parsed)
     return {"status": "ok", "rows": len(parsed)}
 
@@ -2705,10 +2774,11 @@ async def upload_marquee(request: Request, file: UploadFile = File(...)) -> dict
 @app.post("/api/admin/upload-schedule")
 async def upload_schedule(request: Request, file: UploadFile = File(...)) -> dict[str, Any]:
     require_auth(request)
+    lang = admin_ui_lang(request)
     suffix = Path(file.filename or "schedule.xlsx").suffix or ".xlsx"
     temp = UPLOADS_DIR / f"schedule_import{suffix}"
     temp.write_bytes(await file.read())
-    parsed = parse_excel(temp)
+    parsed = parse_excel(temp, lang=lang)
     write_json(SCHEDULE_PATH, parsed)
     return {"status": "ok", "rows": len(parsed)}
 
@@ -2716,10 +2786,11 @@ async def upload_schedule(request: Request, file: UploadFile = File(...)) -> dic
 @app.post("/api/admin/upload-full-schedule")
 async def upload_full_schedule(request: Request, file: UploadFile = File(...)) -> dict[str, Any]:
     require_auth(request)
+    lang = admin_ui_lang(request)
     suffix = Path(file.filename or "full_schedule.xlsx").suffix or ".xlsx"
     temp = UPLOADS_DIR / f"full_schedule_import{suffix}"
     temp.write_bytes(await file.read())
-    parsed = parse_weekly_schedule_excel(temp)
+    parsed = parse_weekly_schedule_excel(temp, lang=lang)
     write_json(FULL_SCHEDULE_PATH, parsed)
     return {"status": "ok", "rows": len(parsed)}
 
@@ -2727,10 +2798,11 @@ async def upload_full_schedule(request: Request, file: UploadFile = File(...)) -
 @app.post("/api/admin/upload-schedule-sample")
 async def upload_schedule_sample(request: Request, file: UploadFile = File(...)) -> dict[str, Any]:
     require_auth(request)
+    lang = admin_ui_lang(request)
     suffix = Path(file.filename or "schedule_sample.xlsx").suffix or ".xlsx"
     temp = UPLOADS_DIR / f"schedule_sample_import{suffix}"
     temp.write_bytes(await file.read())
-    parsed = parse_weekly_schedule_excel(temp)
+    parsed = parse_weekly_schedule_excel(temp, lang=lang)
     write_json(SCHEDULE_SAMPLE_PATH, parsed)
     return {"status": "ok", "rows": len(parsed)}
 
@@ -2738,9 +2810,13 @@ async def upload_schedule_sample(request: Request, file: UploadFile = File(...))
 @app.post("/api/admin/upload-bell-sound")
 async def upload_bell_sound(request: Request, file: UploadFile = File(...)) -> dict[str, str]:
     require_auth(request)
+    lang = admin_ui_lang(request)
     suffix = (Path(file.filename or "sound").suffix or ".mp3").lower()
     if suffix not in {".mp3", ".wav", ".ogg", ".m4a", ".aac"}:
-        raise HTTPException(status_code=400, detail="Допустимы: mp3, wav, ogg, m4a, aac.")
+        raise HTTPException(
+            status_code=400,
+            detail=admin_msg(lang, "Допустимы: mp3, wav, ogg, m4a, aac.", "Allowed: mp3, wav, ogg, m4a, aac."),
+        )
     name = f"{secrets.token_hex(6)}{suffix}"
     target = BELL_SOUNDS_DIR / name
     target.write_bytes(await file.read())
@@ -2837,7 +2913,10 @@ def download_weekly_schedule_template_xlsx(request: Request) -> FileResponse:
     ensure_dirs()
     ensure_weekly_schedule_template_file()
     if not FULL_SCHEDULE_SAMPLE_XLSX.is_file():
-        raise HTTPException(status_code=404, detail="Не удалось создать шаблон.")
+        raise HTTPException(
+            status_code=404,
+            detail=admin_msg(admin_ui_lang(request), "Не удалось создать шаблон.", "Could not create template."),
+        )
     return FileResponse(
         FULL_SCHEDULE_SAMPLE_XLSX,
         filename="full_schedule_sample.xlsx",
@@ -2848,18 +2927,30 @@ def download_weekly_schedule_template_xlsx(request: Request) -> FileResponse:
 @app.post("/api/admin/import")
 async def import_admin_bundle(request: Request, file: UploadFile = File(...)) -> dict[str, str]:
     require_auth(request)
+    lang = admin_ui_lang(request)
     if not (file.filename or "").lower().endswith(".zip"):
-        raise HTTPException(status_code=400, detail="Нужен ZIP-архив экспорта.")
-    import_bundle_bytes(await file.read())
+        raise HTTPException(
+            status_code=400,
+            detail=admin_msg(lang, "Нужен ZIP-архив экспорта.", "Expected an export ZIP archive."),
+        )
+    import_bundle_bytes(await file.read(), lang=lang)
     return {"status": "ok"}
 
 
 @app.post("/api/admin/import-weekly-schedule")
 async def import_weekly_schedule_bundle(request: Request, file: UploadFile = File(...)) -> dict[str, Any]:
     require_auth(request)
+    lang = admin_ui_lang(request)
     if not (file.filename or "").lower().endswith(".zip"):
-        raise HTTPException(status_code=400, detail="Нужен ZIP с full_schedule.json и/или schedule_sample.json.")
-    import_weekly_schedule_bundle_bytes(await file.read())
+        raise HTTPException(
+            status_code=400,
+            detail=admin_msg(
+                lang,
+                "Нужен ZIP с full_schedule.json и/или schedule_sample.json.",
+                "Expected a ZIP with full_schedule.json and/or schedule_sample.json.",
+            ),
+        )
+    import_weekly_schedule_bundle_bytes(await file.read(), lang=lang)
     return {
         "status": "ok",
         "full_schedule_rows": len(load_full_schedule()),

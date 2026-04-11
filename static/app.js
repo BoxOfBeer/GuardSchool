@@ -14,7 +14,6 @@ const state = {
   drag: null,
   previewCache: null,
   previewCacheScreenId: null,
-  /** id виджета, для которого открыто модальное окно настроек */
   widgetModalWidgetId: null,
 };
 const GRID = { cols: 32, rows: 26 };
@@ -104,6 +103,7 @@ const elements = {
   adminLocaleSelect: document.getElementById("admin-locale-select"),
   adminTimezone: document.getElementById("admin-timezone"),
   adminClockOffset: document.getElementById("admin-clock-offset"),
+  duplicateScreenBtn: document.getElementById("duplicate-screen-btn"),
 };
 
 function t(key) {
@@ -119,8 +119,120 @@ function getSectionTabs() {
     { id: "main", label: t("section.main") },
     { id: "schedule", label: t("section.schedule") },
     { id: "preview", label: t("section.preview") },
-    { id: "history", label: t("section.history") },
+    { id: "history", label: t("section.changelog") },
   ];
+}
+
+/** IANA zones in settings (labels get UTC offset via Intl). */
+const ADMIN_TIMEZONE_GROUPS = [
+  { label: "UTC", zones: ["UTC"] },
+  {
+    label: "Europe",
+    zones: [
+      "Europe/Moscow",
+      "Europe/Kaliningrad",
+      "Europe/Samara",
+      "Europe/Kyiv",
+      "Europe/Minsk",
+      "Europe/Warsaw",
+      "Europe/Berlin",
+      "Europe/London",
+    ],
+  },
+  {
+    label: "Asia",
+    zones: [
+      "Asia/Yekaterinburg",
+      "Asia/Omsk",
+      "Asia/Novosibirsk",
+      "Asia/Krasnoyarsk",
+      "Asia/Irkutsk",
+      "Asia/Yakutsk",
+      "Asia/Vladivostok",
+      "Asia/Magadan",
+      "Asia/Kamchatka",
+      "Asia/Almaty",
+      "Asia/Tashkent",
+      "Asia/Tbilisi",
+      "Asia/Yerevan",
+      "Asia/Baku",
+      "Asia/Dubai",
+    ],
+  },
+  {
+    label: "America",
+    zones: ["America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles"],
+  },
+];
+
+function timezoneOptionLabel(tzId) {
+  try {
+    const d = new Date();
+    const parts = new Intl.DateTimeFormat("en-US", { timeZone: tzId, timeZoneName: "longOffset" }).formatToParts(d);
+    let off = parts.find((p) => p.type === "timeZoneName")?.value || "";
+    off = off.replace("GMT", "UTC").replace(/\u2212/g, "-");
+    return `${tzId} (${off})`;
+  } catch (_) {
+    return tzId;
+  }
+}
+
+function populateAdminTimezoneSelect() {
+  const sel = elements.adminTimezone;
+  if (!sel || !state.config) return;
+  const current = String(state.config.timezone || "Europe/Moscow").trim();
+  const flat = ADMIN_TIMEZONE_GROUPS.flatMap((g) => g.zones);
+  sel.innerHTML = "";
+  ADMIN_TIMEZONE_GROUPS.forEach((g) => {
+    const og = document.createElement("optgroup");
+    og.label = g.label;
+    g.zones.forEach((z) => {
+      const opt = document.createElement("option");
+      opt.value = z;
+      opt.textContent = timezoneOptionLabel(z);
+      og.appendChild(opt);
+    });
+    sel.appendChild(og);
+  });
+  if (!flat.includes(current)) {
+    const opt = document.createElement("option");
+    opt.value = current;
+    opt.textContent = timezoneOptionLabel(current);
+    sel.appendChild(opt);
+  }
+  sel.value = current;
+}
+
+const WIDGET_TYPE_KEYS = new Set([
+  "date",
+  "time",
+  "text",
+  "bell_status",
+  "bell_countdown",
+  "schedule",
+  "carousel",
+  "holidays",
+  "announcements",
+  "marquee",
+  "emergency",
+  "image",
+]);
+
+function widgetDisplayTitle(widget) {
+  if (!widget) return "";
+  const typ = widget.type;
+  if (typ === "carousel") {
+    const raw = String(widget.title || "").trim();
+    if (raw && !/^Карусель(\s|$)/.test(raw) && !/^Carousel(\s|$)/i.test(raw)) return raw;
+    const m = raw.match(/^(?:Карусель|Carousel)\s*(\d+)\s*$/i);
+    if (m) return tf("carousel.nameN", { n: Number(m[1]) });
+    return t("widget.type.carousel");
+  }
+  if (typ && WIDGET_TYPE_KEYS.has(typ)) {
+    const tr = t(`widget.type.${typ}`);
+    if (tr !== `widget.type.${typ}`) return tr;
+  }
+  return String(widget.title || typ || "");
 }
 
 function getWeekdayOptions() {
@@ -153,8 +265,28 @@ function apiDetailMessage(payload) {
   return null;
 }
 
+function currentUiLocale() {
+  try {
+    const v = state.config && state.config.ui_locale;
+    if (v === "en") return "en";
+    if (v === "ru") return "ru";
+  } catch (_) {}
+  try {
+    if (document.documentElement.lang === "en") return "en";
+  } catch (_) {}
+  return "ru";
+}
+
+function mergeFetchOptions(options = {}) {
+  const merged = { credentials: "same-origin", ...options };
+  const h = new Headers(merged.headers || {});
+  if (!h.has("X-UI-Locale")) h.set("X-UI-Locale", currentUiLocale());
+  merged.headers = h;
+  return merged;
+}
+
 async function api(url, options = {}) {
-  const response = await fetch(url, { credentials: "same-origin", ...options });
+  const response = await fetch(url, mergeFetchOptions(options));
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}));
     if (response.status === 401) {
@@ -204,9 +336,8 @@ async function downloadFile(url, filenamePrefix) {
   await downloadBinaryFile(url, `${filenamePrefix}.zip`);
 }
 
-/** Скачивание с явным именем файла (zip, xlsx и т.д.). */
 async function downloadBinaryFile(url, downloadName) {
-  const response = await fetch(url, { credentials: "same-origin" });
+  const response = await fetch(url, mergeFetchOptions());
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}));
     throw new Error(payload.detail || t("api.downloadError"));
@@ -889,12 +1020,14 @@ function bindSettingsSoundTestsOnce() {
       if (out()) out().textContent = t("audio.playbackStarting");
       const testUrl = "/api/admin/pc-audio-test-play?use_first=1";
       try {
-        const response = await fetch(testUrl, {
-          method: "POST",
-          credentials: "same-origin",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ volume_percent: Number(elements.audioStreamVolume && elements.audioStreamVolume.value) || 80 }),
-        });
+        const response = await fetch(
+          testUrl,
+          mergeFetchOptions({
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ volume_percent: Number(elements.audioStreamVolume && elements.audioStreamVolume.value) || 80 }),
+          }),
+        );
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) {
           if (response.status === 401) {
@@ -1246,7 +1379,7 @@ function syncWidgetModal() {
     return;
   }
   const widget = screen.widgets[index];
-  titleEl.textContent = `${widget.title || t("widget.fallbackTitle")} · ${widget.type}`;
+  titleEl.textContent = `${widgetDisplayTitle(widget)} · ${widget.type}`;
   body.innerHTML = widgetEditorInnerHtml(widget, index);
   bindWidgetEditorEvents(body, index);
   modal.hidden = false;
@@ -1290,7 +1423,7 @@ function renderWidgets() {
     const wh = `${Number.isFinite(w) ? w : "?"}×${Number.isFinite(h) ? h : "?"}`;
     div.innerHTML = `
       <div class="widget-title-row">
-        <h3>${escapeHtmlAttr(String(widget.title || widget.type))}</h3>
+        <h3>${escapeHtmlAttr(widgetDisplayTitle(widget))}</h3>
         <div class="widget-actions">
           <button type="button" class="primary-btn compact-btn" data-open-widget-editor="${wid}">${t("widget.configure")}</button>
         </div>
@@ -1329,18 +1462,7 @@ function renderForm() {
   if (elements.adminLocaleSelect) {
     elements.adminLocaleSelect.value = state.config.ui_locale === "en" ? "en" : "ru";
   }
-  if (elements.adminTimezone && state.config.timezone) {
-    const tz = String(state.config.timezone);
-    const sel = elements.adminTimezone;
-    const has = [...sel.options].some((o) => o.value === tz);
-    if (!has) {
-      const opt = document.createElement("option");
-      opt.value = tz;
-      opt.textContent = tz;
-      sel.appendChild(opt);
-    }
-    sel.value = tz;
-  }
+  populateAdminTimezoneSelect();
   if (elements.adminClockOffset) {
     const o = Number(state.config.clock_offset_minutes);
     elements.adminClockOffset.value = String(Number.isFinite(o) ? o : 0);
@@ -1470,6 +1592,7 @@ function renderWeekdayBellGrid() {
 }
 
 function renderHistory() {
+  const loc = window.GuardSchoolI18n?.getLang?.() === "en" ? "en-US" : "ru-RU";
   const verHint = state.appVersion
     ? `<p class="hint history-app-ver">${t("history.currentVersion")} <strong>${escapeHtmlAttr(state.appVersion)}</strong></p>`
     : "";
@@ -1485,11 +1608,11 @@ function renderHistory() {
         let ts = "—";
         if (rawTs) {
           const d = new Date(rawTs);
-          ts = Number.isNaN(d.getTime()) ? String(rawTs) : d.toLocaleString("ru-RU");
+          ts = Number.isNaN(d.getTime()) ? String(rawTs) : d.toLocaleString(loc);
         }
         const ver = item.version ? String(item.version).trim() : "";
         const verBlock = ver
-          ? `<span class="history-ver">${escapeHtmlAttr(ver)}</span>`
+          ? `<span class="history-ver" title="${escapeHtmlAttr(t("history.versionLabel"))}">${escapeHtmlAttr(ver)}</span>`
           : `<span class="history-ver history-ver-na">${escapeHtmlAttr(t("history.noVersion"))}</span>`;
         return `
     <div class="history-item">
@@ -1604,7 +1727,7 @@ function renderBellSoundPanel() {
     if (!file) return;
     const fd = new FormData();
     fd.append("file", file);
-    const response = await fetch("/api/admin/upload-bell-sound", { method: "POST", body: fd, credentials: "same-origin" });
+    const response = await fetch("/api/admin/upload-bell-sound", mergeFetchOptions({ method: "POST", body: fd }));
     if (!response.ok) {
       alert((await response.json().catch(() => ({}))).detail || t("bells.uploadError"));
       return;
@@ -1814,6 +1937,90 @@ function renderGridHighlight(preview) {
   preview.appendChild(highlight);
 }
 
+/** Сборка строк предпросмотра звука: i18n-события с бэкенда или fallback на legacy lines. */
+function formatPreviewPcAudioLines(soundDiag) {
+  if (!soundDiag) return [];
+  if (Array.isArray(soundDiag.events) && soundDiag.events.length) {
+    return soundDiag.events
+      .map((e) => {
+        if (!e || !e.key) return "";
+        const raw = e.params && typeof e.params === "object" ? { ...e.params } : {};
+        if (raw.enabled === true) raw.enabledLabel = t("common.on");
+        if (raw.enabled === false) raw.enabledLabel = t("common.off");
+        delete raw.enabled;
+        if ("useSchedule" in raw) {
+          raw.useScheduleLabel = raw.useSchedule ? t("common.yes") : t("common.no");
+          delete raw.useSchedule;
+        }
+        if ("useFiles" in raw) {
+          raw.useFilesLabel = raw.useFiles ? t("common.yes") : t("common.no");
+          delete raw.useFiles;
+        }
+        if ("breakMusic" in raw) {
+          raw.breakMusicLabel = raw.breakMusic ? t("common.yes") : t("common.no");
+          delete raw.breakMusic;
+        }
+        if (raw.bellKind === "start") raw.bellKindLabel = t("preview.pcAudio.bellStart");
+        if (raw.bellKind === "end") raw.bellKindLabel = t("preview.pcAudio.bellEnd");
+        delete raw.bellKind;
+        return tf(e.key, raw);
+      })
+      .filter(Boolean);
+  }
+  if (Array.isArray(soundDiag.lines) && soundDiag.lines.length) return soundDiag.lines;
+  return [];
+}
+
+function nextUniqueScreenSlug() {
+  const n0 = state.config.screens.length + 1;
+  for (let n = n0; n < n0 + 500; n += 1) {
+    const slug = `tv-${n}`;
+    if (!state.config.screens.some((s) => String(s.slug) === slug)) return slug;
+  }
+  return `tv-${crypto.randomUUID().slice(0, 6)}`;
+}
+
+function duplicateCurrentScreen() {
+  const src = selectedScreen();
+  if (!src) return;
+  const idx = state.config.screens.findIndex((s) => s.id === src.id);
+  const defaults = createDefaultScreen(1);
+  const idMap = new Map();
+  const widgets = (src.widgets || []).map((w) => {
+    const nw = JSON.parse(JSON.stringify(w));
+    const nid = createWidgetId(w.type === "carousel" ? "carousel" : "widget");
+    idMap.set(w.id, nid);
+    nw.id = nid;
+    return nw;
+  });
+  widgets.forEach((w) => {
+    if (w.type === "carousel" && Array.isArray(w.settings?.childWidgetIds)) {
+      w.settings.childWidgetIds = w.settings.childWidgetIds.map((cid) => idMap.get(cid) || cid);
+      const cs = w.settings.childSlideSec;
+      if (cs && typeof cs === "object") {
+        const ncs = {};
+        Object.keys(cs).forEach((k) => {
+          ncs[idMap.get(k) || k] = cs[k];
+        });
+        w.settings.childSlideSec = ncs;
+      }
+    }
+  });
+  const ns = JSON.parse(JSON.stringify(src));
+  ns.id = crypto.randomUUID().slice(0, 8);
+  ns.name = tf("screen.defaultName", { n: state.config.screens.length + 1 });
+  ns.slug = nextUniqueScreenSlug();
+  ns.ip_note = "";
+  ns.poll_interval_sec = defaults.poll_interval_sec;
+  ns.selected_classes = [...defaults.selected_classes];
+  ns.bell_schedule_template = defaults.bell_schedule_template;
+  ns.weekday_bell_templates = { ...(src.weekday_bell_templates || {}) };
+  ns.widgets = widgets;
+  state.config.screens.splice(idx + 1, 0, ns);
+  state.selectedScreenId = ns.id;
+  render();
+}
+
 function renderPreview() {
   const G = window.GuardSchoolScreen;
   const screen = selectedScreen();
@@ -1842,9 +2049,10 @@ function renderPreview() {
 
   const { schedule, holidays, announcements, marquee, background_gallery: previewGallery, pc_audio_preview: soundDiag } = state.previewCache;
   if (elements.previewSoundDiag) {
-    if (soundDiag && Array.isArray(soundDiag.lines) && soundDiag.lines.length) {
+    const diagLines = formatPreviewPcAudioLines(soundDiag);
+    if (diagLines.length) {
       elements.previewSoundDiag.hidden = false;
-      elements.previewSoundDiag.textContent = [t("preview.soundDiag"), ...soundDiag.lines].join("\n");
+      elements.previewSoundDiag.textContent = [t("preview.soundDiag"), ...diagLines].join("\n");
     } else {
       elements.previewSoundDiag.hidden = true;
       elements.previewSoundDiag.textContent = "";
@@ -1956,6 +2164,11 @@ function render() {
   renderTabs();
 
   if (state.audioStreamPanelActive) {
+    if (elements.deleteScreenBtn) {
+      elements.deleteScreenBtn.hidden = true;
+      elements.deleteScreenBtn.disabled = true;
+    }
+    if (elements.duplicateScreenBtn) elements.duplicateScreenBtn.hidden = true;
     if (tabPanel) tabPanel.style.display = "none";
     if (screenWrap) screenWrap.hidden = true;
     if (audioPanel) audioPanel.hidden = false;
@@ -1992,6 +2205,12 @@ function render() {
     clearTimeout(window.__previewCfgDebounce);
     window.__previewCfgDebounce = setTimeout(() => fetchPreviewPayloadOnce(), 450);
   }
+
+  if (elements.deleteScreenBtn) {
+    elements.deleteScreenBtn.hidden = false;
+    elements.deleteScreenBtn.disabled = state.config.screens.length <= 1;
+  }
+  if (elements.duplicateScreenBtn) elements.duplicateScreenBtn.hidden = false;
 }
 
 function updateWidgetField(path, value) {
@@ -2417,6 +2636,7 @@ elements.exportDataBtn.onclick = async () => {
 elements.importDataBtn.onclick = () => elements.importDataInput.click();
 elements.importDataInput.onchange = (event) => event.target.files[0] && importBundle(event.target.files[0]);
 elements.deleteScreenBtn.onclick = deleteScreen;
+if (elements.duplicateScreenBtn) elements.duplicateScreenBtn.onclick = duplicateCurrentScreen;
 elements.addOverrideBtn.onclick = addOverride;
 elements.addBellTemplateBtn.onclick = addBellTemplate;
 elements.addBellRowBtn.onclick = addBellRow;

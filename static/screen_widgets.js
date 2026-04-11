@@ -53,6 +53,45 @@
     return String(uiLocale || "ru").toLowerCase() === "en" ? "en-GB" : "ru-RU";
   }
 
+  /** Подписи виджетов и служебные строки на ТВ — по display.ui_locale (без отдельного JSON). */
+  const TV_UI = {
+    ru: {
+      noData: "Нет данных",
+      lessonColumn: "Урок",
+      bells: "Звонки",
+      countdown: "До звонка",
+      events: "События",
+      announcements: "Объявления",
+      noAnnouncements: "Нет объявлений",
+      scheduleDefault: "Расписание",
+      nextSchoolDay: "Следующий учебный день:",
+      carouselBlank: "Пауза (фон)",
+      imageEmpty: "Нет изображения (добавьте файл или URL)",
+      imageAlt: "изображение",
+      carouselNoSlides: "Слайды не выбраны",
+    },
+    en: {
+      noData: "No data",
+      lessonColumn: "Lesson",
+      bells: "Bells",
+      countdown: "Countdown",
+      events: "Events",
+      announcements: "Announcements",
+      noAnnouncements: "No announcements",
+      scheduleDefault: "Schedule",
+      nextSchoolDay: "Next school day:",
+      carouselBlank: "Pause (background)",
+      imageEmpty: "No image (add a file or URL)",
+      imageAlt: "image",
+      carouselNoSlides: "No slides selected",
+    },
+  };
+
+  function tvUiStrings() {
+    const ui = String(getDisplayFromPayload().ui_locale || "ru").toLowerCase();
+    return TV_UI[ui === "en" ? "en" : "ru"];
+  }
+
   function adjustedDateFromDisplay() {
     const d = getDisplayFromPayload();
     const off = Number(d.clock_offset_minutes || 0);
@@ -121,8 +160,9 @@
   }
 
   function buildScheduleTable(rows, title, settings) {
+    const L = tvUiStrings();
     if (!rows.length) {
-      return `<section class="schedule-section"><h3 class="screen-section-title" style="font-size:${settings.titleFontSize || 20}px;${settings.bold ? "font-weight:700;" : ""}">${title}</h3><div style="${settings.bold ? "font-weight:700;" : ""}">Нет данных</div></section>`;
+      return `<section class="schedule-section"><h3 class="screen-section-title" style="font-size:${settings.titleFontSize || 20}px;${settings.bold ? "font-weight:700;" : ""}">${title}</h3><div style="${settings.bold ? "font-weight:700;" : ""}">${L.noData}</div></section>`;
     }
 
     const classHeaders = rows.map((item) => `<th>${item.class_name}</th>`).join("");
@@ -158,6 +198,7 @@
       return `<tr><td class="schedule-lesson-num">${lessonIndex}</td>${cells}</tr>`;
     }).join("");
 
+    const L = tvUiStrings();
     const colgroup = `<colgroup><col class="schedule-col-num" />${rows.map(() => "<col />").join("")}</colgroup>`;
 
     // Инлайн-стили: если ТВ «теряет» styles.css, таблица всё равно остаётся читаемой (белый фон + синяя шапка).
@@ -191,7 +232,7 @@
       <div class="schedule-table-wrap">
         <table class="schedule-table" style="${tableStyle}">
           ${colgroup}
-          <thead><tr><th style="${numThStyle}">Урок</th>${rows.map((item) => `<th style="${thStyle}">${item.class_name}</th>`).join("")}</tr></thead>
+          <thead><tr><th style="${numThStyle}">${L.lessonColumn}</th>${rows.map((item) => `<th style="${thStyle}">${item.class_name}</th>`).join("")}</tr></thead>
           <tbody>${bodyStyled}</tbody>
         </table>
       </div>
@@ -200,9 +241,10 @@
   }
 
   function buildBellStatus(status, settings) {
+    const L = tvUiStrings();
     return `
     <div class="bell-status-box" style="background:${settings.background};color:${settings.color};">
-      <div style="font-size:${settings.titleFontSize || 18}px;${settings.bold ? "font-weight:700;" : ""}">Звонки</div>
+      <div style="font-size:${settings.titleFontSize || 18}px;${settings.bold ? "font-weight:700;" : ""}">${L.bells}</div>
       <div style="font-size:${settings.fontSize || 18}px;${settings.bold ? "font-weight:700;" : ""}">${status.message}</div>
       <div style="${settings.bold ? "font-weight:700;" : ""}">${status.template_name || ""}</div>
     </div>
@@ -210,10 +252,11 @@
   }
 
   function buildBellCountdown(status, settings) {
+    const L = tvUiStrings();
     return `
     <div class="bell-status-box" style="background:${settings.background};color:${settings.color};">
-      <div style="font-size:${settings.titleFontSize || 18}px;${settings.bold ? "font-weight:700;" : ""}">До звонка</div>
-      <div style="font-size:${settings.fontSize || 22}px;${settings.bold ? "font-weight:700;" : ""}">${status.countdown_text || "Нет данных"}</div>
+      <div style="font-size:${settings.titleFontSize || 18}px;${settings.bold ? "font-weight:700;" : ""}">${L.countdown}</div>
+      <div style="font-size:${settings.fontSize || 22}px;${settings.bold ? "font-weight:700;" : ""}">${status.countdown_text || L.noData}</div>
     </div>
   `;
   }
@@ -247,12 +290,14 @@
       .filter((item) => item.target >= startToday)
       .sort((a, b) => a.target - b.target)
       .slice(0, Math.max(1, Number(settings.count || 5)));
+    const loc = localeTagFromUi(getDisplayFromPayload().ui_locale);
+    const L = tvUiStrings();
     const rows = items.length
-      ? items.map((item) => `<div>${item.target.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" })} - ${item.name}${item.description ? `: ${item.description}` : ""}</div>`).join("")
-      : "<div>Нет данных</div>";
+      ? items.map((item) => `<div>${item.target.toLocaleDateString(loc, { day: "2-digit", month: "2-digit" })} - ${item.name}${item.description ? `: ${item.description}` : ""}</div>`).join("")
+      : `<div>${L.noData}</div>`;
     return `
     <div class="info-widget-box" style="background:${settings.background};color:${settings.color};">
-      <div style="font-size:${settings.titleFontSize || 18}px;${settings.bold ? "font-weight:700;" : ""}">События</div>
+      <div style="font-size:${settings.titleFontSize || 18}px;${settings.bold ? "font-weight:700;" : ""}">${L.events}</div>
       <div style="font-size:${settings.fontSize || 16}px;${settings.bold ? "font-weight:700;" : ""}">${rows}</div>
     </div>
   `;
@@ -358,10 +403,11 @@
       }
     }
     const items = text.split("\n").map((item) => item.trimEnd());
-    const rows = items.length && (items.some((x) => x.trim() !== "")) ? items.map((item) => `<div>${item || "&nbsp;"}</div>`).join("") : "<div>Нет объявлений</div>";
+    const L = tvUiStrings();
+    const rows = items.length && (items.some((x) => x.trim() !== "")) ? items.map((item) => `<div>${item || "&nbsp;"}</div>`).join("") : `<div>${L.noAnnouncements}</div>`;
     return `
     <div class="info-widget-box" style="background:${settings.background};color:${settings.color};">
-      <div style="font-size:${settings.titleFontSize || 18}px;${settings.bold ? "font-weight:700;" : ""}">Объявления</div>
+      <div style="font-size:${settings.titleFontSize || 18}px;${settings.bold ? "font-weight:700;" : ""}">${L.announcements}</div>
       <div style="font-size:${settings.fontSize || 18}px;${settings.bold ? "font-weight:700;" : ""}">${rows}</div>
     </div>
   `;
@@ -373,7 +419,8 @@
       ? String(settings.items || "").split("\n").map((item) => item.trim()).filter(Boolean)
       : [];
     const items = manual.length ? manual : (Array.isArray(marqueeData) ? marqueeData.map((x) => String(x).trim()).filter(Boolean) : []);
-    const text = items.length ? items.join("   •   ") : "Нет объявлений";
+    const L = tvUiStrings();
+    const text = items.length ? items.join("   •   ") : L.noAnnouncements;
     const duration = Math.max(6, Number(settings.speedSec || 18));
     const durationMs = duration * 1000;
     const contentKey = `${duration}|${text}`;
@@ -423,7 +470,8 @@
     return ids
       .map((id) => {
         if (id === "__blank__") {
-          return { id: "__blank__", type: "blank", title: "Пауза (фон)", enabled: true, settings: {} };
+          const L = tvUiStrings();
+          return { id: "__blank__", type: "blank", title: L.carouselBlank, enabled: true, settings: {} };
         }
         return byId.get(id);
       })
@@ -443,6 +491,7 @@
   }
 
   function renderWidgetHtml(widget, schedule, screen, holidays = [], announcements = [], marquee = [], ctx = null) {
+    const L = tvUiStrings();
     const weight = widget.settings.bold ? "font-weight:700;" : "";
     if (widget.type === "emergency") {
       const s = widget.settings || {};
@@ -475,7 +524,7 @@
       const op = opacityPct / 100;
       const fit = s.objectFit === "cover" ? "cover" : "contain";
       if (!slides.length) {
-        return `<div class="image-widget-empty widget-meta">Нет изображения (добавьте файл или URL)</div>`;
+        return `<div class="image-widget-empty widget-meta">${L.imageEmpty}</div>`;
       }
       const rotateSec = Math.max(0, Number(s.imagesRotateSec) || 0);
       let idx = 0;
@@ -485,7 +534,7 @@
       }
       const pick = slides[idx];
       const url = pick.url;
-      const label = escapeHtmlAttr(pick.name || "изображение");
+      const label = escapeHtmlAttr(pick.name || L.imageAlt);
       return `<div class="image-widget-root" style="opacity:${op};width:100%;height:100%;display:flex;align-items:center;justify-content:center;overflow:hidden;">
     <img class="image-widget-img" src="${escapeHtmlAttr(url)}" alt="${label}" style="object-fit:${fit};max-width:100%;max-height:100%;width:100%;height:100%;pointer-events:none;" />
   </div>`;
@@ -509,8 +558,8 @@
       return buildBellCountdown(schedule.bell_status, widget.settings);
     }
     if (widget.type === "schedule") {
-      const title = schedule.bell_status?.schedule_title || "Расписание";
-      const nextDayTitle = `Следующий учебный день: ${formatDateLabel(schedule.next_school_day)}`;
+      const title = schedule.bell_status?.schedule_title || L.scheduleDefault;
+      const nextDayTitle = `${L.nextSchoolDay} ${formatDateLabel(schedule.next_school_day)}`;
       const todayBlock = schedule.bell_status?.state === "done"
         ? ""
         : buildScheduleTable(schedule.today_rows, title, widget.settings);
@@ -535,7 +584,7 @@
 
   function startCarousel(block, widget, childWidgets, schedule, screen, holidays, announcements, marquee) {
     if (!childWidgets.length) {
-      block.innerHTML = `<div class="widget-meta">Слайды не выбраны</div>`;
+      block.innerHTML = `<div class="widget-meta">${tvUiStrings().carouselNoSlides}</div>`;
       return;
     }
     const startDelayMs = Math.max(0, Number(widget.settings.startDelaySec || 0) * 1000);

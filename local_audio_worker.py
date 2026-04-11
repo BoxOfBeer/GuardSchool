@@ -1306,13 +1306,13 @@ def describe_pc_audio_preview(
     screen: dict[str, Any],
     audio_stream_raw: dict[str, Any] | None,
 ) -> dict[str, Any]:
-    """Текст для вкладки «Предпросмотр»: ожидания ТВ и ПК, фаза перемены, ffplay."""
+    """Предпросмотр: структурированные события для i18n на клиенте (ключи preview.pcAudio.*)."""
     gs = _app()
     audio = gs.sanitize_audio_stream(audio_stream_raw)
     today = date.today()
     now = datetime.now()
     today_iso = today.isoformat()
-    lines: list[str] = []
+    events: list[dict[str, Any]] = []
     tw = gs.audio_trigger_sec_window(audio)
     try:
         twp = int(audio.get("bell_trigger_sec_window", gs.DEFAULT_BELL_TRIGGER_SEC_WINDOW))
@@ -1324,7 +1324,12 @@ def describe_pc_audio_preview(
     now_m = now.hour * 60 + now.minute
     secs = now.second
 
-    lines.append(f"Сервер: {now.strftime('%Y-%m-%d %H:%M:%S')}  |  ТВ: первые {tw} сек. минуты звонка")
+    events.append(
+        {
+            "key": "preview.pcAudio.header",
+            "params": {"serverTime": now.strftime("%Y-%m-%d %H:%M:%S"), "tw": tw},
+        }
+    )
     try:
         vp_bell = max(0, min(100, int(audio.get("volume_percent") or 80)))
     except (TypeError, ValueError):
@@ -1333,20 +1338,29 @@ def describe_pc_audio_preview(
         vp_br = max(0, min(100, int(audio.get("break_music_volume_percent") or 40)))
     except (TypeError, ValueError):
         vp_br = 40
-    lines.append(
-        f"Звук ПК: {'вкл' if audio.get('enabled') else 'ВЫКЛ'}  |  "
-        f"расписание/файлы: {audio.get('use_bell_schedule')}/{audio.get('use_bell_sound_files')}  |  "
-        f"фон перемен: {audio.get('break_music_on_breaks')}"
+    events.append(
+        {
+            "key": "preview.pcAudio.pcFlags",
+            "params": {
+                "enabled": bool(audio.get("enabled")),
+                "useSchedule": bool(audio.get("use_bell_schedule")),
+                "useFiles": bool(audio.get("use_bell_sound_files")),
+                "breakMusic": bool(audio.get("break_music_on_breaks")),
+            },
+        }
     )
-    lines.append(
-        f"Громкость на ПК (ffmpeg af volume): звонки начало/конец/предзвонок — {vp_bell} %; "
-        f"музыка на перемене и затухание — {vp_br} % (задаётся отдельно; при одинаковых значениях слышать разницу нечего)."
-    )
+    events.append({"key": "preview.pcAudio.volumes", "params": {"vpBell": vp_bell, "vpBr": vp_br}})
+
     if payload.get("day") != today_iso:
-        lines.append(f"⚠ bell_audio.day {payload.get('day')} ≠ сегодня {today_iso}")
+        events.append(
+            {
+                "key": "preview.pcAudio.dayMismatch",
+                "params": {"bellDay": str(payload.get("day")), "today": today_iso},
+            }
+        )
 
     state = status.get("state") or "?"
-    lines.append(f"Слот: {state} — {status.get('message', '')}")
+    events.append({"key": "preview.pcAudio.slot", "params": {"state": str(state), "message": str(status.get("message", ""))}})
 
     orch = bool(
         audio.get("break_music_on_breaks")
@@ -1354,17 +1368,12 @@ def describe_pc_audio_preview(
         and audio.get("use_bell_sound_files")
     )
     if orch:
-        lines.append(
-            "ПК: оркестрация перемен — музыка и звонок «начало следующего» в последнюю минуту до урока; "
-            "на самом уроке сценарий перемены выключен. Звонок «конец» — в минуту end; повтор в head перемены не делается, если уже сыгран."
-        )
+        events.append({"key": "preview.pcAudio.orchIntro", "params": {}})
         if state == "before":
             pm = int(getattr(gs, "MORNING_PRE_FIRST_LESSON_MIN", 30))
-            lines.append(
-                f"ПК: до первого урока — за {pm} мин до звонка «начало» может играть фон (как на перемене), без «звонка конца»; на уроке музыка выключается."
-            )
+            events.append({"key": "preview.pcAudio.orchMorning", "params": {"minutes": pm}})
         elif state != "break":
-            lines.append("ПК: сейчас урок — сценарий перемены не активен (музыка только на перемене и в утреннем окне).")
+            events.append({"key": "preview.pcAudio.orchLesson", "params": {}})
 
     tv_keys: set[tuple[Any, str, int]] = set()
     rows = payload.get("entries") or []
@@ -1372,13 +1381,13 @@ def describe_pc_audio_preview(
         idx = row.get("index")
         st_m = gs.time_to_minutes(str(row.get("start") or "00:00"))
         en_m = gs.time_to_minutes(str(row.get("end") or "00:00"))
-        for lab, minute, url in (
-            ("начало", st_m, row.get("sound_start")),
-            ("конец", en_m, row.get("sound_end")),
+        for lab_key, minute, url in (
+            ("start", st_m, row.get("sound_start")),
+            ("end", en_m, row.get("sound_end")),
         ):
             if not url:
                 continue
-            key = (idx, lab, minute)
+            key = (idx, lab_key, minute)
             if key in tv_keys:
                 continue
             tv_keys.add(key)
@@ -1387,14 +1396,25 @@ def describe_pc_audio_preview(
             win_end = slot + timedelta(seconds=tw)
             if now_m == minute:
                 if secs < tw:
-                    lines.append(f"ТВ ▶ окно: стр.{idx} {lab} {hm} (осталось ~{tw - secs} с)")
+                    events.append(
+                        {
+                            "key": "preview.pcAudio.tvActive",
+                            "params": {"idx": idx, "bellKind": lab_key, "hm": hm, "remainSec": tw - secs},
+                        }
+                    )
                 else:
-                    lines.append(
-                        f"ТВ ✖ пропуск: стр.{idx} {lab} {hm} — сек {secs} ≥ {tw}. Увеличьте «окно» в Звук ПК."
+                    events.append(
+                        {
+                            "key": "preview.pcAudio.tvMissed",
+                            "params": {"idx": idx, "bellKind": lab_key, "hm": hm, "secs": secs, "tw": tw},
+                        }
                     )
             elif win_end < now < slot + timedelta(minutes=15):
-                lines.append(
-                    f"ТВ: стр.{idx} {lab} {hm} — окно прошло (первые {tw} с минуты). Повтора в эту минуту нет."
+                events.append(
+                    {
+                        "key": "preview.pcAudio.tvPassed",
+                        "params": {"idx": idx, "bellKind": lab_key, "hm": hm, "tw": tw},
+                    }
                 )
 
     if orch and state == "break":
@@ -1406,7 +1426,7 @@ def describe_pc_audio_preview(
             gap_cap = None
         gap = _find_break_gap(gs, entries, now_m, gap_cap)
         if gap:
-            gap_i, ended_entry, next_entry = gap
+            _gap_i, ended_entry, next_entry = gap
             next_start_m = gs.time_to_minutes(str(next_entry.get("start") or "00:00"))
             end_m = gs.time_to_minutes(str(ended_entry.get("end") or "00:00"))
             B = _dt_minute(today, end_m) + timedelta(minutes=1)
@@ -1425,58 +1445,109 @@ def describe_pc_audio_preview(
                 ct = _break_global_cursor % n if n else 0
                 cur = tracks[ct].name if n else "—"
                 if now < head_end:
-                    lines.append(
-                        f"ПК фаза: «конец урока» до {head_end.strftime('%H:%M:%S')} (~{max(0, int((head_end - now).total_seconds()))} с)"
+                    events.append(
+                        {
+                            "key": "preview.pcAudio.pcPhaseEndLesson",
+                            "params": {
+                                "headEnd": head_end.strftime("%H:%M:%S"),
+                                "remainSec": max(0, int((head_end - now).total_seconds())),
+                            },
+                        }
                     )
                 elif head_end <= now < music_hard_end:
-                    lines.append(
-                        f"ПК фаза: музыка #{ct + 1}/{n} — {cur} … до {music_hard_end.strftime('%H:%M:%S')} "
-                        f"(~{max(0, int((music_hard_end - now).total_seconds()))} с)"
+                    events.append(
+                        {
+                            "key": "preview.pcAudio.pcPhaseMusic",
+                            "params": {
+                                "ct": ct + 1,
+                                "n": n,
+                                "cur": cur,
+                                "musicHardEnd": music_hard_end.strftime("%H:%M:%S"),
+                                "remainSec": max(0, int((music_hard_end - now).total_seconds())),
+                            },
+                        }
                     )
                 elif music_hard_end <= now < t_fade_end:
-                    lines.append(
-                        f"ПК фаза: затухание … до {t_fade_end.strftime('%H:%M:%S')} (~{max(0, int((t_fade_end - now).total_seconds()))} с)"
+                    events.append(
+                        {
+                            "key": "preview.pcAudio.pcPhaseFade",
+                            "params": {
+                                "tFadeEnd": t_fade_end.strftime("%H:%M:%S"),
+                                "remainSec": max(0, int((t_fade_end - now).total_seconds())),
+                            },
+                        }
                     )
                 elif t_fade_end <= now < t_start_bell:
-                    lines.append(
-                        f"ПК фаза: тишина … до {t_start_bell.strftime('%H:%M:%S')}"
+                    events.append(
+                        {
+                            "key": "preview.pcAudio.pcPhaseSilence",
+                            "params": {"tStartBell": t_start_bell.strftime("%H:%M:%S")},
+                        }
                     )
                 elif t_start_bell <= now < T:
-                    lines.append(
-                        f"ПК фаза: начало урока до {T.strftime('%H:%M:%S')} (~{max(0, int((T - now).total_seconds()))} с)"
+                    events.append(
+                        {
+                            "key": "preview.pcAudio.pcPhaseStartLesson",
+                            "params": {
+                                "T": T.strftime("%H:%M:%S"),
+                                "remainSec": max(0, int((T - now).total_seconds())),
+                            },
+                        }
                     )
-                lines.append(f"Перемена {B.strftime('%H:%M')} → до урока {T.strftime('%H:%M')}")
+                events.append(
+                    {
+                        "key": "preview.pcAudio.breakSpan",
+                        "params": {"b": B.strftime("%H:%M"), "t": T.strftime("%H:%M")},
+                    }
+                )
             else:
-                lines.append("ПК: перемена слишком короткая для сценария (<30 с).")
+                events.append({"key": "preview.pcAudio.breakTooShort", "params": {}})
         else:
-            lines.append("ПК: не удалось сопоставить интервал перемены (проверьте строки шаблона).")
+            events.append({"key": "preview.pcAudio.breakNoGap", "params": {}})
     elif not orch and audio.get("use_bell_schedule") and audio.get("use_bell_sound_files"):
         for row in rows:
             idx = row.get("index")
             st_m = gs.time_to_minutes(str(row.get("start") or "00:00"))
             en_m = gs.time_to_minutes(str(row.get("end") or "00:00"))
-            for lab, minute, url in (
-                ("начало", st_m, row.get("sound_start")),
-                ("конец", en_m, row.get("sound_end")),
+            for lab_key, minute, url in (
+                ("start", st_m, row.get("sound_start")),
+                ("end", en_m, row.get("sound_end")),
             ):
                 if not url or not audio.get("enabled"):
                     continue
                 if now_m == minute and secs < tw:
-                    lines.append(f"ПК ▶ звонок: стр.{idx} {lab} (то же окно {tw} с, что у ТВ)")
+                    events.append(
+                        {"key": "preview.pcAudio.pcBellPlay", "params": {"idx": idx, "bellKind": lab_key, "tw": tw}}
+                    )
 
     last_b = (st.get("last") or {}).get("backend") if isinstance(st.get("last"), dict) else None
-    lines.append(
-        f"Процесс: играет={st.get('ffmpeg_process_running')} бэкенд={last_b or '?'} режим={st.get('play_kind')} pid={st.get('pid')}"
+    events.append(
+        {
+            "key": "preview.pcAudio.process",
+            "params": {
+                "running": st.get("ffmpeg_process_running"),
+                "backend": last_b or "?",
+                "playKind": st.get("play_kind"),
+                "pid": st.get("pid"),
+            },
+        }
     )
     last = st.get("last")
     if isinstance(last, dict) and last.get("finished"):
-        lines.append(
-            f"Последний сеанс: ok={last.get('ok')} код={last.get('returncode')} "
-            f"{str(last.get('stderr') or '')[:120]}"
+        events.append(
+            {
+                "key": "preview.pcAudio.lastSession",
+                "params": {
+                    "ok": last.get("ok"),
+                    "code": last.get("returncode"),
+                    "stderr": str(last.get("stderr") or "")[:120],
+                },
+            }
         )
 
     return {
-        "lines": lines,
+        "lines": [],
+        "events": events,
         "orch_mode": orch,
         "tv_window_sec": tw,
         "bell_status_state": state,
