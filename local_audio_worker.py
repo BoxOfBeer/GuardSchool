@@ -1009,6 +1009,7 @@ def play_file_async(
                 "backend": backend,
             }
             try:
+                # argv list + shlex only for logging — no shell=True (injection-safe).
                 proc = subprocess.Popen(
                     cmd,
                     stdout=subprocess.PIPE,

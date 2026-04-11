@@ -523,6 +523,13 @@ function escapeHtmlAttr(s) {
     .replace(/'/g, "&#39;");
 }
 
+function escapeHtml(s) {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
 function breakMusicVolumesFromForm() {
   const rawB = elements.audioStreamVolume && elements.audioStreamVolume.value;
   const rawBr = elements.audioStreamBreakMusicVol && elements.audioStreamBreakMusicVol.value;
@@ -1229,8 +1236,8 @@ function renderClassCheckboxes() {
   }
   elements.screenClasses.innerHTML = options.map((item) => `
     <label class="toggle-label class-option">
-      <input type="checkbox" value="${item.value}" ${selected.has(normalizeClass(item.value)) ? "checked" : ""}>
-      <span>${item.label}</span>
+      <input type="checkbox" value="${escapeHtmlAttr(item.value)}" ${selected.has(normalizeClass(item.value)) ? "checked" : ""}>
+      <span>${escapeHtml(item.label)}</span>
     </label>
   `).join("");
   elements.screenClasses.querySelectorAll('input[type="checkbox"]').forEach((input) => {
@@ -1252,14 +1259,14 @@ async function fetchBackgroundGallery(folder) {
 function renderBackgroundGalleryItems(images, activeUrl) {
   if (!elements.screenBgGallery) return;
   const act = String(activeUrl || "");
-  const safe = (u) => String(u || "").replace(/"/g, "&quot;");
+  const safe = (u) => escapeHtmlAttr(String(u || ""));
   elements.screenBgGallery.innerHTML = (images || []).map((u) => {
     const isActive = act && u === act;
     const name = String(u).split("/").pop() || u;
     return `
       <div class="bg-gallery-item ${isActive ? "active" : ""}" data-bg-url="${safe(u)}" title="${safe(u)}">
-        <img src="${safe(u)}" loading="lazy" alt="">
-        <div class="bg-gallery-cap">${name}</div>
+        <img src="${safe(u)}" loading="lazy" alt="${safe(name)}">
+        <div class="bg-gallery-cap">${escapeHtml(name)}</div>
       </div>
     `;
   }).join("") || `<div class="hint">${t("bg.galleryEmpty")}</div>`;
@@ -1289,7 +1296,7 @@ async function renderBackgroundGallery() {
   } catch (e) {
     elements.screenBgFolder.innerHTML = `<option value="">${t("bg.folderRoot")}</option>`;
     if (elements.screenBgGallery) {
-      elements.screenBgGallery.innerHTML = `<div class="hint">${tf("bg.galleryError", { msg: String(e.message || e) })}</div>`;
+      elements.screenBgGallery.innerHTML = `<div class="hint">${tf("bg.galleryError", { msg: escapeHtmlAttr(String(e.message || e)) })}</div>`;
     }
     return null;
   }
@@ -1298,7 +1305,7 @@ async function renderBackgroundGallery() {
   elements.screenBgFolder.innerHTML = folders.map((f) => {
     const v = String(f || "");
     const lab = v ? v : t("bg.folderRoot");
-    return `<option value="${v.replace(/"/g, "&quot;")}">${lab}</option>`;
+    return `<option value="${escapeHtmlAttr(v)}">${escapeHtml(lab)}</option>`;
   }).join("");
   elements.screenBgFolder.value = String(payload.folder || "");
   renderBackgroundGalleryItems(images, sc.background_force_image || "");
@@ -1309,7 +1316,7 @@ function renderWeekdayBellGrid() {
   const screen = selectedScreen();
   const mapping = screen.weekday_bell_templates || {};
   const templateOptions = state.bells.templates
-    .map((item) => `<option value="${item.id}">${item.name}</option>`)
+    .map((item) => `<option value="${escapeHtmlAttr(String(item.id))}">${escapeHtml(String(item.name || ""))}</option>`)
     .join("");
   elements.bellWeekdayGrid.innerHTML = getWeekdayOptions().map((day) => `
     <label title="${day.title || day.label}">
@@ -1484,15 +1491,17 @@ function buildBellRows(entries = []) {
   entries.forEach((entry, index) => {
     const row = document.createElement("div");
     row.className = "bell-row";
-    const lessonVal = String(entry.lesson ?? "").replace(/"/g, "&quot;");
+    const lessonVal = escapeHtmlAttr(String(entry.lesson ?? ""));
     const ss = entry.sound_start || "";
     const se = entry.sound_end || "";
+    const startVal = escapeHtmlAttr(String(entry.start ?? ""));
+    const endVal = escapeHtmlAttr(String(entry.end ?? ""));
     row.innerHTML = `
       <label class="bell-field-lesson">${t("bells.lessonField")}<input class="standard-input bell-lesson-input" data-bell-index="${index}" data-key="lesson" type="text" autocomplete="off" value="${lessonVal}" placeholder="${escapeHtmlAttr(t("bells.lessonPlaceholder"))}"></label>
       <label>${t("bells.soundStart")}<select data-bell-index="${index}" data-key="sound_start" class="standard-input bell-sound-select">${bellSoundSelectOptions(ss)}</select></label>
       <label>${t("bells.soundEnd")}<select data-bell-index="${index}" data-key="sound_end" class="standard-input bell-sound-select">${bellSoundSelectOptions(se)}</select></label>
-      <label>${t("bells.timeStart")}<input class="standard-input" data-bell-index="${index}" data-key="start" type="time" value="${entry.start}"></label>
-      <label>${t("bells.timeEnd")}<input class="standard-input" data-bell-index="${index}" data-key="end" type="time" value="${entry.end}"></label>
+      <label>${t("bells.timeStart")}<input class="standard-input" data-bell-index="${index}" data-key="start" type="time" value="${startVal}"></label>
+      <label>${t("bells.timeEnd")}<input class="standard-input" data-bell-index="${index}" data-key="end" type="time" value="${endVal}"></label>
       <button type="button" class="secondary-btn" data-remove-bell="${index}">${t("bells.removeRow")}</button>
     `;
     elements.bellRows.appendChild(row);

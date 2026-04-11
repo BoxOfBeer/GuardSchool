@@ -33,6 +33,16 @@ def admin_msg(lang: str, ru: str, en: str) -> str:
     return en if lang == "en" else ru
 
 
+def session_cookie_secure(request: Request) -> bool:
+    xfp = str(request.headers.get("x-forwarded-proto", "")).strip().lower()
+    if xfp.startswith("https"):
+        return True
+    try:
+        return request.url.scheme == "https"
+    except Exception:
+        return False
+
+
 if getattr(sys, "frozen", False):
     APP_DIR = Path(sys.executable).resolve().parent
     RESOURCE_DIR = Path(getattr(sys, "_MEIPASS", APP_DIR))
@@ -236,8 +246,14 @@ def export_weekly_schedule_bundle_bytes() -> bytes:
 
 def import_weekly_schedule_bundle_bytes(raw_bytes: bytes, *, lang: str = "ru") -> None:
     with zipfile.ZipFile(io.BytesIO(raw_bytes), "r") as archive:
+        names = archive.namelist()
+        if not names:
+            raise HTTPException(
+                status_code=400,
+                detail=admin_msg(lang, "Пустой ZIP-архив.", "Empty ZIP archive."),
+            )
         found: set[str] = set()
-        for name in archive.namelist():
+        for name in names:
             if Path(name).is_absolute() or ".." in Path(name).parts:
                 raise HTTPException(
                     status_code=400,
@@ -823,6 +839,11 @@ def export_bundle_bytes() -> bytes:
 def import_bundle_bytes(raw_bytes: bytes, *, lang: str = "ru") -> None:
     with zipfile.ZipFile(io.BytesIO(raw_bytes), "r") as archive:
         names = archive.namelist()
+        if not names:
+            raise HTTPException(
+                status_code=400,
+                detail=admin_msg(lang, "Пустой ZIP-архив.", "Empty ZIP archive."),
+            )
         allowed_files = {
             "config.json",
             "auth.json",
@@ -851,6 +872,20 @@ def import_bundle_bytes(raw_bytes: bytes, *, lang: str = "ru") -> None:
                         f"Unknown file in archive: {name}",
                     ),
                 )
+
+        has_root_config = any(
+            (not Path(n).is_absolute() and ".." not in Path(n).parts and len(Path(n).parts) == 1 and Path(n).name == "config.json")
+            for n in names
+        )
+        if not has_root_config:
+            raise HTTPException(
+                status_code=400,
+                detail=admin_msg(
+                    lang,
+                    "В корне ZIP должен быть config.json (экспорт GuardSchool). Импорт отменён, каталог uploads не очищался.",
+                    "ZIP must contain config.json at archive root (GuardSchool export). Import aborted; uploads were not cleared.",
+                ),
+            )
 
         clear_directory(UPLOADS_DIR)
         ensure_dirs()
@@ -1184,12 +1219,7 @@ def hash_password(password: str, salt: str) -> str:
 
 
 def password_is_valid(password: str) -> bool:
-    return (
-        len(password) >= 8
-        and any(ch.isalpha() for ch in password)
-        and any(ch.isdigit() for ch in password)
-        and len(set(password)) == len(password)
-    )
+    return len(password) >= 8 and any(ch.isalpha() for ch in password) and any(ch.isdigit() for ch in password)
 
 
 def create_session_token(username: str, auth: dict[str, Any]) -> str:
@@ -1217,10 +1247,21 @@ def is_authenticated(request: Request) -> bool:
 
 
 def require_auth(request: Request) -> None:
+    loc = admin_ui_lang(request)
     if not load_auth():
-        raise HTTPException(status_code=428, detail="Требуется первичная настройка администратора.")
+        raise HTTPException(
+            status_code=428,
+            detail=admin_msg(
+                loc,
+                "Требуется первичная настройка администратора.",
+                "Complete initial administrator setup first.",
+            ),
+        )
     if not is_authenticated(request):
-        raise HTTPException(status_code=401, detail="Требуется вход.")
+        raise HTTPException(
+            status_code=401,
+            detail=admin_msg(loc, "Требуется вход.", "Sign in required."),
+        )
 
 
 def load_schedule() -> list[dict[str, Any]]:
@@ -2493,31 +2534,58 @@ def bootstrap_state() -> dict[str, Any]:
 
 
 @app.post("/api/setup")
-async def setup_admin(username: str = Form(...), password: str = Form(...)) -> dict[str, str]:
+async def setup_admin(request: Request, username: str = Form(...), password: str = Form(...)) -> dict[str, str]:
+    loc = admin_ui_lang(request)
     if load_auth():
-        raise HTTPException(status_code=409, detail="Администратор уже создан.")
+        raise HTTPException(
+            status_code=409,
+            detail=admin_msg(loc, "Администратор уже создан.", "Administrator account already exists."),
+        )
     if not password_is_valid(password):
-        raise HTTPException(status_code=400, detail="Пароль: не менее 8 символов, буквы и цифры, без повторяющихся символов.")
+        raise HTTPException(
+            status_code=400,
+            detail=admin_msg(
+                loc,
+                "Пароль: не менее 8 символов, нужны буквы и цифры.",
+                "Password: at least 8 characters, with letters and digits.",
+            ),
+        )
     salt = secrets.token_hex(16)
     write_json(AUTH_PATH, {"username": username.strip(), "salt": salt, "password_hash": hash_password(password, salt)})
     return {"status": "ok"}
 
 
 @app.post("/api/login")
-async def login(response: Response, username: str = Form(...), password: str = Form(...)) -> dict[str, str]:
+async def login(request: Request, response: Response, username: str = Form(...), password: str = Form(...)) -> dict[str, str]:
+    loc = admin_ui_lang(request)
     auth = load_auth()
     if not auth:
-        raise HTTPException(status_code=428, detail="Сначала создайте администратора.")
+        raise HTTPException(
+            status_code=428,
+            detail=admin_msg(loc, "Сначала создайте администратора.", "Create the administrator account first."),
+        )
     if username.strip() != auth["username"] or hash_password(password, auth["salt"]) != auth["password_hash"]:
-        raise HTTPException(status_code=401, detail="Неверный логин или пароль.")
+        raise HTTPException(
+            status_code=401,
+            detail=admin_msg(loc, "Неверный логин или пароль.", "Invalid username or password."),
+        )
     token = create_session_token(username.strip(), auth)
-    response.set_cookie(SESSION_COOKIE, token, httponly=True, samesite="lax")
+    sec = session_cookie_secure(request)
+    response.set_cookie(
+        SESSION_COOKIE,
+        token,
+        httponly=True,
+        samesite="lax",
+        secure=sec,
+        path="/",
+    )
     return {"status": "ok"}
 
 
 @app.post("/api/logout")
 def logout(request: Request, response: Response) -> dict[str, str]:
-    response.delete_cookie(SESSION_COOKIE)
+    sec = session_cookie_secure(request)
+    response.delete_cookie(SESSION_COOKIE, path="/", secure=sec, samesite="lax")
     return {"status": "ok"}
 
 

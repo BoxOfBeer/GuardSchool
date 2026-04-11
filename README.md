@@ -81,7 +81,11 @@ Samples and auto-import from `data/import/` follow the same rules as in previous
 - **IT docs**: port layout, backing up `data/`, version upgrades.
 - **Deploy**: Docker / MSI if the customer needs it.
 - **Updates**: changelog, `config.json` migrations when the schema changes.
-- **Security**: HTTPS behind a reverse proxy, IP allowlists, strong admin password.
+- **Security**: HTTPS behind a reverse proxy, IP allowlists, strong admin password. Session cookie uses **`Secure`** when the request is HTTPS or `X-Forwarded-Proto: https` (typical behind TLS reverse proxy).
+- **Screen API**: `GET /api/screen/{slug}` returns schedule and display JSON **without auth** (for TV browsers on the LAN). Treat network access accordingly.
+- **Admin POSTs**: no separate CSRF tokens; browsers rely on **SameSite** session cookies. For high-threat deployments, add tokens or restrict origins.
+- **Process model**: run **one** uvicorn worker if you rely on in-process PC audio state (`local_audio_worker` globals); multiple workers do not share that state.
+- **Code layout**: admin UI is `static/app.js` (ES module) plus `static/admin/*.js`; load order in `index.html` is **`i18n.js` → `screen_widgets.js` → `app.js` (module)**. Further splits of `app.py` are planned incrementally.
 - **Branding**: logo, `ico.png`, custom copy.
 - **Telemetry**: the app does not phone home by default; any analytics would require explicit consent and opt-out.
 
@@ -128,7 +132,14 @@ uvicorn app:app --host 0.0.0.0 --port 8000 --reload
 
 ### Импорт и экспорт
 
-**Экспорт ZIP** / **Импорт ZIP** в админке — полный снимок настроек, расписаний, звонков и загрузок.
+**Экспорт ZIP** / **Импорт ZIP** в админке — полный снимок настроек, расписаний, звонков и загрузок. Импорт полного архива принимается только если в **корне ZIP** есть **`config.json`** (как в экспорте GuardSchool); пустой или чужой архив не очищает `uploads`.
+
+### Безопасность и эксплуатация
+
+- **`GET /api/screen/{slug}`** отдаёт JSON экрана **без входа** — рассчитано на ТВ в LAN; ограничивайте доступ к сети при чувствительных данных.
+- Сессия админки: флаг **`Secure`** у cookie включается при HTTPS или заголовке **`X-Forwarded-Proto: https`** у прокси.
+- **Один процесс** uvicorn, если используете звук на ПК через `local_audio_worker` — у нескольких воркеров общее состояние не разделяется.
+- Скрипты админки: **`i18n.js` → `screen_widgets.js` → `app.js` (type=module)`** — порядок важен для превью и локализации.
 
 ### Сборка exe
 
