@@ -61,7 +61,9 @@ location / {
 
 3. `sudo nginx -t && sudo systemctl reload nginx`.
 
-Готовый пример блоков `server` для **guarddoc.ru**, **www**, **demo** (редирект с 80, HTTPS, `proxy_pass`): файл **`nginx-portal-proxy.example.conf`** в этом каталоге. Скопируйте в `/etc/nginx/sites-available/`, включите через `sites-enabled`, уберите дублирующие `server_name` из `default`, если certbot уже создал заглушку.
+Готовый пример блоков `server` для **guarddoc.ru**, **www**, **demo** (редирект с 80, HTTPS, `proxy_pass`): файл **`nginx-portal-proxy.example.conf`** в этом каталоге. Скопируйте в `/etc/nginx/sites-available/`, включите через `sites-enabled`.
+
+Если в логе `nginx -t` есть **«conflicting server name … ignored»**, второй конфиг **не работает**: обычно certbot добавил те же имена в **`sites-available/default`**. Удалите или закомментируйте в `default` соответствующие блоки `server { … }` (с пометкой managed by Certbot для портала), чтобы для портала остался только `guarddoc-portal.conf` с `proxy_pass`.
 
 ## Демо заказчику (за час)
 
