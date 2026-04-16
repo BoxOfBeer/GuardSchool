@@ -3078,10 +3078,12 @@ def admin_tv_access_get(request: Request) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail="Tenant is not resolved.")
     with connect_public() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT 1 FROM tv_access WHERE tenant_slug=%s", (slug,))
-            ok = bool(cur.fetchone())
+            cur.execute("SELECT code_plaintext FROM tv_access WHERE tenant_slug=%s", (slug,))
+            row = cur.fetchone()
+            ok = bool(row)
+            code = str(row[0] or "").strip() if row else ""
         conn.commit()
-    return {"status": "ok", "tenant_slug": slug, "configured": ok}
+    return {"status": "ok", "tenant_slug": slug, "configured": ok, "code": code}
 
 
 @app.post("/api/admin/tv-access/rotate-code")
@@ -3107,16 +3109,16 @@ async def admin_tv_access_rotate_code(request: Request) -> dict[str, Any]:
                 pin_hash_db = tv_pin_hash("0000", pin_salt)
                 cur.execute(
                     """
-                    INSERT INTO tv_access (tenant_slug, code_hash, pin_salt, pin_hash, created_at, updated_at)
-                    VALUES (%s,%s,%s,%s,now(),now())
+                    INSERT INTO tv_access (tenant_slug, code_plaintext, code_hash, pin_salt, pin_hash, created_at, updated_at)
+                    VALUES (%s,%s,%s,%s,%s,now(),now())
                     """,
-                    (slug, ch, pin_salt, pin_hash_db),
+                    (slug, code, ch, pin_salt, pin_hash_db),
                 )
             else:
                 pin_salt, pin_hash_db = row[0], row[1]
                 cur.execute(
-                    "UPDATE tv_access SET code_hash=%s, updated_at=now() WHERE tenant_slug=%s",
-                    (ch, slug),
+                    "UPDATE tv_access SET code_plaintext=%s, code_hash=%s, updated_at=now() WHERE tenant_slug=%s",
+                    (code, ch, slug),
                 )
         conn.commit()
     return {"status": "ok", "tenant_slug": slug, "code": code, "pin_hint": "PIN не изменён (если запись новая — PIN=0000)"}

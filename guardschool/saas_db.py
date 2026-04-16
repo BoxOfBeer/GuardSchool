@@ -108,6 +108,7 @@ def ensure_public_schema() -> None:
                     """
                     CREATE TABLE IF NOT EXISTS tv_access (
                         tenant_slug TEXT PRIMARY KEY,
+                        code_plaintext TEXT NOT NULL DEFAULT '',
                         code_hash TEXT NOT NULL UNIQUE,
                         pin_salt TEXT NOT NULL,
                         pin_hash TEXT NOT NULL,
@@ -134,6 +135,10 @@ def ensure_public_schema() -> None:
             # Backward-compatible: add tenant_slug if table existed before.
             try:
                 cur.execute("ALTER TABLE demo_sessions ADD COLUMN IF NOT EXISTS tenant_slug TEXT NOT NULL DEFAULT ''")
+            except Exception:
+                pass
+            try:
+                cur.execute("ALTER TABLE tv_access ADD COLUMN IF NOT EXISTS code_plaintext TEXT NOT NULL DEFAULT ''")
             except Exception:
                 pass
 

@@ -233,10 +233,14 @@ async function refreshTvAccessUi() {
   try {
     const st = await api("/api/admin/tv-access");
     const configured = Boolean(st.configured);
-    if (elements.tvCodeOut && !_tvLastCode) {
-      elements.tvCodeOut.textContent = configured
-        ? "Код школы уже сгенерирован. Нажмите «Сгенерировать код», чтобы показать новый код (старые ссылки перестанут работать)."
-        : "Код школы ещё не создан. Нажмите «Сгенерировать код», затем задайте PIN.";
+    const code = String(st.code || "").trim();
+    if (code) _tvLastCode = code;
+    if (elements.tvCodeOut) {
+      elements.tvCodeOut.textContent = code
+        ? `КОД ШКОЛЫ:\n${code}\n\nСсылки ниже готовы. Нажмите «Сгенерировать код», чтобы сменить код (старые ссылки перестанут работать).`
+        : configured
+          ? "Код школы уже сгенерирован, но не может быть показан. Нажмите «Сгенерировать код», чтобы установить новый код."
+          : "Код школы ещё не создан. Нажмите «Сгенерировать код», затем задайте PIN.";
     }
   } catch (e) {
     if (elements.tvCodeOut) elements.tvCodeOut.textContent = `Ошибка: ${e.message || String(e)}`;
