@@ -5,27 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>GuardSchool — подключение ТВ</title>
     <link rel="stylesheet" href="/static/styles.css?v=1.02.001" />
+    <link rel="stylesheet" href="/static/portal_skin.css?v=2" />
     <style>
-      html.portal-skin,
-      body.portal-skin {
-        min-height: 100%;
-        margin: 0;
-        color: #f4f7ff !important;
-        background: radial-gradient(1200px 600px at 20% 0%, #1a3a6e 0%, #0b1f3d 45%, #071428 100%) !important;
-        font-family: system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, "Helvetica Neue", Arial, sans-serif;
-      }
       .wrap {
         max-width: 520px;
         margin: 0 auto;
         padding: 24px 16px 60px;
-      }
-      .card {
-        border: 1px solid rgba(255, 255, 255, 0.14);
-        border-radius: 14px;
-        padding: 18px;
-        background: rgba(10, 28, 52, 0.72);
-        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
-        backdrop-filter: blur(6px);
       }
       h2 {
         margin: 0 0 10px;
@@ -36,65 +21,29 @@
         gap: 6px;
         margin-top: 10px;
       }
-      label {
-        font-weight: 700;
-        color: #e8f0ff;
-      }
-      input {
-        width: 100%;
-        padding: 12px 14px;
-        border-radius: 12px;
-        border: 1px solid rgba(255, 255, 255, 0.22);
-        font-size: 16px;
-        background: rgba(255, 255, 255, 0.96);
-        color: #0b1f3d;
-      }
-      input::placeholder {
-        color: #5a6b82;
-      }
-      button {
-        appearance: none;
-        border: 1px solid rgba(255, 255, 255, 0.22);
-        border-radius: 12px;
-        padding: 12px 14px;
-        background: #f4f7ff;
-        color: #0b1f3d;
-        font-weight: 800;
-        cursor: pointer;
+      .tv-go {
         width: 100%;
         margin-top: 12px;
-      }
-      .hint {
-        margin-top: 10px;
-        font-size: 12px;
-        color: rgba(244, 247, 255, 0.78);
       }
       .out {
-        margin-top: 12px;
-        padding: 10px 12px;
-        border-radius: 12px;
-        border: 1px dashed rgba(255, 255, 255, 0.35);
-        background: rgba(0, 0, 0, 0.25);
-        color: #f4f7ff;
-        white-space: pre-wrap;
         display: none;
       }
     </style>
   </head>
   <body class="portal-skin">
     <div class="wrap">
-      <div class="card">
+      <div class="portal-card">
         <h2>Подключение ТВ</h2>
         <div style="color: rgba(244, 247, 255, 0.9)">Введите PIN, который вам выдал администратор школы.</div>
 
         <div class="row">
-          <label for="pin">PIN</label>
-          <input id="pin" inputmode="numeric" autocomplete="one-time-code" placeholder="4–12 цифр" />
+          <label class="portal-label" for="pin">PIN</label>
+          <input id="pin" class="portal-field" inputmode="numeric" autocomplete="one-time-code" placeholder="4–12 цифр" />
         </div>
 
-        <button id="go">Подключить</button>
-        <div class="hint" id="meta"></div>
-        <div class="out" id="out"></div>
+        <button type="button" class="portal-btn primary tv-go" id="go">Подключить</button>
+        <div class="portal-hint" id="meta"></div>
+        <div class="portal-out out" id="out"></div>
       </div>
     </div>
     <script type="module" src="/static/tv_pair.js?v=1.02.001"></script>

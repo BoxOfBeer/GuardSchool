@@ -1,0 +1,93 @@
+/* Общая тема публичных страниц GuardDoc (портал / регистрация / TV pair). */
+html.portal-skin,
+body.portal-skin {
+  min-height: 100vh;
+  margin: 0;
+  color: #f4f7ff !important;
+  background-color: #050d18 !important;
+  /* Один непрерывный фон без «полосы» от обрезанного radial + второго слоя */
+  background-image: radial-gradient(ellipse 140% 95% at 50% -35%, rgba(32, 72, 130, 0.55), transparent 58%),
+    linear-gradient(165deg, #0c2344 0%, #07172e 42%, #050d18 100%) !important;
+  background-repeat: no-repeat, no-repeat !important;
+  background-size: 100% 100%, 100% 100% !important;
+  background-attachment: scroll, scroll !important;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, "Helvetica Neue", Arial, sans-serif;
+}
+
+body.portal-skin a {
+  color: #9ec5ff;
+}
+
+body.portal-skin a:hover {
+  color: #cfe4ff;
+}
+
+body.portal-skin code {
+  color: #e8f0ff;
+  background: rgba(255, 255, 255, 0.08);
+  padding: 1px 6px;
+  border-radius: 6px;
+}
+
+.portal-card {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 14px;
+  padding: 18px 20px;
+  background: rgba(10, 28, 52, 0.72);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(6px);
+}
+
+.portal-field {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.96);
+  color: #0b1f3d;
+  font-size: 16px;
+}
+
+.portal-field::placeholder {
+  color: #5a6b82;
+}
+
+.portal-label {
+  font-weight: 600;
+  color: #e8f0ff;
+}
+
+.portal-btn {
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 12px;
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #f4f7ff;
+  text-decoration: none;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-block;
+}
+
+.portal-btn.primary {
+  background: #f4f7ff;
+  color: #0b1f3d;
+  border-color: #f4f7ff;
+}
+
+.portal-hint {
+  margin-top: 10px;
+  font-size: 12px;
+  color: rgba(244, 247, 255, 0.78);
+}
+
+.portal-out {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px dashed rgba(255, 255, 255, 0.35);
+  background: rgba(0, 0, 0, 0.25);
+  color: #f4f7ff;
+  white-space: pre-wrap;
+}

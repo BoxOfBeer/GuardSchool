@@ -235,3 +235,15 @@ def tv_device_token_hash(token: str) -> str:
     raw = (token or "").strip().encode("utf-8")
     return hashlib.sha256(pep + b"\ndevice\n" + raw).hexdigest()
 
+
+def cleanup_expired_demo_sessions() -> int:
+    """Удаляет просроченные строки demo_sessions (токен уже недействителен)."""
+    if not saas_db_enabled():
+        return 0
+    with connect_public() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM demo_sessions WHERE expires_at < now()")
+            n = int(cur.rowcount or 0)
+        conn.commit()
+    return n
+

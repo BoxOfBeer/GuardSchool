@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GuardDoc — демо-доступ</title>
+    <link rel="stylesheet" href="/static/styles.css?v=1.02.001" />
+    <link rel="stylesheet" href="/static/portal_skin.css?v=2" />
+    <style>
+      .wrap {
+        max-width: 720px;
+        margin: 0 auto;
+        padding: 28px 18px 60px;
+      }
+      .row {
+        display: grid;
+        gap: 8px;
+        margin-top: 12px;
+      }
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 14px;
+      }
+    </style>
+  </head>
+  <body class="portal-skin">
+    <div class="wrap">
+      <div class="portal-card">
+        <h2 style="margin: 0 0 8px; color: #fff">Временное демо</h2>
+        <div class="portal-hint">
+          Для гостей с главной страницы: ссылка «Демо» ведёт на <code>/try-demo</code> — без провайдерского токена, сразу
+          редирект в песочницу (тенант из <code>GUARDSCHOOL_DEMO_TENANT_SLUG</code>, по умолчанию совпадает с
+          <code>school</code> на <code>school.guarddoc.ru</code>). Здесь же — расширенная выдача демо для любого
+          <code>tenant_slug</code> с Bearer <code>GUARDSCHOOL_PROVIDER_ADMIN_TOKEN</code> (sessionStorage этого браузера).
+          Лицензии для операторов: <a href="/ADM" style="color: #cfe0ff">/ADM</a> (логин/пароль из окружения сервера).
+        </div>
+
+        <div class="row">
+          <label class="portal-label" for="tok">Bearer токен провайдера</label>
+          <input id="tok" class="portal-field" type="password" autocomplete="off" />
+          <button type="button" class="portal-btn primary" id="save-tok">Сохранить токен</button>
+        </div>
+
+        <div class="row">
+          <label class="portal-label" for="slug">Код школы (tenant_slug)</label>
+          <input id="slug" class="portal-field" placeholder="например: school" autocomplete="off" />
+        </div>
+        <div class="row">
+          <label class="portal-label" for="ttl">Время жизни (минуты, 5–180; по умолчанию 60)</label>
+          <input id="ttl" class="portal-field" inputmode="numeric" value="60" />
+        </div>
+
+        <div class="actions">
+          <button type="button" class="portal-btn primary" id="go">Создать демо-токен</button>
+          <a class="portal-btn" href="/register">К обычной регистрации</a>
+          <a class="portal-btn" href="/">Назад</a>
+        </div>
+
+        <div class="portal-out" id="out"></div>
+      </div>
+    </div>
+
+    <script type="module">
+      const KEY = "gs_provider_admin_bearer";
+      const tok = document.getElementById("tok");
+      const out = document.getElementById("out");
+      try {
+        tok.value = sessionStorage.getItem(KEY) || "";
+      } catch (_) {}
+
+      document.getElementById("save-tok").addEventListener("click", () => {
+        const v = String(tok.value || "").trim();
+        if (!v) return (out.textContent = "Вставьте токен.");
+        try {
+          sessionStorage.setItem(KEY, v);
+        } catch (_) {}
+        out.textContent = "Сохранено.";
+      });
+
+      async function api(path, opts = {}) {
+        const b = String(tok.value || "").trim();
+        if (!b) throw new Error("Нет токена провайдера.");
+        const headers = { Authorization: `Bearer ${b}`, ...(opts.headers || {}) };
+        const r = await fetch(path, { ...opts, headers });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(`${r.status}: ${data.detail || JSON.stringify(data)}`);
+        return data;
+      }
+
+      document.getElementById("go").addEventListener("click", async () => {
+        const tenant_slug = String(document.getElementById("slug").value || "").trim().toLowerCase();
+        let expires_minutes = Number(String(document.getElementById("ttl").value || "60").trim());
+        if (!Number.isFinite(expires_minutes)) expires_minutes = 60;
+        if (!tenant_slug) return (out.textContent = "Укажите tenant_slug.");
+        try {
+          const r = await api("/api/provider/demo", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ tenant_slug, expires_minutes }),
+          });
+          const host = String(r.tenant_host || `${tenant_slug}.guarddoc.ru`);
+          const path = String(r.url_path || "");
+          out.textContent =
+            `Готово.\n\nСсылка для входа (одноразово, до ${r.expires_at}):\nhttps://${host}${path}\n\n` +
+            `Полный ответ:\n${JSON.stringify(r, null, 2)}`;
+        } catch (e) {
+          out.textContent = String(e.message || e);
+        }
+      });
+    </script>
+  </body>
+</html>

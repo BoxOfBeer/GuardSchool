@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
+import hashlib
 import hmac
 import io
 import ipaddress
@@ -106,7 +107,7 @@ from .gs_paths import (
 )
 from .gs_weekly_template import ensure_weekly_schedule_template_file
 from .gs_screen_watch import record_screen_poll, screen_watch_snapshot
-from .saas_db import ensure_public_schema, saas_db_enabled
+from .saas_db import cleanup_expired_demo_sessions, ensure_public_schema, saas_db_enabled
 from .saas_db import (
     connect_public,
     ensure_tenant_schema,
@@ -1919,9 +1920,14 @@ async def _guard_school_lifespan(_app: FastAPI):
             ensure_public_schema()
         except Exception:
             pass
+        try:
+            cleanup_expired_demo_sessions()
+        except Exception:
+            pass
     ensure_saas_bootstrap_admin()
     hydrate_data_dir_from_database()
     cancel_sync = None
+    demo_cleanup_task = None
     try:
         from .gs_cloud_sync import start_cloud_sync_background
 
@@ -1929,9 +1935,29 @@ async def _guard_school_lifespan(_app: FastAPI):
     except Exception:
         cancel_sync = None
     bell_rupor_worker.start_worker()
+    if saas_db_enabled() and deployment_mode() == "saas":
+        import asyncio
+
+        async def _demo_ttl_sweeper() -> None:
+            while True:
+                await asyncio.sleep(600)
+                try:
+                    cleanup_expired_demo_sessions()
+                except Exception:
+                    pass
+
+        demo_cleanup_task = asyncio.create_task(_demo_ttl_sweeper())
     try:
         yield
     finally:
+        if demo_cleanup_task is not None:
+            import asyncio
+
+            demo_cleanup_task.cancel()
+            try:
+                await demo_cleanup_task
+            except asyncio.CancelledError:
+                pass
         if cancel_sync is not None:
             cancel_sync()
         bell_rupor_worker.stop_worker()
@@ -1947,6 +1973,8 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 async def _tenant_middleware(request: Request, call_next):
     """
     SaaS: по Host определяем школу и маппим data/ на tenants/<slug>/data.
+    Примеры: foo.guarddoc.ru → slug foo; school.guarddoc.ru → slug school.
+    Отдельная логика «один общий хост, школа только по лицензии в БД» в этом слое пока не реализована.
     В остальных режимах ничего не делаем.
     """
     from .tenant_ctx import set_tenant_slug
@@ -1980,12 +2008,79 @@ def get_public_version() -> dict[str, str]:
     return {"product": "GuardSchool", "version": APP_VERSION}
 
 
-def _require_provider_admin(request: Request) -> None:
+PORTAL_ADM_COOKIE_NAME = "gs_portal_adm"
+PORTAL_ADM_COOKIE_MAX_AGE_SEC = 7 * 24 * 3600
+
+
+def _portal_request_host(request: Request) -> str:
+    return (request.headers.get("host") or "").split(":")[0].strip().lower()
+
+
+def _is_guarddoc_portal_host(host: str) -> bool:
+    return host in ("guarddoc.ru", "www.guarddoc.ru")
+
+
+def _is_guarddoc_portal(request: Request) -> bool:
+    return _is_guarddoc_portal_host(_portal_request_host(request))
+
+
+def _portal_adm_cookie_secret() -> bytes:
+    raw = (
+        (os.environ.get("GUARDSCHOOL_PORTAL_ADM_SECRET") or "").strip()
+        or (os.environ.get("GUARDSCHOOL_PROVIDER_ADMIN_TOKEN") or "").strip()
+        or (os.environ.get("GUARDSCHOOL_LICENSE_PEPPER") or "").strip()
+        or "guardschool-portal-adm"
+    )
+    return hashlib.sha256(raw.encode("utf-8")).digest()
+
+
+def _make_portal_adm_cookie_value() -> str:
+    exp = int(time.time()) + PORTAL_ADM_COOKIE_MAX_AGE_SEC
+    msg = str(exp).encode("utf-8")
+    sig = hmac.new(_portal_adm_cookie_secret(), msg, hashlib.sha256).hexdigest()
+    return f"{exp}|{sig}"
+
+
+def _verify_portal_adm_cookie(request: Request) -> bool:
+    raw = (request.cookies.get(PORTAL_ADM_COOKIE_NAME) or "").strip()
+    if "|" not in raw:
+        return False
+    exp_s, sig = raw.split("|", 1)
+    try:
+        exp = int(exp_s)
+    except ValueError:
+        return False
+    if exp < int(time.time()):
+        return False
+    msg = str(exp).encode("utf-8")
+    expected = hmac.new(_portal_adm_cookie_secret(), msg, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, sig)
+
+
+def _portal_adm_credentials_configured() -> bool:
+    u = (os.environ.get("GUARDSCHOOL_PORTAL_ADM_USERNAME") or "").strip()
+    p = (os.environ.get("GUARDSCHOOL_PORTAL_ADM_PASSWORD") or "").strip()
+    return bool(u and p)
+
+
+def _provider_admin_configured() -> bool:
+    if (os.environ.get("GUARDSCHOOL_PROVIDER_ADMIN_TOKEN") or "").strip():
+        return True
+    return _portal_adm_credentials_configured()
+
+
+def _provider_admin_authorized(request: Request) -> bool:
     tok = (os.environ.get("GUARDSCHOOL_PROVIDER_ADMIN_TOKEN") or "").strip()
-    if not tok:
-        raise HTTPException(status_code=501, detail="Provider admin is not configured.")
     auth = (request.headers.get("authorization") or "").strip()
-    if auth != f"Bearer {tok}":
+    if tok and auth == f"Bearer {tok}":
+        return True
+    return _verify_portal_adm_cookie(request)
+
+
+def _require_provider_admin(request: Request) -> None:
+    if not _provider_admin_configured():
+        raise HTTPException(status_code=501, detail="Provider admin is not configured.")
+    if not _provider_admin_authorized(request):
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 
@@ -2001,6 +2096,31 @@ def _demo_token_hash(token: str) -> str:
     pepper = (os.environ.get("GUARDSCHOOL_DEMO_PEPPER") or os.environ.get("GUARDSCHOOL_LICENSE_PEPPER") or "").encode("utf-8")
     raw = (token or "").strip().encode("utf-8")
     return hashlib.sha256(pepper + b"\n" + raw).hexdigest()
+
+
+def _tenant_ui_host_for_demo(tenant_slug: str) -> str:
+    """Хост в ссылке на демо: либо единый GUARDSCHOOL_PUBLIC_SCHOOL_HOST, либо классический поддомен."""
+    fixed = (os.environ.get("GUARDSCHOOL_PUBLIC_SCHOOL_HOST") or "").strip().lower()
+    if fixed:
+        return fixed
+    return f"{tenant_slug}.guarddoc.ru"
+
+
+def _try_demo_sandbox_slug() -> str:
+    """Тенант песочницы для /try-demo (должен совпадать с slug из Host на стороне приложения)."""
+    return (os.environ.get("GUARDSCHOOL_DEMO_TENANT_SLUG") or "school").strip().lower()
+
+
+def _try_demo_ttl_minutes() -> int:
+    try:
+        n = int((os.environ.get("GUARDSCHOOL_TRY_DEMO_MINUTES") or "60").strip())
+    except Exception:
+        n = 60
+    return max(5, min(180, n))
+
+
+def _try_demo_public_enabled() -> bool:
+    return (os.environ.get("GUARDSCHOOL_TRY_DEMO_DISABLE") or "").strip().lower() not in ("1", "true", "yes", "on")
 
 
 @app.get("/api/provider/licenses")
@@ -2084,6 +2204,10 @@ async def provider_create_demo(request: Request) -> dict[str, Any]:
     _require_provider_admin(request)
     if deployment_mode() != "saas" or not saas_db_enabled():
         raise HTTPException(status_code=500, detail="SaaS is not configured.")
+    try:
+        cleanup_expired_demo_sessions()
+    except Exception:
+        pass
     body = await request.json()
     slug = str(body.get("tenant_slug") or "").strip().lower()
     try:
@@ -2104,7 +2228,7 @@ async def provider_create_demo(request: Request) -> dict[str, Any]:
         "status": "ok",
         "token": token,
         "url_path": f"/demo/{token}",
-        "tenant_host": f"{slug}.guarddoc.ru",
+        "tenant_host": _tenant_ui_host_for_demo(slug),
         "expires_at": expires_at.isoformat(),
     }
 
@@ -2113,6 +2237,10 @@ async def provider_create_demo(request: Request) -> dict[str, Any]:
 def demo_login(token: str, request: Request, response: Response) -> Response:
     if deployment_mode() != "saas" or not saas_db_enabled():
         raise HTTPException(status_code=404, detail="Not found.")
+    try:
+        cleanup_expired_demo_sessions()
+    except Exception:
+        pass
     from .tenant_ctx import tenant_slug as current_tenant
 
     slug = current_tenant()
@@ -2178,9 +2306,8 @@ def api_sync_bundle(request: Request) -> StreamingResponse:
 
 @app.get("/", response_class=HTMLResponse)
 def root(request: Request) -> Response:
-    host = (request.headers.get("host") or "").split(":")[0].strip().lower()
     # guarddoc.ru — портал экосистемы (лендинг/регистрация), не админка школы
-    if host in ("guarddoc.ru", "www.guarddoc.ru"):
+    if _is_guarddoc_portal(request):
         return FileResponse(STATIC_DIR / "portal.html")
     if not load_auth():
         return RedirectResponse("/setup")
@@ -2192,10 +2319,121 @@ def root(request: Request) -> Response:
 @app.get("/register", response_class=HTMLResponse)
 def portal_register_page(request: Request) -> Response:
     """Публичная страница регистрации SaaS (только для guarddoc.ru)."""
-    host = (request.headers.get("host") or "").split(":")[0].strip().lower()
-    if host not in ("guarddoc.ru", "www.guarddoc.ru"):
+    if not _is_guarddoc_portal(request):
         raise HTTPException(status_code=404, detail="Not found")
     return FileResponse(STATIC_DIR / "portal_register.html")
+
+
+@app.get("/provider")
+def portal_provider_redirect(request: Request) -> Response:
+    """Старая ссылка: провайдерский UI перенесён на /ADM."""
+    if not _is_guarddoc_portal(request):
+        raise HTTPException(status_code=404, detail="Not found")
+    return RedirectResponse("/ADM", status_code=302)
+
+
+@app.post("/api/portal-adm/login")
+async def portal_adm_login(request: Request) -> Response:
+    if not _is_guarddoc_portal(request):
+        raise HTTPException(status_code=404, detail="Not found")
+    if not _portal_adm_credentials_configured():
+        raise HTTPException(status_code=501, detail="Portal ADM login is not configured.")
+    body = await request.json()
+    u = str(body.get("username") or "").strip()
+    p = str(body.get("password") or "").strip()
+    eu = (os.environ.get("GUARDSCHOOL_PORTAL_ADM_USERNAME") or "").strip()
+    ep = (os.environ.get("GUARDSCHOOL_PORTAL_ADM_PASSWORD") or "").strip()
+    if u != eu or p != ep:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    out = JSONResponse({"status": "ok"})
+    sec = session_cookie_secure(request)
+    out.set_cookie(
+        PORTAL_ADM_COOKIE_NAME,
+        _make_portal_adm_cookie_value(),
+        max_age=PORTAL_ADM_COOKIE_MAX_AGE_SEC,
+        httponly=True,
+        samesite="lax",
+        secure=sec,
+        path="/",
+    )
+    return out
+
+
+@app.post("/api/portal-adm/logout")
+def portal_adm_logout(request: Request) -> Response:
+    if not _is_guarddoc_portal(request):
+        raise HTTPException(status_code=404, detail="Not found")
+    out = JSONResponse({"status": "ok"})
+    sec = session_cookie_secure(request)
+    out.delete_cookie(PORTAL_ADM_COOKIE_NAME, path="/", secure=sec, httponly=True, samesite="lax")
+    return out
+
+
+@app.get("/ADM", response_class=HTMLResponse)
+def portal_adm_page(request: Request) -> Response:
+    """Служебная страница лицензий: логин/пароль из env или fallback на Bearer-страницу."""
+    if not _is_guarddoc_portal(request):
+        raise HTTPException(status_code=404, detail="Not found")
+    if _portal_adm_credentials_configured():
+        if _verify_portal_adm_cookie(request):
+            return FileResponse(STATIC_DIR / "portal_adm.html")
+        return FileResponse(STATIC_DIR / "portal_adm_login.html")
+    if (os.environ.get("GUARDSCHOOL_PROVIDER_ADMIN_TOKEN") or "").strip():
+        return FileResponse(STATIC_DIR / "portal_provider.html")
+    return HTMLResponse(
+        content=(
+            "<!doctype html><html lang='ru'><head><meta charset='utf-8' /><title>ADM</title></head>"
+            "<body style='font-family:system-ui;padding:24px;max-width:640px'>"
+            "<p>ADM не настроен. Укажите в окружении пару "
+            "<code>GUARDSCHOOL_PORTAL_ADM_USERNAME</code> + <code>GUARDSCHOOL_PORTAL_ADM_PASSWORD</code> "
+            "или токен <code>GUARDSCHOOL_PROVIDER_ADMIN_TOKEN</code>.</p>"
+            "</body></html>"
+        ),
+        status_code=503,
+    )
+
+
+@app.get("/demo-setup", response_class=HTMLResponse)
+def portal_demo_setup_page(request: Request) -> Response:
+    """Страница выдачи временного демо-доступа (только guarddoc.ru)."""
+    if not _is_guarddoc_portal(request):
+        raise HTTPException(status_code=404, detail="Not found")
+    return FileResponse(STATIC_DIR / "portal_demo_setup.html")
+
+
+@app.get("/try-demo")
+def portal_try_demo(request: Request) -> Response:
+    """
+    Публичный «быстрый демо» с портала: без токена провайдера, редирект на приложение с одноразовым /demo/{token}.
+    Песочница: GUARDSCHOOL_DEMO_TENANT_SLUG (по умолчанию school — как у Host school.guarddoc.ru).
+    """
+    if not _is_guarddoc_portal(request):
+        raise HTTPException(status_code=404, detail="Not found")
+    if not _try_demo_public_enabled():
+        raise HTTPException(status_code=503, detail="Try-demo is disabled.")
+    if deployment_mode() != "saas" or not saas_db_enabled():
+        raise HTTPException(status_code=503, detail="SaaS is not configured.")
+    try:
+        cleanup_expired_demo_sessions()
+    except Exception:
+        pass
+    slug = _try_demo_sandbox_slug()
+    token = secrets.token_urlsafe(24)
+    th = _demo_token_hash(token)
+    ttl_min = _try_demo_ttl_minutes()
+    expires_at = utcnow() + timedelta(minutes=ttl_min)
+    with connect_public() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO demo_sessions (token_hash, tenant_slug, expires_at) VALUES (%s,%s,%s)",
+                (th, slug, expires_at),
+            )
+        conn.commit()
+    target_host = _tenant_ui_host_for_demo(slug)
+    scheme = (os.environ.get("GUARDSCHOOL_PUBLIC_SCHOOL_SCHEME") or "https").strip().lower()
+    if scheme not in ("http", "https"):
+        scheme = "https"
+    return RedirectResponse(f"{scheme}://{target_host}/demo/{token}", status_code=302)
 
 
 @app.get("/setup", response_class=HTMLResponse)

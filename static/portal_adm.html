@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GuardDoc — лицензии (ADM)</title>
+    <link rel="stylesheet" href="/static/styles.css?v=1.02.001" />
+    <link rel="stylesheet" href="/static/portal_skin.css?v=2" />
+    <style>
+      .wrap {
+        max-width: 980px;
+        margin: 0 auto;
+        padding: 28px 18px 60px;
+      }
+      .row {
+        display: grid;
+        gap: 8px;
+        margin-top: 12px;
+      }
+      .toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        align-items: flex-end;
+        margin-top: 12px;
+      }
+      .grow {
+        flex: 1 1 220px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 14px;
+        font-size: 13px;
+      }
+      th,
+      td {
+        border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+        padding: 8px 6px;
+        text-align: left;
+        vertical-align: top;
+      }
+      th {
+        color: rgba(244, 247, 255, 0.85);
+        font-weight: 700;
+      }
+    </style>
+  </head>
+  <body class="portal-skin">
+    <div class="wrap">
+      <div class="portal-card">
+        <h2 style="margin: 0 0 8px; color: #fff">Лицензии (ADM)</h2>
+        <p class="portal-hint" style="margin-top: 0">
+          Сессия по cookie браузера. Выйти — кнопка ниже. API те же: <code>/api/provider/licenses</code> (допускается вход по cookie).
+        </p>
+        <div class="toolbar">
+          <button type="button" class="portal-btn" id="logout">Выйти</button>
+          <a class="portal-btn" href="/">На портал</a>
+        </div>
+
+        <div class="toolbar" style="margin-top: 18px">
+          <div class="grow">
+            <label class="portal-label" for="plan">План</label>
+            <select id="plan" class="portal-field">
+              <option value="free">free</option>
+              <option value="paid">paid</option>
+              <option value="saas_only">saas_only</option>
+            </select>
+          </div>
+          <div class="grow">
+            <label class="portal-label" for="days">Срок (дней), пусто = без срока</label>
+            <input id="days" class="portal-field" inputmode="numeric" placeholder="например 365" />
+          </div>
+          <div class="grow">
+            <label class="portal-label" for="notes">Заметка</label>
+            <input id="notes" class="portal-field" placeholder="школа / контакт" />
+          </div>
+          <button type="button" class="portal-btn primary" id="create">Создать лицензию</button>
+          <button type="button" class="portal-btn" id="reload">Обновить список</button>
+        </div>
+
+        <div class="portal-out" id="out"></div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>key_hash</th>
+              <th>plan</th>
+              <th>status</th>
+              <th>expires</th>
+              <th>notes</th>
+              <th>действия</th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <script type="module">
+      const out = document.getElementById("out");
+      const rows = document.getElementById("rows");
+
+      function show(msg) {
+        out.textContent = msg;
+      }
+
+      async function api(path, opts = {}) {
+        const r = await fetch(path, { ...opts, credentials: "include" });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(`${r.status}: ${data.detail || JSON.stringify(data)}`);
+        return data;
+      }
+
+      document.getElementById("logout").addEventListener("click", async () => {
+        try {
+          await fetch("/api/portal-adm/logout", { method: "POST", credentials: "include" });
+        } catch (_) {}
+        window.location.href = "/ADM";
+      });
+
+      function renderList(data) {
+        const items = data.licenses || [];
+        rows.innerHTML = items
+          .map((x) => {
+            const kh = String(x.key_hash || "");
+            const esc = (s) =>
+              String(s ?? "")
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;");
+            return `<tr>
+              <td><code>${esc(kh.slice(0, 12))}…</code></td>
+              <td>${esc(x.plan_id)}</td>
+              <td>${esc(x.status)}</td>
+              <td>${esc(x.expires_at || "—")}</td>
+              <td>${esc(x.notes || "")}</td>
+              <td>
+                <button type="button" class="portal-btn" data-act="disable" data-kh="${esc(kh)}">off</button>
+                <button type="button" class="portal-btn" data-act="active" data-kh="${esc(kh)}">on</button>
+              </td>
+            </tr>`;
+          })
+          .join("");
+      }
+
+      async function reload() {
+        show("Загрузка…");
+        const data = await api("/api/provider/licenses");
+        renderList(data);
+        show(`Записей: ${(data.licenses || []).length}`);
+      }
+
+      document.getElementById("reload").addEventListener("click", () => reload().catch((e) => show(String(e.message || e))));
+
+      document.getElementById("create").addEventListener("click", async () => {
+        try {
+          const plan_id = String(document.getElementById("plan").value || "free");
+          const notes = String(document.getElementById("notes").value || "");
+          const daysRaw = String(document.getElementById("days").value || "").trim();
+          const body = { plan_id, notes };
+          if (daysRaw) body.expires_days = Number(daysRaw);
+          const r = await api("/api/provider/licenses", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          });
+          show(`Создан ключ (сохраните!):\n\n${r.license_key}\n\n${JSON.stringify(r, null, 2)}`);
+          await reload();
+        } catch (e) {
+          show(String(e.message || e));
+        }
+      });
+
+      rows.addEventListener("click", async (e) => {
+        const btn = e.target.closest("button[data-act]");
+        if (!btn) return;
+        const kh = btn.getAttribute("data-kh");
+        const act = btn.getAttribute("data-act");
+        if (!kh) return;
+        const status = act === "active" ? "active" : "disabled";
+        try {
+          await api(`/api/provider/licenses/${encodeURIComponent(kh)}/status`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status }),
+          });
+          await reload();
+        } catch (err) {
+          show(String(err.message || err));
+        }
+      });
+
+      reload().catch((e) => show(String(e.message || e)));
+    </script>
+  </body>
+</html>
