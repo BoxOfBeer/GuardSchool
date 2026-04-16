@@ -61,6 +61,8 @@ location / {
 
 3. `sudo nginx -t && sudo systemctl reload nginx`.
 
+Готовый пример блоков `server` для **guarddoc.ru**, **www**, **demo** (редирект с 80, HTTPS, `proxy_pass`): файл **`nginx-portal-proxy.example.conf`** в этом каталоге. Скопируйте в `/etc/nginx/sites-available/`, включите через `sites-enabled`, уберите дублирующие `server_name` из `default`, если certbot уже создал заглушку.
+
 ## Демо заказчику (за час)
 
 1. Поднять процесс с `GUARDSCHOOL_SAAS_MODE=1`, `GUARDSCHOOL_DATA_DIR`, `GUARDSCHOOL_ADMIN_PASSWORD`, `GUARDSCHOOL_TV_BEARER_TOKEN`, HTTPS.
