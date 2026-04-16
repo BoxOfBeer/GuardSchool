@@ -38,6 +38,8 @@
   "top.export": "Экспорт ZIP",
   "top.import": "Импорт ZIP",
   "top.logout": "Выйти",
+  "top.demoBanner": "Временный демо-доступ (вход по ссылке «Демо», не пароль владельца).",
+  "top.demoLogout": "Выйти из демо",
   "top.sound": "Звук",
   "top.soundRupor": "Рупор",
   "top.soundTv": "ТВ",

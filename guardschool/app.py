@@ -28,12 +28,14 @@ from fastapi.staticfiles import StaticFiles
 from .gs_admin_http import admin_msg, admin_ui_lang, session_cookie_secure
 from .gs_class_key import normalize_class
 from .gs_auth import (
+    create_demo_session_token,
     create_session_token,
     hash_password,
     is_authenticated,
     load_auth,
     password_is_valid,
     require_auth,
+    verify_demo_session_token,
 )
 from .cloud_store import hydrate_data_dir_from_database, is_cloud_database_enabled, read_revision_from_database
 from .gs_deploy import deployment_mode
@@ -2254,6 +2256,7 @@ def demo_login(token: str, request: Request, response: Response) -> Response:
             row = cur.fetchone()
             if not row or not row[0] or row[0] <= now:
                 raise HTTPException(status_code=403, detail="Demo token expired.")
+            expires_at = row[0]
             # одноразовый
             cur.execute("DELETE FROM demo_sessions WHERE token_hash=%s", (th,))
         conn.commit()
@@ -2261,10 +2264,23 @@ def demo_login(token: str, request: Request, response: Response) -> Response:
     auth = load_auth()
     if not auth:
         raise HTTPException(status_code=428, detail="Tenant is not configured.")
-    token2 = create_session_token(str(auth.get("username") or "admin"), auth)
+    try:
+        exp_epoch = int(expires_at.timestamp())  # type: ignore[union-attr]
+    except Exception:
+        exp_epoch = int(time.time()) + 3600
+    token2 = create_demo_session_token(exp_epoch)
     sec = session_cookie_secure(request)
+    max_age = max(60, exp_epoch - int(time.time()))
     response = RedirectResponse("/", status_code=302)
-    response.set_cookie(SESSION_COOKIE, token2, httponly=True, samesite="lax", secure=sec, path="/")
+    response.set_cookie(
+        SESSION_COOKIE,
+        token2,
+        max_age=max_age,
+        httponly=True,
+        samesite="lax",
+        secure=sec,
+        path="/",
+    )
     return response
 
 
@@ -2405,7 +2421,8 @@ def portal_demo_setup_page(request: Request) -> Response:
 def portal_try_demo(request: Request) -> Response:
     """
     Публичный «быстрый демо» с портала: без токена провайдера, редирект на приложение с одноразовым /demo/{token}.
-    Песочница: GUARDSCHOOL_DEMO_TENANT_SLUG (по умолчанию school — как у Host school.guarddoc.ru).
+    Песочница: GUARDSCHOOL_DEMO_TENANT_SLUG (по умолчанию school = тот же тенант, что school.guarddoc.ru).
+    Сессия после /demo/ — отдельная «демо-cookie», не пароль владельца (данные тенанта общие; изолированная песочница — другой slug + хост).
     """
     if not _is_guarddoc_portal(request):
         raise HTTPException(status_code=404, detail="Not found")
@@ -2627,6 +2644,7 @@ def get_admin_config(request: Request) -> dict[str, Any]:
         "saas_mode": saas_mode(),
         "deployment_mode": deployment_mode(),
         "app_version": APP_VERSION,
+        "demo_session": verify_demo_session_token(request.cookies.get(SESSION_COOKIE)),
     }
     return cfg
 

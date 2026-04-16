@@ -38,6 +38,8 @@
   "top.export": "Export ZIP",
   "top.import": "Import ZIP",
   "top.logout": "Log out",
+  "top.demoBanner": "Temporary demo access (demo link, not the owner password).",
+  "top.demoLogout": "Exit demo",
   "top.sound": "Sound",
   "top.soundRupor": "PC speaker",
   "top.soundTv": "TV",

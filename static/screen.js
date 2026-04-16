@@ -238,6 +238,40 @@ function parseTimeToMinutes(t) {
   return h * 60 + m;
 }
 
+/**
+ * «Сейчас» на школьных часах: как `wall_clock_minutes_for_config` на сервере (timezone + clock_offset).
+ * Раньше tickBellAudio брал getHours()/getMinutes() устройства — при другом поясе/смещении звонок совпадал с одним
+ * набором интервалов, а подпись «до звонка» / заголовок расписания (с сервера) — с другим.
+ */
+function schoolWallClockPartsFromDisplay(display) {
+  const disp = display || {};
+  const tz = String(disp.timezone || "Europe/Moscow").trim() || "Europe/Moscow";
+  let off = Number(disp.clock_offset_minutes || 0);
+  if (!Number.isFinite(off)) off = 0;
+  off = Math.max(-720, Math.min(720, Math.round(off)));
+  const inst = new Date(Date.now() + off * 60 * 1000);
+  try {
+    const parts = new Intl.DateTimeFormat("en-GB", {
+      timeZone: tz,
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    }).formatToParts(inst);
+    const take = (type) => {
+      const p = parts.find((x) => x.type === type);
+      const n = p ? Number(p.value) : NaN;
+      return Number.isFinite(n) ? n : 0;
+    };
+    const hour = take("hour");
+    const minute = take("minute");
+    const second = take("second");
+    return { mins: hour * 60 + minute, secs: second };
+  } catch (_) {
+    return { mins: inst.getHours() * 60 + inst.getMinutes(), secs: inst.getSeconds() };
+  }
+}
+
 function bellMediaUrl(u) {
   if (!u) return u;
   const s = String(u).trim();
@@ -313,9 +347,7 @@ function tickBellAudio(payload) {
     playedBellKeys.clear();
     bellAudioDay = scheduleDay;
   }
-  const now = new Date();
-  const mins = now.getHours() * 60 + now.getMinutes();
-  const secs = now.getSeconds();
+  const { mins, secs } = schoolWallClockPartsFromDisplay(payload.display);
   let secWin = Number(ba.trigger_sec_window);
   if (!Number.isFinite(secWin)) secWin = 25;
   secWin = Math.max(5, Math.min(55, secWin));

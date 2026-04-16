@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import os
+import time
 from typing import Any
 
 from fastapi import HTTPException, Request
@@ -34,6 +36,40 @@ def create_session_token(username: str, auth: dict[str, Any]) -> str:
     return f"{username}:{signature}"
 
 
+def _demo_session_secret_bytes() -> bytes:
+    raw = (
+        (os.environ.get("GUARDSCHOOL_DEMO_SESSION_SECRET") or "").strip()
+        or (os.environ.get("GUARDSCHOOL_LICENSE_PEPPER") or "").strip()
+        or "guardschool-demo-session"
+    )
+    return hashlib.sha256(raw.encode("utf-8")).digest()
+
+
+def create_demo_session_token(exp_epoch: int) -> str:
+    """Временная сессия после /demo/{token}; не использует password_hash владельца."""
+    exp = int(exp_epoch)
+    msg = f"__gsdemo__:{exp}".encode("utf-8")
+    sig = hmac.new(_demo_session_secret_bytes(), msg, hashlib.sha256).hexdigest()
+    return f"__gsdemo__:{exp}:{sig}"
+
+
+def verify_demo_session_token(token: str | None) -> bool:
+    if not token or not str(token).startswith("__gsdemo__:"):
+        return False
+    parts = str(token).split(":")
+    if len(parts) != 3:
+        return False
+    try:
+        exp = int(parts[1])
+    except ValueError:
+        return False
+    if int(time.time()) > exp:
+        return False
+    msg = f"__gsdemo__:{exp}".encode("utf-8")
+    expected = hmac.new(_demo_session_secret_bytes(), msg, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, parts[2])
+
+
 def verify_session_token(token: str | None, auth: dict[str, Any]) -> bool:
     if not token or ":" not in token or not auth:
         return False
@@ -46,11 +82,19 @@ def verify_session_token(token: str | None, auth: dict[str, Any]) -> bool:
 
 def is_authenticated(request: Request) -> bool:
     token = request.cookies.get(SESSION_COOKIE)
-    return verify_session_token(token, load_auth())
+    if verify_demo_session_token(token):
+        return True
+    auth = load_auth()
+    if not auth:
+        return False
+    return verify_session_token(token, auth)
 
 
 def require_auth(request: Request) -> None:
     loc = admin_ui_lang(request)
+    token = request.cookies.get(SESSION_COOKIE)
+    if verify_demo_session_token(token):
+        return
     if not load_auth():
         raise HTTPException(
             status_code=428,
@@ -60,7 +104,7 @@ def require_auth(request: Request) -> None:
                 "Complete initial administrator setup first.",
             ),
         )
-    if not is_authenticated(request):
+    if not verify_session_token(token, load_auth()):
         raise HTTPException(
             status_code=401,
             detail=admin_msg(loc, "Требуется вход.", "Sign in required."),

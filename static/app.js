@@ -1359,6 +1359,14 @@ async function init() {
   state.meta = config?._meta || state.meta;
   if (config && typeof config === "object") delete config._meta;
   state.config = config;
+  const demoBanner = document.getElementById("demo-session-banner");
+  if (demoBanner) {
+    if (state.meta?.demo_session) {
+      demoBanner.hidden = false;
+    } else {
+      demoBanner.hidden = true;
+    }
+  }
   if (state.meta?.deployment_mode === "saas") {
     // SaaS: синхронизация "с SaaS" не имеет смысла (облако и есть источник).
     const hide = (el) => { if (el) el.closest?.(".settings-row")?.classList?.add("hidden") || (el.hidden = true); };
@@ -1498,6 +1506,13 @@ elements.logoutBtn.onclick = async () => {
   await api("/api/logout", { method: "POST" });
   window.location.href = "/login";
 };
+const demoLogoutBtn = document.getElementById("demo-session-logout-btn");
+if (demoLogoutBtn) {
+  demoLogoutBtn.onclick = async () => {
+    await api("/api/logout", { method: "POST" });
+    window.location.href = "/login";
+  };
+}
 
 setPreviewDeps({ selectedScreen, clampWidget, render });
 setAudioStreamDeps({ selectedScreenSlug });
