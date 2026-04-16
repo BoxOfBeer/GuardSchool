@@ -2112,11 +2112,24 @@ def api_sync_bundle(request: Request) -> StreamingResponse:
 
 @app.get("/", response_class=HTMLResponse)
 def root(request: Request) -> Response:
+    host = (request.headers.get("host") or "").split(":")[0].strip().lower()
+    # guarddoc.ru — портал экосистемы (лендинг/регистрация), не админка школы
+    if host in ("guarddoc.ru", "www.guarddoc.ru"):
+        return FileResponse(STATIC_DIR / "portal.html")
     if not load_auth():
         return RedirectResponse("/setup")
     if not is_authenticated(request):
         return RedirectResponse("/login")
     return FileResponse(STATIC_DIR / "index.html")
+
+
+@app.get("/register", response_class=HTMLResponse)
+def portal_register_page(request: Request) -> Response:
+    """Публичная страница регистрации SaaS (только для guarddoc.ru)."""
+    host = (request.headers.get("host") or "").split(":")[0].strip().lower()
+    if host not in ("guarddoc.ru", "www.guarddoc.ru"):
+        raise HTTPException(status_code=404, detail="Not found")
+    return FileResponse(STATIC_DIR / "portal_register.html")
 
 
 @app.get("/setup", response_class=HTMLResponse)

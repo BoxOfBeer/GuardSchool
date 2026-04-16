@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GuardDoc — экосистема</title>
+    <link rel="stylesheet" href="/static/styles.css?v=1.02.001" />
+    <style>
+      .gd-wrap {
+        max-width: 980px;
+        margin: 0 auto;
+        padding: 28px 18px 60px;
+      }
+      .gd-hero {
+        display: grid;
+        gap: 14px;
+        padding: 18px;
+        border: 1px solid rgba(0, 0, 0, 0.08);
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.9);
+      }
+      .gd-hero h1 {
+        margin: 0;
+        font-size: 28px;
+        line-height: 1.2;
+      }
+      .gd-hero p {
+        margin: 0;
+        opacity: 0.9;
+      }
+      .gd-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        align-items: center;
+        margin-top: 8px;
+      }
+      .gd-btn {
+        appearance: none;
+        border: 1px solid rgba(0, 0, 0, 0.16);
+        border-radius: 12px;
+        padding: 10px 14px;
+        background: #fff;
+        color: #111;
+        text-decoration: none;
+        font-weight: 600;
+      }
+      .gd-btn.primary {
+        background: #111;
+        color: #fff;
+        border-color: #111;
+      }
+      .gd-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: 12px;
+        margin-top: 14px;
+      }
+      .gd-card {
+        border: 1px solid rgba(0, 0, 0, 0.08);
+        border-radius: 14px;
+        padding: 14px;
+        background: rgba(255, 255, 255, 0.86);
+      }
+      .gd-card h3 {
+        margin: 0 0 6px;
+        font-size: 16px;
+      }
+      .gd-card p {
+        margin: 0;
+        opacity: 0.9;
+      }
+      .gd-foot {
+        margin-top: 18px;
+        opacity: 0.75;
+        font-size: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="gd-wrap">
+      <div class="gd-hero">
+        <h1>GuardDoc</h1>
+        <p>Единый портал экосистемы. GuardSchool — первое приложение в составе.</p>
+        <div class="gd-actions">
+          <a class="gd-btn primary" href="https://school.guarddoc.ru/">Открыть GuardSchool</a>
+          <a class="gd-btn" href="/register">Регистрация / демо</a>
+        </div>
+      </div>
+
+      <div class="gd-grid">
+        <div class="gd-card">
+          <h3>GuardSchool</h3>
+          <p>Расписание, объявления, фоновые медиа, звонки, экраны.</p>
+        </div>
+        <div class="gd-card">
+          <h3>GuardNotes</h3>
+          <p>В разработке: заметки и документы для сотрудников.</p>
+        </div>
+        <div class="gd-card">
+          <h3>Guard*</h3>
+          <p>Будущие модули экосистемы GuardDoc.</p>
+        </div>
+      </div>
+
+      <div class="gd-foot">
+        Этот портал предназначен для регистрации и доступа к продуктам GuardDoc. Для GuardSchool используйте
+        <a href="https://school.guarddoc.ru/">school.guarddoc.ru</a>.
+      </div>
+    </div>
+    <script type="module" src="/static/portal.js?v=1.02.001"></script>
+  </body>
+</html>
+
