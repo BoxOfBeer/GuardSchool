@@ -39,6 +39,28 @@ sudo certbot certonly --webroot -w /var/www/html -d guarddoc.ru -d www.guarddoc.
 
 Если в браузере по-прежнему «Не защищено»: проверьте, что открытое имя **входит** в SAN сертификата (вкладка «Сведения о сертификате»), сертификат не просрочен, цепочка до Let's Encrypt полная. Строка «Вы отключили предупреждения…» в Chrome относится к **настройке сайта в браузере**, а не к серверу — включите предупреждения обратно для честной проверки.
 
+### «Welcome to nginx!» вместо сайта
+
+Certbot **не настраивает** проксирование на uvicorn: в блоке `server` для `guarddoc.ru` / `demo.guarddoc.ru` должен быть **`location / { proxy_pass http://127.0.0.1:<порт>; }`**, а не корень с дефолтным `index.html` nginx.
+
+1. Узнайте порт процесса GuardSchool: `sudo systemctl cat guardschool`, `sudo ss -tlnp | grep -E '8000|uvicorn|python'`, либо `curl -sS http://127.0.0.1:8000/api/version` (если отказ — смотрите `journalctl -xeu guardschool -n 80`).
+2. В `/etc/nginx/sites-enabled/default` (или отдельном файле под портал) внутри `server { ... ssl ... }` для нужных `server_name` добавьте:
+
+```nginx
+location / {
+    proxy_pass http://127.0.0.1:8000;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+
+(Подставьте порт из unit-файла, если не `8000`.)
+
+3. `sudo nginx -t && sudo systemctl reload nginx`.
+
 ## Демо заказчику (за час)
 
 1. Поднять процесс с `GUARDSCHOOL_SAAS_MODE=1`, `GUARDSCHOOL_DATA_DIR`, `GUARDSCHOOL_ADMIN_PASSWORD`, `GUARDSCHOOL_TV_BEARER_TOKEN`, HTTPS.
