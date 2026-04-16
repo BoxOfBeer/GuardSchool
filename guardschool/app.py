@@ -2034,7 +2034,13 @@ async def provider_create_demo(request: Request) -> dict[str, Any]:
         with conn.cursor() as cur:
             cur.execute("INSERT INTO demo_sessions (token_hash, tenant_slug, expires_at) VALUES (%s,%s,%s)", (th, slug, expires_at))
         conn.commit()
-    return {"status": "ok", "token": token, "url_path": f"/demo/{token}", "tenant_host": f\"{slug}.guarddoc.ru\", \"expires_at\": expires_at.isoformat()}
+    return {
+        "status": "ok",
+        "token": token,
+        "url_path": f"/demo/{token}",
+        "tenant_host": f"{slug}.guarddoc.ru",
+        "expires_at": expires_at.isoformat(),
+    }
 
 
 @app.get("/demo/{token}")
