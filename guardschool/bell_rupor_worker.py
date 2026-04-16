@@ -12,7 +12,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-import local_audio_worker
+from . import local_audio_worker
 
 log = logging.getLogger("guard_school.bell_schedule")
 

@@ -14,8 +14,10 @@ Admin UI: **English and Russian** (language switch in the header). Settings incl
 
 - [Features](#features)
 - [Quick start](#quick-start)
+- [Repository layout](#repository-layout)
 - [Localization & time](#localization--time)
 - [Import / export](#import--export)
+- [Changelog & versioning](#changelog--versioning)
 - [Windows executable](#windows-executable)
 - [Excel (short)](#excel-short)
 - [License](#license)
@@ -46,6 +48,17 @@ Open:
 - Admin: `http://127.0.0.1:8000`
 - TV screen: `http://127.0.0.1:8000/screen/tv-1`
 
+## Repository layout
+
+| Path | Role |
+|------|------|
+| **`guardschool/`** | Python package: FastAPI app (`app.py`), shared modules (`gs_*.py`), PC audio workers (`local_audio_worker.py`, `bell_rupor_worker.py`). |
+| **`app.py`** (repo root) | Thin shim: `from guardschool.app import app` — keeps **`uvicorn app:app`** and tools unchanged. |
+| **`static/`** | Admin and TV front-end (ES modules under `static/admin/`, `screen_widgets.js`, locales). |
+| **`data/`** | Runtime data (created on first run): `config.json`, schedules, bells, uploads — **back this up**. |
+| **`change_log_seed.json`** | Default **release notes** merged into `data/change_log.json` when the admin “Changes” log is seeded. |
+| **`requirements.txt`**, **`run_server.py`** | Dependencies and optional launcher. |
+
 ## Localization & time
 
 - UI language: **Language** dropdown in the header (next to **Settings**).
@@ -56,6 +69,22 @@ Open:
 ## Import / export
 
 In the admin UI: **Export ZIP** / **Import ZIP** — full snapshot of config, schedules, bells, and uploads. Use for backups and moving between machines **without cloud**.
+
+## Changelog & versioning
+
+- **Current version** is defined as **`APP_VERSION`** in [`guardschool/gs_paths.py`](guardschool/gs_paths.py) (also exposed via **`GET /api/version`**).
+- **Release notes** shown in the admin **“Changes”** tab come from **`data/change_log.json`**. On first setup, entries without a `version` field are cleaned up and the file can be seeded from [`change_log_seed.json`](change_log_seed.json) in the repo (ship history for fresh installs).
+- To **record a release**: bump **`APP_VERSION`**, append an object `{ "version", "timestamp" (ISO-8601), "message" }` to **`change_log_seed.json`** (and optionally call **`append_release_note`** from [`guardschool/gs_change_log.py`](guardschool/gs_change_log.py) if you extend the log from code).
+
+### Recent releases (summary)
+
+| Version | Highlights |
+|---------|------------|
+| **1.01.004** | Backend grouped under **`guardschool/`**; TV schedule **current-lesson** highlight uses **school timezone + clock offset**; TV **background layers** fixed after full grid rebuild; admin **modal focus / a11y**; JS split into `static/admin/*`. |
+| **1.01.003** | Release log module, TV background cross-fade, carousel animations. |
+| **1.01.002** | PC audio tab, program settings, widget palette, preview/`screen_widgets` integration. |
+| **1.01.001** | Security hardening (ZIP import, screen API, cookies, XSS), subprocess audit, helper modules split from monolithic `app.py`. |
+| **1.01.000** | Initial public line: screens, widgets, schedules, bells, backgrounds, carousel, admin, ZIP. |
 
 ## Windows executable
 
@@ -85,7 +114,7 @@ Samples and auto-import from `data/import/` follow the same rules as in previous
 - **Screen API**: `GET /api/screen/{slug}` returns schedule and display JSON **without auth** (for TV browsers on the LAN). Treat network access accordingly.
 - **Admin POSTs**: no separate CSRF tokens; browsers rely on **SameSite** session cookies. For high-threat deployments, add tokens or restrict origins.
 - **Process model**: run **one** uvicorn worker if you rely on in-process PC audio state (`local_audio_worker` globals); multiple workers do not share that state.
-- **Code layout**: admin UI is `static/app.js` (ES module) plus `static/admin/*.js`; load order in `index.html` is **`i18n.js` → `screen_widgets.js` → `app.js` (module)**. `app.py` is split incrementally: **`gs_paths.py`**, **`gs_admin_http.py`**, **`gs_jsonio.py`**, **`gs_auth.py`**, **`gs_class_key.py`**, **`gs_import_state.py`**, **`gs_excel_import.py`** (Excel parse + auto-import from `data/import/`), **`gs_fs.py`**, **`gs_change_log_bootstrap.py`**, **`gs_weekly_template.py`**, **`gs_ensure_dirs.py`**, **`gs_import_bundle.py`**. Admin helpers include **`static/admin/escape-html.js`**.
+- **Code layout**: see [Repository layout](#repository-layout) and [Changelog & versioning](#changelog--versioning). Admin UI: `static/app.js` plus `static/admin/*.js` (`preview.js`, `audio-stream.js`, `data-import.js`, `bells.js`, `widgets.js`, `history.js`, …); `index.html` loads `i18n.js` then `app.js` (module); `app.js` imports `screen_widgets.js` first so `window.GuardSchoolScreen` is ready. **`static/admin/escape-html.js`** centralizes safe HTML escaping.
 - **Branding**: logo, `ico.png`, custom copy.
 - **Telemetry**: the app does not phone home by default; any analytics would require explicit consent and opt-out.
 
@@ -123,6 +152,10 @@ uvicorn app:app --host 0.0.0.0 --port 8000 --reload
 - Админка: `http://127.0.0.1:8000`
 - Экран ТВ: `http://127.0.0.1:8000/screen/tv-1`
 
+### Структура репозитория
+
+Краткая схема — в разделе **[Repository layout](#repository-layout)** (таблица: `guardschool/`, корневой `app.py`, `static/`, `data/`, `change_log_seed.json`).
+
 ### Локализация и время
 
 - Язык: список **«Язык»** в шапке.
@@ -139,8 +172,8 @@ uvicorn app:app --host 0.0.0.0 --port 8000 --reload
 - **`GET /api/screen/{slug}`** отдаёт JSON экрана **без входа** — рассчитано на ТВ в LAN; ограничивайте доступ к сети при чувствительных данных.
 - Сессия админки: флаг **`Secure`** у cookie включается при HTTPS или заголовке **`X-Forwarded-Proto: https`** у прокси.
 - **Один процесс** uvicorn, если используете звук на ПК через `local_audio_worker` — у нескольких воркеров общее состояние не разделяется.
-- Скрипты админки: **`i18n.js` → `screen_widgets.js` → `app.js` (type=module)`** — порядок важен для превью и локализации.
-- Бэкенд постепенно выносится из **`app.py`**: `gs_paths.py`, `gs_admin_http.py`, `gs_jsonio.py`, `gs_auth.py`, `gs_class_key.py`, `gs_import_state.py`, `gs_excel_import.py` (Excel и автоимпорт), `gs_fs.py`, `gs_change_log_bootstrap.py`, `gs_weekly_template.py`, `gs_ensure_dirs.py`, `gs_import_bundle.py`; **`static/admin/escape-html.js`** на фронте.
+- Скрипты админки: **`i18n.js`**, затем **`app.js` (module)**; в начале **`app.js`** — **`import "./screen_widgets.js"`** и модули из **`static/admin/`** (в т.ч. **`preview.js`**, **`audio-stream.js`**, **`data-import.js`**, **`bells.js`**); порядок гарантирован для превью и локализации.
+- Бэкенд — пакет **`guardschool/`** (`gs_*.py`, воркеры звука); в корне лежит только тонкий **`app.py`** для **`uvicorn app:app`**. **`data/`** и **`static/`** — в корне репозитория; **`change_log_seed.json`** — сид для журнала. На фронте — **`static/admin/escape-html.js`** и прочее в `static/admin/`.
 
 ### Сборка exe
 
@@ -161,9 +194,24 @@ build_exe.bat
 
 **MIT** — см. [`LICENSE`](LICENSE). Для коммерции (поддержка, хостинг, кастомизация) согласуйте условия с правообладателем при необходимости.
 
-### Журнал версий (`data/change_log.json`)
+### История версий и журнал в админке
 
-Файл хранит **историю выпусков программы** (номер версии, дата, короткий текст «что нового»). Он **не** является журналом действий пользователя в админке. При первом запуске создаётся стартовая запись; при каждом релизе поднимайте `APP_VERSION` в `gs_paths.py` и добавляйте новую строку в JSON или вызывайте `append_release_note` из кода.
+- **Номер сборки** — константа **`APP_VERSION`** в [`guardschool/gs_paths.py`](guardschool/gs_paths.py); тот же номер отдаёт **`GET /api/version`**.
+- Во вкладке **«Изменения»** показываются записи из **`data/change_log.json`** (поля `version`, `timestamp`, `message`). Это **не** журнал действий пользователей, а **история релизов** продукта.
+- Для пустой/черновой базы записи без `version` приводятся в порядок, а заглушка может заменяться списком из **[`change_log_seed.json`](change_log_seed.json)** в корне репозитория — там же хранится эталонная история для GitHub и свежих установок.
+- **Как оформить релиз:** поднять **`APP_VERSION`**, добавить объект в **`change_log_seed.json`** (и при необходимости вызвать **`append_release_note`** в [`guardschool/gs_change_log.py`](guardschool/gs_change_log.py)).
+
+Кратко по ветке **1.01.x**:
+
+| Версия | Что вошло |
+|--------|-----------|
+| **1.01.004** | Пакет **`guardschool/`**, корневой **`app.py`** для uvicorn; подсветка «текущий урок» по поясу школы и сдвигу часов; фон ТВ после перерисовки сетки; фокус модалок; разнос **`static/admin/*`**. |
+| **1.01.003** | Модуль журнала релизов, плавная смена фона, новые анимации карусели. |
+| **1.01.002** | «Звук ПК», настройки программы, палитра виджетов, превью. |
+| **1.01.001** | Усиление безопасности (ZIP, экран, cookie, XSS), аудит subprocess, вынос модулей из монолита. |
+| **1.01.000** | Первая публичная линия: экраны, виджеты, расписание, звонки, ZIP. |
+
+Полная таблица на английском — **[Changelog & versioning](#changelog--versioning)**.
 
 ### Что ещё для «продуктового» развития
 

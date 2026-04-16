@@ -5,7 +5,7 @@ from pathlib import Path
 
 from openpyxl import Workbook
 
-from gs_paths import FULL_SCHEDULE_SAMPLE_XLSX, IMPORT_DIR
+from .gs_paths import FULL_SCHEDULE_SAMPLE_XLSX, IMPORT_DIR
 
 
 def write_weekly_schedule_template_excel(path: Path) -> None:

@@ -1,8 +1,8 @@
 """Создание каталогов data/ и сопутствующие одноразовые файлы по умолчанию."""
 from __future__ import annotations
 
-from gs_change_log_bootstrap import ensure_default_change_log
-from gs_paths import (
+from .gs_change_log import ensure_change_log_file, repair_change_log_strip_audit
+from .gs_paths import (
     BELL_SOUNDS_DIR,
     BREAK_MUSIC_DIR,
     DATA_DIR,
@@ -10,7 +10,7 @@ from gs_paths import (
     UPLOADS_DIR,
     WIDGET_IMAGES_SUBDIR,
 )
-from gs_weekly_template import ensure_weekly_schedule_template_file
+from .gs_weekly_template import ensure_weekly_schedule_template_file
 
 
 def ensure_dirs() -> None:
@@ -21,4 +21,5 @@ def ensure_dirs() -> None:
     BREAK_MUSIC_DIR.mkdir(parents=True, exist_ok=True)
     IMPORT_DIR.mkdir(exist_ok=True)
     ensure_weekly_schedule_template_file()
-    ensure_default_change_log()
+    ensure_change_log_file()
+    repair_change_log_strip_audit()

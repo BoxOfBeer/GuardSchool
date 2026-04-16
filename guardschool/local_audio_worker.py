@@ -9,7 +9,7 @@ import shutil
 import subprocess
 import sys
 import threading
-import time
+import time as time_module
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from typing import Any
@@ -69,7 +69,7 @@ def _payload_sec_window(payload: dict[str, Any], audio: dict[str, Any]) -> int:
 def _app() -> Any:
     global _app_module
     if _app_module is None:
-        import app
+        from . import app
 
         _app_module = app
     return _app_module
@@ -338,7 +338,7 @@ def _orch_lesson_cleanup() -> None:
         pk = _play_kind
     if pk in _ORCH_KINDS:
         stop_playback_hard()
-        time.sleep(_AFTER_STOP_GRACE_SEC)
+        time_module.sleep(_AFTER_STOP_GRACE_SEC)
     _break_orch_state = {"gap": None}
     _orch_music_wait_advance = False
     _orch_skip_music_advance = False
@@ -518,7 +518,7 @@ def _tick_break_orchestration(
         _orch_music_wait_advance = False
         if alive:
             stop_playback_hard()
-            time.sleep(_AFTER_STOP_GRACE_SEC)
+            time_module.sleep(_AFTER_STOP_GRACE_SEC)
 
     if now < head_end:
         if (
@@ -546,7 +546,7 @@ def _tick_break_orchestration(
     if head_end <= now < t_fade_start and tracks:
         if alive and _play_kind == "break_orch_end":
             stop_playback_hard()
-            time.sleep(_AFTER_STOP_GRACE_SEC)
+            time_module.sleep(_AFTER_STOP_GRACE_SEC)
         alive, _ = _proc_alive()
         if alive:
             return
@@ -587,7 +587,7 @@ def _tick_break_orchestration(
         _orch_music_wait_advance = False
         if alive:
             stop_playback_hard()
-            time.sleep(_AFTER_STOP_GRACE_SEC)
+            time_module.sleep(_AFTER_STOP_GRACE_SEC)
         _break_orch_state["did_fade"] = True
         path = _orch_music_path
         fade_len = min(fade_s, max(8.0, (t_fade_end - now).total_seconds()))
@@ -868,6 +868,12 @@ def _try_mark(key: str) -> bool:
 def _unmark(key: str) -> None:
     with _played_lock:
         _played_keys.discard(key)
+
+
+def _had_pre_bell_for_start(base: str) -> bool:
+    """True, если уже отыграл предзвонок pre_{base}_s (тот же sound_start, что и звонок на начало)."""
+    with _played_lock:
+        return f"pre_{base}_s" in _played_keys
 
 
 def _pick_source_screen(cfg: dict[str, Any], audio: dict[str, Any]) -> dict[str, Any] | None:
@@ -1157,7 +1163,7 @@ def tick_once() -> None:
                             br = _play_kind == "break" and _active_proc is not None and _active_proc.poll() is None
                         if br:
                             stop_playback_hard()
-                            time.sleep(_AFTER_STOP_GRACE_SEC)
+                            time_module.sleep(_AFTER_STOP_GRACE_SEC)
                         p_pre = gs.bell_audio_url_to_path(row["sound_start"])
                         if p_pre:
                             r_ok, r_err = play_file_async(
@@ -1175,32 +1181,7 @@ def tick_once() -> None:
                                     log.warning("Предзвонок начало: %s", r_err)
                         else:
                             _unmark(pk_pre)
-                pre_en_min = en - lead
-                if pre_en_min >= 0 and now_mins == pre_en_min and secs < pre_fire and row.get("sound_end"):
-                    pk_pre = f"pre_{base}_e"
-                    if _try_mark(pk_pre):
-                        with _proc_guard:
-                            br = _play_kind == "break" and _active_proc is not None and _active_proc.poll() is None
-                        if br:
-                            stop_playback_hard()
-                            time.sleep(_AFTER_STOP_GRACE_SEC)
-                        p_pre = gs.bell_audio_url_to_path(row["sound_end"])
-                        if p_pre:
-                            r_ok, r_err = play_file_async(
-                                p_pre,
-                                vbell,
-                                audio,
-                                kind="pre_bell",
-                                max_seconds=int(pre_dur) + 90,
-                                afade_in_sec=pre_fade,
-                                duration_cap_sec=pre_dur,
-                            )
-                            if not r_ok:
-                                _unmark(pk_pre)
-                                if r_err:
-                                    log.warning("Предзвонок конец: %s", r_err)
-                        else:
-                            _unmark(pk_pre)
+                # Предзвонка по sound_end нет: звонок окончания урока — только в минуту end из расписания.
                 if now_mins == st and secs < sec_win:
                     if not row.get("sound_start"):
                         dk = f"{base}_no_start"
@@ -1213,26 +1194,30 @@ def tick_once() -> None:
                                 row.get("start"),
                             )
                     else:
-                        k = f"{base}_s"
-                        if _try_mark(k):
-                            p = gs.bell_audio_url_to_path(row["sound_start"])
-                            if p:
-                                stop_playback_hard()
-                                time.sleep(_AFTER_STOP_GRACE_SEC)
-                                r_ok, r_err = play_file_async(p, vbell, audio, kind="bell", max_seconds=180)
-                                if not r_ok:
+                        # Предзвонок за lead мин до start уже проиграл sound_start — не дублировать в момент start.
+                        if lead >= 1 and _had_pre_bell_for_start(base):
+                            pass
+                        else:
+                            k = f"{base}_s"
+                            if _try_mark(k):
+                                p = gs.bell_audio_url_to_path(row["sound_start"])
+                                if p:
+                                    stop_playback_hard()
+                                    time_module.sleep(_AFTER_STOP_GRACE_SEC)
+                                    r_ok, r_err = play_file_async(p, vbell, audio, kind="bell", max_seconds=180)
+                                    if not r_ok:
+                                        _unmark(k)
+                                    if not r_ok and r_err:
+                                        log.warning("Звонок начало: %s", r_err)
+                                else:
                                     _unmark(k)
-                                if not r_ok and r_err:
-                                    log.warning("Звонок начало: %s", r_err)
-                            else:
-                                _unmark(k)
-                                dk = f"{base}_path_start"
-                                if dk not in _diag_logged:
-                                    _diag_logged.add(dk)
-                                    log.warning(
-                                        "sound_start=%s нет на диске (uploads/bells).",
-                                        row.get("sound_start"),
-                                    )
+                                    dk = f"{base}_path_start"
+                                    if dk not in _diag_logged:
+                                        _diag_logged.add(dk)
+                                        log.warning(
+                                            "sound_start=%s нет на диске (uploads/bells).",
+                                            row.get("sound_start"),
+                                        )
                 if now_mins == en and secs < sec_win:
                     if not row.get("sound_end"):
                         dk = f"{base}_no_end"
@@ -1251,7 +1236,7 @@ def tick_once() -> None:
                             p = gs.bell_audio_url_to_path(row["sound_end"])
                             if p:
                                 stop_playback_hard()
-                                time.sleep(_AFTER_STOP_GRACE_SEC)
+                                time_module.sleep(_AFTER_STOP_GRACE_SEC)
                                 r_ok, r_err = play_file_async(p, vbell, audio, kind="bell", max_seconds=180)
                                 if not r_ok:
                                     _unmark(k)

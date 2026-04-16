@@ -1,0 +1,703 @@
+﻿/* TV page subset — см. маркеры в static/styles.css и static/screen.html (пересборка PowerShell). */
+
+:root {
+  --bg: #0f172a;
+  --card: #1e293b;
+  --card-2: #334155;
+  --text: #f8fafc;
+  --muted: #cbd5e1;
+  --accent: #38bdf8;
+  --danger: #ef4444;
+  --admin-base-font: 14px;
+  /* Расписание: совпадает с SCHEDULE_THEME в static/screen_widgets.js (инлайн таблицы на ТВ без var()). */
+  --schedule-fg: #0f172a;
+  --schedule-surface: rgba(255, 255, 255, 0.92);
+}
+
+/* Таблица расписания на ТВ/превью: без глобальных !important — они перебивали inline-стили
+   ячеек (текущий урок, прошлые) и виджеты вроде аварийного. Внешний вид задаёт styles.css ниже + инлайны в buildScheduleTable. */
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, "Segoe UI", Arial, sans-serif;
+  font-size: var(--admin-base-font);
+  background: var(--bg);
+  color: var(--text);
+}
+.screen-preview {
+  width: 100%;
+  background: linear-gradient(135deg, #0f172a, #1d4ed8);
+  border-radius: 18px;
+  overflow: hidden;
+  position: relative;
+  font-family: system-ui, "Segoe UI", Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.35;
+  -webkit-font-smoothing: antialiased;
+  color: var(--text);
+  --gs-tv-text-shadow: none;
+}
+
+.tv-screen {
+  width: 100%;
+  background: linear-gradient(135deg, #0f172a, #1d4ed8);
+  border-radius: 18px;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Слои фона ТВ/превью: плавная смена картинки без «мигания» всего экрана */
+.gs-tv-bg-layer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-position: center center;
+  background-size: cover;
+  background-repeat: no-repeat;
+  border-radius: inherit;
+}
+
+.gs-tv-bg-over {
+  z-index: 1;
+}
+
+.tv-screen .screen-grid,
+.screen-preview .screen-grid {
+  position: relative;
+  z-index: 2;
+}
+
+.screen-grid {
+  display: -webkit-grid;
+  display: grid;
+  width: 100%;
+  height: 100%;
+  grid-template-columns: repeat(32, 1fr);
+  grid-template-rows: repeat(26, 1fr);
+  gap: 6px;
+  padding: 14px;
+}
+
+.screen-grid.show-grid {
+  background-image:
+    linear-gradient(to right, rgba(148, 163, 184, 0.14) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(148, 163, 184, 0.14) 1px, transparent 1px);
+  background-size: calc(100% / 32) calc(100% / 26);
+  background-position: 14px 14px;
+}
+
+.grid-highlight {
+  border: 2px solid rgba(56, 189, 248, 0.95);
+  background: rgba(56, 189, 248, 0.16);
+  border-radius: 12px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.screen-widget {
+  border-radius: 12px;
+  padding: 10px;
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  overflow: hidden;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.screen-widget.screen-widget--image {
+  z-index: 0;
+  padding: 4px;
+  background: transparent;
+}
+
+.screen-widget.screen-widget--image.no-backdrop {
+  background: transparent;
+}
+
+.screen-widget.screen-widget--emergency {
+  z-index: 40;
+  padding: 16px;
+  border-radius: 0;
+}
+
+/* Прозрачная оболочка только если в настройках виджета выключена подложка */
+.screen-widget.screen-widget--emergency.no-backdrop {
+  background: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.screen-widget--emergency .emergency-overlay-inner {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  line-height: 1.25;
+  box-sizing: border-box;
+  border-radius: 14px;
+  padding: 12px;
+}
+
+.screen-widget--emergency .emergency-overlay-text {
+  max-width: 96%;
+  word-break: break-word;
+  text-shadow: var(--gs-tv-text-shadow, none);
+}
+
+.screen-widget.no-backdrop {
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.screen-widget.draggable {
+  cursor: grab;
+  border: 1px dashed rgba(56, 189, 248, 0.6);
+}
+
+.screen-widget.dragging {
+  opacity: 0.8;
+}
+
+.schedule-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--schedule-surface);
+  color: var(--schedule-fg);
+  table-layout: fixed;
+}
+
+/* Узкий первый столбец: явная ширина через <col> — width:1% на ТВ-браузерах схлопывал колонку с номерами */
+.schedule-table col.schedule-col-num {
+  width: 4.25em;
+}
+
+.schedule-table thead th:first-child {
+  white-space: nowrap;
+  text-align: center;
+  vertical-align: middle;
+  padding: 4px 8px;
+  box-sizing: border-box;
+}
+
+.schedule-table td.schedule-lesson-num {
+  background: #1e3a5f;
+  color: #fff;
+  font-weight: 700;
+  text-align: center;
+  vertical-align: middle;
+  white-space: nowrap;
+  padding: 4px 8px;
+  box-sizing: border-box;
+}
+
+.schedule-table th,
+.schedule-table td {
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  padding: 4px 5px;
+  vertical-align: top;
+  line-height: 1.15;
+  word-break: break-word;
+}
+
+.schedule-table th {
+  background: #1e3a5f;
+  color: white;
+}
+
+.bg-gallery-toolbar {
+  display: flex;
+  gap: 6px;
+  margin: 6px 0;
+}
+
+.bg-gallery {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 6px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.bg-gallery-item {
+  position: relative;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 10px;
+  overflow: hidden;
+  background: rgba(15, 23, 42, 0.25);
+  cursor: pointer;
+}
+
+.bg-gallery-item img {
+  display: block;
+  width: 100%;
+  height: 82px;
+  object-fit: cover;
+}
+
+.bg-gallery-item .bg-gallery-cap {
+  padding: 4px 6px;
+  font-size: 11px;
+  color: var(--muted);
+  word-break: break-word;
+}
+
+.bg-gallery-item.active {
+  border-color: rgba(56, 189, 248, 0.95);
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.22) inset;
+}
+
+.schedule-past {
+  color: #64748b;
+  text-decoration: line-through;
+  background: rgba(226, 232, 240, 0.85);
+}
+
+.schedule-current {
+  background: rgba(191, 219, 254, 0.9);
+  font-weight: 700;
+}
+
+.schedule-override {
+  background: #fecaca;
+  font-weight: 700;
+}
+
+.message,
+.hint {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.override-list {
+  display: grid;
+  gap: 5px;
+  margin-top: 8px;
+}
+
+.history-lead {
+  margin: 4px 0 10px;
+  max-width: 52rem;
+}
+
+.history-list {
+  display: grid;
+  gap: 6px;
+}
+
+.history-item {
+  display: grid;
+  gap: 2px;
+  background: rgba(15, 23, 42, 0.45);
+  border-radius: 8px;
+  padding: 6px 8px;
+}
+
+.history-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 12px;
+}
+
+.history-ver {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent, #93c5fd);
+}
+
+.history-ver-na {
+  font-weight: 500;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.history-time {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.history-msg {
+  white-space: pre-wrap;
+}
+
+.history-app-ver {
+  margin-bottom: 10px;
+}
+
+.override-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: center;
+  background: rgba(15, 23, 42, 0.45);
+  border-radius: 8px;
+  padding: 6px 8px;
+}
+
+.compact-form-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: end;
+}
+
+.gs-audio-hint {
+  position: fixed;
+  z-index: 99999;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  max-width: 720px;
+  width: 94%;
+  padding: 10px 16px;
+  border-radius: 10px;
+  font-size: 15px;
+  line-height: 1.35;
+  text-align: center;
+  color: #f8fafc;
+  background: rgba(15, 23, 42, 0.92);
+  border: 1px solid rgba(56, 189, 248, 0.45);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+
+.gs-audio-hint[hidden] {
+  display: none !important;
+}
+
+.screen-body {
+  min-height: 100vh;
+}
+
+.tv-screen {
+  height: 100vh;
+  min-height: 100vh;
+  border-radius: 0;
+}
+
+/* Контур текста (настраивается в параметрах экрана ТВ). */
+.tv-screen,
+.screen-preview {
+  --gs-tv-text-shadow: none;
+}
+
+.tv-screen .screen-widget,
+.tv-screen .screen-widget *,
+.screen-preview .screen-widget,
+.screen-preview .screen-widget * {
+  text-shadow: var(--gs-tv-text-shadow);
+}
+
+.tv-screen .schedule-table,
+.tv-screen .schedule-table *,
+.screen-preview .schedule-table,
+.screen-preview .schedule-table * {
+  text-shadow: none;
+}
+
+.screen-section-title {
+  margin: 0 0 6px;
+  font-size: 18px;
+}
+
+.tv-screen .schedule-section .screen-section-title,
+.screen-preview .schedule-section .screen-section-title {
+  color: var(--muted);
+}
+
+.tv-screen .schedule-section .schedule-section-msg,
+.screen-preview .schedule-section .schedule-section-msg {
+  color: var(--muted);
+}
+
+.schedule-widget-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.schedule-section {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  gap: 6px;
+  min-height: 0;
+  margin: 0;
+  overflow: hidden;
+}
+
+.schedule-table-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.widget-meta {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.bell-status-box {
+  display: grid;
+  gap: 6px;
+  align-content: center;
+  justify-items: center;
+  text-align: center;
+}
+
+.info-widget-box {
+  display: grid;
+  gap: 6px;
+  height: 100%;
+  align-content: center;
+  justify-items: center;
+  text-align: center;
+}
+
+.marquee-box {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  padding: 0 14px 6px;
+  min-height: 34px;
+}
+
+.marquee-track {
+  display: inline-flex;
+  align-items: center;
+  min-width: 100%;
+  -webkit-animation: marquee-scroll linear infinite;
+  animation: marquee-scroll linear infinite;
+  /* Длительность и фаза — инлайном из buildMarquee (перебивают значения из шортхэнда). */
+}
+
+.marquee-track span + span {
+  margin-left: 48px;
+}
+
+.marquee-track span {
+  display: inline-block;
+}
+
+.widget-center-text {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  text-align: center;
+}
+
+.carousel-widget {
+  position: relative;
+  padding: 0;
+  overflow: hidden;
+  perspective: 1200px;
+}
+
+.carousel-slide {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  box-sizing: border-box;
+  padding: 10px;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  min-height: 0;
+  opacity: 0;
+  -webkit-transform: translateX(100%);
+  transform: translateX(100%);
+  -webkit-transition: -webkit-transform 0.6s ease, transform 0.6s ease, opacity 0.6s ease, -webkit-filter 0.65s ease, filter 0.65s ease;
+  transition: transform 0.6s ease, opacity 0.6s ease, filter 0.65s ease;
+}
+
+.screen-preview .screen-widget {
+  border: 1px solid rgba(34, 197, 94, 0.95);
+}
+
+.carousel-slide.active {
+  opacity: 1;
+  -webkit-transform: translateX(0);
+  transform: translateX(0);
+  filter: none;
+}
+
+.carousel-slide.enter-right {
+  opacity: 0;
+  -webkit-transform: translateX(100%);
+  transform: translateX(100%);
+}
+
+.carousel-slide.exit-left {
+  opacity: 0;
+  -webkit-transform: translateX(-100%);
+  transform: translateX(-100%);
+}
+
+.carousel-slide.enter-slide {
+  opacity: 0;
+  -webkit-transform: translateX(100%);
+  transform: translateX(100%);
+}
+
+.carousel-slide.exit-slide {
+  opacity: 0;
+  -webkit-transform: translateX(-100%);
+  transform: translateX(-100%);
+}
+
+.carousel-slide.enter-slideUp {
+  opacity: 0;
+  -webkit-transform: translateY(100%);
+  transform: translateY(100%);
+}
+
+.carousel-slide.exit-slideUp {
+  opacity: 0;
+  -webkit-transform: translateY(-100%);
+  transform: translateY(-100%);
+}
+
+.carousel-slide.enter-slideDown {
+  opacity: 0;
+  -webkit-transform: translateY(-100%);
+  transform: translateY(-100%);
+}
+
+.carousel-slide.exit-slideDown {
+  opacity: 0;
+  -webkit-transform: translateY(100%);
+  transform: translateY(100%);
+}
+
+.carousel-slide.enter-fade {
+  opacity: 0;
+  -webkit-transform: translateX(0);
+  transform: translateX(0);
+}
+
+.carousel-slide.exit-fade {
+  opacity: 0;
+  -webkit-transform: translateX(0);
+  transform: translateX(0);
+}
+
+.carousel-slide.enter-zoom {
+  opacity: 0;
+  -webkit-transform: scale(0.92);
+  transform: scale(0.92);
+}
+
+.carousel-slide.exit-zoom {
+  opacity: 0;
+  -webkit-transform: scale(1.08);
+  transform: scale(1.08);
+}
+
+.carousel-slide.enter-slideFromLeft {
+  opacity: 0;
+  -webkit-transform: translateX(-100%);
+  transform: translateX(-100%);
+}
+
+.carousel-slide.exit-slideFromLeft {
+  opacity: 0;
+  -webkit-transform: translateX(100%);
+  transform: translateX(100%);
+}
+
+.carousel-slide.enter-blurSoft {
+  opacity: 0;
+  -webkit-transform: translateX(0) scale(1.02);
+  transform: translateX(0) scale(1.02);
+  -webkit-filter: blur(10px);
+  filter: blur(10px);
+}
+
+.carousel-slide.exit-blurSoft {
+  opacity: 0;
+  -webkit-transform: translateX(0) scale(0.98);
+  transform: translateX(0) scale(0.98);
+  -webkit-filter: blur(6px);
+  filter: blur(6px);
+}
+
+.carousel-slide.enter-flipLight {
+  opacity: 0;
+  -webkit-transform: perspective(900px) rotateX(14deg) translateY(10px) scale(0.96);
+  transform: perspective(900px) rotateX(14deg) translateY(10px) scale(0.96);
+}
+
+.carousel-slide.exit-flipLight {
+  opacity: 0;
+  -webkit-transform: perspective(900px) rotateX(-12deg) translateY(-8px) scale(0.96);
+  transform: perspective(900px) rotateX(-12deg) translateY(-8px) scale(0.96);
+}
+
+.carousel-slide.enter-rotateIn {
+  opacity: 0;
+  -webkit-transform: rotate(-7deg) scale(0.88);
+  transform: rotate(-7deg) scale(0.88);
+}
+
+.carousel-slide.exit-rotateIn {
+  opacity: 0;
+  -webkit-transform: rotate(5deg) scale(1.06);
+  transform: rotate(5deg) scale(1.06);
+}
+
+.carousel-preview-box {
+  display: grid;
+  gap: 6px;
+}
+
+@-webkit-keyframes marquee-scroll {
+  from {
+    -webkit-transform: translateX(0);
+    transform: translateX(0);
+  }
+  to {
+    -webkit-transform: translateX(-50%);
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes marquee-scroll {
+  from {
+    -webkit-transform: translateX(0);
+    transform: translateX(0);
+  }
+  to {
+    -webkit-transform: translateX(-50%);
+    transform: translateX(-50%);
+  }
+}

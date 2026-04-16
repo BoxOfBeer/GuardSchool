@@ -3,6 +3,148 @@ function getSlug() {
   return parts.length ? parts[parts.length - 1] : "";
 }
 
+/** Стабильный id клиента для статистики (localStorage). */
+function getGsClientId() {
+  try {
+    let id = localStorage.getItem("gs_client_id");
+    if (!id || id.length < 8) {
+      id =
+        (typeof crypto !== "undefined" && crypto.randomUUID && crypto.randomUUID()) ||
+        `g${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+      localStorage.setItem("gs_client_id", id);
+    }
+    return id;
+  } catch (_) {
+    return `t${Date.now().toString(36)}`;
+  }
+}
+
+/** Подпись места (из URL ?gs_label=…), передаётся на сервер при каждом опросе. */
+function getGsLabelForPoll() {
+  try {
+    if (window.__gsScreenLabelCached !== undefined) return window.__gsScreenLabelCached;
+    const q = new URLSearchParams(window.location.search).get("gs_label");
+    window.__gsScreenLabelCached = q ? q.trim().slice(0, 120) : "";
+    return window.__gsScreenLabelCached;
+  } catch (_) {
+    return "";
+  }
+}
+
+/** Параметры гибрида: primary/fallback API и токен ТВ (из URL один раз → localStorage). */
+function initGsHybridFromUrl() {
+  try {
+    const q = new URLSearchParams(window.location.search);
+    const p = q.get("gs_primary_base");
+    const f = q.get("gs_fallback_base");
+    const to = q.get("gs_poll_timeout_sec");
+    const tok = q.get("gs_tv_token");
+    if (p && p.trim()) {
+      window.__GS_PRIMARY_BASE = p.trim().replace(/\/$/, "");
+      try {
+        localStorage.setItem("gs_primary_base", window.__GS_PRIMARY_BASE);
+      } catch (_) {}
+    }
+    if (f && f.trim()) {
+      window.__GS_FALLBACK_BASE = f.trim().replace(/\/$/, "");
+      try {
+        localStorage.setItem("gs_fallback_base", window.__GS_FALLBACK_BASE);
+      } catch (_) {}
+    }
+    if (to != null && String(to).trim() !== "") {
+      const sec = Number(to);
+      if (Number.isFinite(sec)) window.__GS_POLL_TIMEOUT_MS = Math.max(2000, Math.min(120000, sec * 1000));
+    }
+    if (tok && tok.trim()) {
+      try {
+        localStorage.setItem("gs_tv_bearer", tok.trim());
+      } catch (_) {}
+      q.delete("gs_tv_token");
+      const ns = q.toString();
+      const url = window.location.pathname + (ns ? `?${ns}` : "") + window.location.hash;
+      window.history.replaceState({}, "", url);
+    }
+  } catch (_) {}
+  try {
+    if (!window.__GS_PRIMARY_BASE) window.__GS_PRIMARY_BASE = localStorage.getItem("gs_primary_base") || "";
+    if (!window.__GS_FALLBACK_BASE) window.__GS_FALLBACK_BASE = localStorage.getItem("gs_fallback_base") || "";
+  } catch (_) {}
+}
+
+initGsHybridFromUrl();
+
+function getGsTvBearer() {
+  try {
+    return (localStorage.getItem("gs_tv_bearer") || "").trim();
+  } catch (_) {
+    return "";
+  }
+}
+
+function screenPollUrl(base, slug, cid, lab, dev) {
+  const qs = `ts=${Date.now()}&gs_client=${cid}&gs_label=${lab}&gs_device=${dev}`;
+  const path = `/api/screen/${encodeURIComponent(slug)}?${qs}`;
+  if (!base) return path;
+  return `${String(base).replace(/\/$/, "")}${path}`;
+}
+
+async function fetchScreenPayload(url, headers, timeoutMs) {
+  const ac = new AbortController();
+  const to = window.setTimeout(() => ac.abort(), timeoutMs);
+  try {
+    return await fetch(url, {
+      cache: "no-store",
+      signal: ac.signal,
+      headers,
+    });
+  } finally {
+    window.clearTimeout(to);
+  }
+}
+
+/**
+ * Краткая подпись устройства для статистики (не hostname ОС — браузер его не отдаёт).
+ * Chromium: Client Hints (модель телефона и т.п.). Иначе — platform / грубая эвристика по UA.
+ */
+async function resolveGsDeviceHintOnce() {
+  if (window.__gsDeviceHintPromise) return window.__gsDeviceHintPromise;
+  window.__gsDeviceHintPromise = (async () => {
+    try {
+      const parts = [];
+      try {
+        const uad = navigator.userAgentData;
+        if (uad && typeof uad.getHighEntropyValues === "function") {
+          const h = await uad.getHighEntropyValues([
+            "platform",
+            "platformVersion",
+            "model",
+            "mobile",
+          ]);
+          if (h.platform) parts.push(String(h.platform));
+          const model = h.model && String(h.model).trim();
+          if (model && model.toLowerCase() !== "unknown") parts.push(model);
+          else if (h.platformVersion) parts.push(String(h.platformVersion));
+          if (h.mobile === true) parts.push("mobile");
+        } else if (navigator.platform) {
+          parts.push(navigator.platform);
+        }
+      } catch (_) {}
+      if (!parts.length) {
+        try {
+          const ua = navigator.userAgent || "";
+          parts.push(/Mobile|Android|iPhone|iPad/i.test(ua) ? "mobile" : "desktop");
+        } catch (_) {
+          parts.push("unknown");
+        }
+      }
+      return parts.filter(Boolean).join(" / ").slice(0, 160);
+    } catch (_) {
+      return "unknown";
+    }
+  })();
+  return window.__gsDeviceHintPromise;
+}
+
 /** Календарная дата в часовом поясе браузера (не UTC — иначе звонки «молчат» вечером по России). */
 function localCalendarISO(d = new Date()) {
   const y = d.getFullYear();
@@ -15,6 +157,41 @@ const playedBellKeys = new Set();
 let bellAudioDay = null;
 
 let screenAudioUnlocked = false;
+let emergencyAudioEl = null;
+let emergencyAudioUrl = "";
+
+let lastRenderOkAt = Date.now();
+
+function showCrashBanner(msg) {
+  try {
+    const el = document.getElementById("gs-crash-banner");
+    if (!el) return;
+    el.textContent = String(msg || "Ошибка на экране").slice(0, 600);
+    el.hidden = false;
+  } catch (_) {}
+}
+
+function hideCrashBanner() {
+  try {
+    const el = document.getElementById("gs-crash-banner");
+    if (el) el.hidden = true;
+  } catch (_) {}
+}
+
+window.addEventListener("error", (ev) => {
+  try {
+    const m = ev && (ev.message || (ev.error && ev.error.message)) ? (ev.message || ev.error.message) : "JS error";
+    showCrashBanner(`Ошибка JS: ${m}`);
+  } catch (_) {}
+});
+
+window.addEventListener("unhandledrejection", (ev) => {
+  try {
+    const r = ev && ev.reason ? ev.reason : null;
+    const m = r && r.message ? r.message : String(r || "promise rejected");
+    showCrashBanner(`Ошибка Promise: ${m}`);
+  } catch (_) {}
+});
 
 function unlockScreenAudio() {
   if (screenAudioUnlocked) return;
@@ -41,6 +218,9 @@ function unlockScreenAudio() {
     );
     a.volume = 0.001;
     a.play().catch(() => {});
+  } catch (_) {}
+  try {
+    if (window.__lastScreenPayload) tickEmergencyAudio(window.__lastScreenPayload);
   } catch (_) {}
 }
 
@@ -162,9 +342,125 @@ function tickBellAudio(payload) {
   if (clips.length) enqueueBellClips(clips);
 }
 
+function resolveEmergencySoundState(payload) {
+  try {
+    const screen = payload && payload.screen;
+    const widgets = (screen && screen.widgets) || [];
+    const w = widgets.find((x) => x && x.type === "emergency" && x.enabled !== false);
+    if (!w) return { shouldPlay: false, url: "" };
+    const s = w.settings || {};
+    const enabled = s.soundEnabled === true;
+    const url = String(s.soundUrl || "").trim();
+    if (!enabled || !url) return { shouldPlay: false, url: "" };
+    return { shouldPlay: true, url };
+  } catch (_) {
+    return { shouldPlay: false, url: "" };
+  }
+}
+
+function stopEmergencyAudio() {
+  try {
+    if (!emergencyAudioEl) return;
+    emergencyAudioEl.pause();
+    emergencyAudioEl.loop = false;
+    emergencyAudioEl.removeAttribute("src");
+    emergencyAudioEl.load();
+  } catch (_) {}
+  emergencyAudioEl = null;
+  emergencyAudioUrl = "";
+}
+
+function tickEmergencyAudio(payload) {
+  const st = resolveEmergencySoundState(payload);
+  if (!st.shouldPlay) {
+    if (emergencyAudioEl) stopEmergencyAudio();
+    return;
+  }
+  if (!screenAudioUnlocked) return;
+  if (emergencyAudioEl && emergencyAudioUrl === st.url) return;
+  stopEmergencyAudio();
+  try {
+    const a = new Audio(bellMediaUrl(st.url));
+    a.loop = true;
+    a.volume = 1;
+    emergencyAudioEl = a;
+    emergencyAudioUrl = st.url;
+    a.play().catch(() => {
+      // если браузер снова заблокировал — попробуем после следующего unlockScreenAudio
+    });
+  } catch (_) {}
+}
+
+function screenPayloadScheduleSig(p) {
+  if (!p || typeof p !== "object") return "";
+  try {
+    return JSON.stringify(p.schedule);
+  } catch (_) {
+    return String(Date.now());
+  }
+}
+
+/** Всё, кроме динамического расписания (расписание/звонки/строки таблицы). */
+function screenPayloadStaticSig(p) {
+  if (!p || typeof p !== "object") return "";
+  try {
+    return JSON.stringify({
+      screen: p.screen,
+      holidays: p.holidays,
+      announcements: p.announcements,
+      marquee: p.marquee,
+      background_gallery: p.background_gallery,
+      bell_audio: p.bell_audio,
+      display: p.display,
+    });
+  } catch (_) {
+    return String(Date.now());
+  }
+}
+
+/**
+ * Мягкое обновление: что перерисовывать innerHTML.
+ * Расписание на сервере (время до звонка, «прошлые» уроки) — только при смене schedule.
+ * Объявления, бегущая строка, праздники — при смене статики. Часы — отдельным таймером, без innerHTML.
+ */
+function shouldSoftRefreshWidget(widget, scheduleChanged, staticChanged) {
+  const t = widget.type;
+  if (t === "carousel" || t === "time") return false;
+  if (t === "schedule" || t === "bell_status" || t === "bell_countdown") {
+    return scheduleChanged;
+  }
+  if (t === "announcements" || t === "marquee" || t === "holidays") {
+    return staticChanged;
+  }
+  if (t === "image") {
+    const s = widget.settings || {};
+    const rotateSec = Math.max(0, Number(s.imagesRotateSec) || 0);
+    const list = Array.isArray(s.images) ? s.images : [];
+    const legacy = String(s.imageUrl || "").trim();
+    const n = list.length || (legacy ? 1 : 0);
+    if (n > 1 && rotateSec >= 1) return true;
+    return scheduleChanged || staticChanged;
+  }
+  if (t === "date") {
+    return scheduleChanged || staticChanged;
+  }
+  if (t === "text" || t === "emergency" || t === "blank") {
+    return staticChanged;
+  }
+  return scheduleChanged || staticChanged;
+}
+
 function render(screenPayload) {
   window.__lastScreenPayload = screenPayload;
   tickBellAudio(screenPayload);
+  tickEmergencyAudio(screenPayload);
+
+  const scheduleSig = screenPayloadScheduleSig(screenPayload);
+  const staticSig = screenPayloadStaticSig(screenPayload);
+  const scheduleChanged =
+    window.__lastScheduleSig === undefined || scheduleSig !== window.__lastScheduleSig;
+  const staticChanged = window.__lastStaticSig === undefined || staticSig !== window.__lastStaticSig;
+
   const GRef = window.GuardSchoolScreen;
   if (!GRef) return;
   const { screen, schedule, holidays, announcements, marquee } = screenPayload;
@@ -190,14 +486,6 @@ function render(screenPayload) {
   }
 
   const gallery = screenPayload.background_gallery || [];
-  if (GRef.applyTvScreenBackground) {
-    GRef.applyTvScreenBackground(root, screen, gallery);
-  } else if (screen.background_image) {
-    root.style.background = `url(${screen.background_image}) center/cover no-repeat`;
-  }
-  if (GRef.applyTvTextOutline) {
-    GRef.applyTvTextOutline(root, screen);
-  }
 
   if (!canSoftUpdate) {
     const grid = document.createElement("div");
@@ -251,12 +539,13 @@ function render(screenPayload) {
 
     root.appendChild(grid);
   } else {
-    // Мягкое обновление: не трогаем карусель/таймеры, обновляем только контент остальных виджетов.
+    // Мягкое обновление: карусель/таймеры не трогаем; innerHTML — выборочно (расписание vs остальной контент).
     const hiddenWidgetIds = GRef.widgetIdsHiddenByCarousel(screen);
     (screen.widgets || []).forEach((widget) => {
       if (widget.enabled === false) return;
       if (hiddenWidgetIds.has(widget.id) && widget.type !== "carousel") return;
       if (widget.type === "carousel") return;
+      if (!shouldSoftRefreshWidget(widget, scheduleChanged, staticChanged)) return;
       const el = root.querySelector(`.screen-widget[data-widget-id="${CSS.escape(String(widget.id))}"]`);
       if (!el) return;
       if (widget.type === "text") {
@@ -269,33 +558,66 @@ function render(screenPayload) {
     });
   }
 
+  if (GRef.applyTvScreenBackground) {
+    GRef.applyTvScreenBackground(root, screen, gallery);
+  }
+  if (GRef.applyTvTextOutline) {
+    GRef.applyTvTextOutline(root, screen);
+  }
+
   GRef.updateAllClocks(root);
+  window.__lastScheduleSig = scheduleSig;
+  window.__lastStaticSig = staticSig;
+}
+
+function bumpTvStylesheetHref(hrefBase) {
+  try {
+    const ts = Date.now();
+    const link = document.getElementById("tv-styles");
+    if (link) link.href = `${hrefBase}?tvts=${ts}`;
+  } catch (_) {}
 }
 
 function ensureTvStylesheet() {
-  // На некоторых ТВ-браузерах styles.css иногда «слетает» (кэш/304/гонка). Подстрахуемся: пере-добавим link.
+  // ТВ: error — явная ошибка сети. Одноразовая проверка через несколько секунд — пустой
+  // лист без события error (BrowseHere). Без циклов по poll/«пробам» grid/th/radius.
   try {
-    const hrefBase = "/static/styles.css";
+    const hrefBase =
+      typeof window !== "undefined" && window.__GS_TV_CSS_BASE
+        ? String(window.__GS_TV_CSS_BASE)
+        : "/static/styles-screen.css";
     let link = document.getElementById("tv-styles");
     if (!link) {
       link = document.createElement("link");
       link.id = "tv-styles";
       link.rel = "stylesheet";
+      link.media = "all";
       document.head.appendChild(link);
     }
-    // Признак, что стили реально применились: есть grid у .screen-grid.
-    const probe = document.querySelector(".screen-grid");
-    const gridOk = probe && window.getComputedStyle(probe).display === "grid";
-
-    // Доп. признак: у таблицы расписания должна быть «синяя шапка» и белый текст.
-    const th = document.querySelector(".schedule-table th");
-    const thBg = th ? window.getComputedStyle(th).backgroundColor : "";
-    const thColor = th ? window.getComputedStyle(th).color : "";
-    const looksGray = (s) => typeof s === "string" && (s.includes("rgb(128") || s.includes("128, 128, 128") || s.toLowerCase().includes("gray"));
-    const tableOk = th ? (!looksGray(thBg) && !looksGray(thColor)) : true;
-
-    if (gridOk && tableOk) return;
-    link.href = `${hrefBase}?tvts=${Date.now()}`;
+    if (!link.dataset.gsTvCssErrorBound) {
+      link.dataset.gsTvCssErrorBound = "1";
+      link.addEventListener("error", () => bumpTvStylesheetHref(hrefBase));
+    }
+    if (!window.__gsTvCssRecoveryScheduled) {
+      window.__gsTvCssRecoveryScheduled = 1;
+      window.setTimeout(() => {
+        try {
+          const L = document.getElementById("tv-styles");
+          if (!L || !L.href) return;
+          let sheetLooksEmpty = false;
+          try {
+            if (!L.sheet) sheetLooksEmpty = true;
+            else {
+              const rules = L.sheet.cssRules;
+              if (!rules || rules.length < 8) sheetLooksEmpty = true;
+            }
+          } catch (_) {
+            sheetLooksEmpty = true;
+          }
+          if (sheetLooksEmpty) bumpTvStylesheetHref(hrefBase);
+        } catch (_) {}
+      }, 5000);
+    }
   } catch (_) {}
 }
 
@@ -310,26 +632,55 @@ async function refresh() {
   try {
     const slug = getSlug();
     if (!slug) throw new Error("empty slug");
-    const ac = new AbortController();
-    const to = window.setTimeout(() => ac.abort(), 45000);
-    try {
-      const response = await fetch(`/api/screen/${slug}?ts=${Date.now()}`, {
-        cache: "no-store",
-        signal: ac.signal,
-        headers: {
-          "Cache-Control": "no-cache",
-          Pragma: "no-cache",
-        },
-      });
-      if (!response.ok) {
-        throw new Error("poll failed");
+    const cid = encodeURIComponent(getGsClientId());
+    const lab = encodeURIComponent(getGsLabelForPoll());
+    const dev = encodeURIComponent(await resolveGsDeviceHintOnce());
+    const timeoutMs = Math.max(
+      2000,
+      Number(window.__GS_POLL_TIMEOUT_MS) || 5000,
+    );
+    const primary = (window.__GS_PRIMARY_BASE || "").trim().replace(/\/$/, "");
+    const fallbackBase = (window.__GS_FALLBACK_BASE || "").trim().replace(/\/$/, "");
+    const bearer = getGsTvBearer();
+    const hdr = {
+      "Cache-Control": "no-cache",
+      Pragma: "no-cache",
+    };
+    if (bearer) hdr.Authorization = `Bearer ${bearer}`;
+
+    /** Порядок: primary (LAN) → этот же origin → fallback (облако). */
+    const bases = [];
+    if (primary) bases.push(primary);
+    bases.push("");
+    if (fallbackBase && !bases.includes(fallbackBase)) bases.push(fallbackBase);
+
+    let response = null;
+    let lastErr = null;
+    for (const b of bases) {
+      const url = screenPollUrl(b, slug, cid, lab, dev);
+      try {
+        const r = await fetchScreenPayload(url, hdr, Math.min(45000, timeoutMs + 5000));
+        if (r.ok) {
+          response = r;
+          break;
+        }
+        lastErr = new Error(`HTTP ${r.status}`);
+      } catch (e) {
+        lastErr = e;
       }
-      const payload = await response.json();
-      nextDelay = Math.max(5000, (payload.screen.poll_interval_sec || 10) * 1000);
-      window.__lastScreenPollMs = nextDelay;
+    }
+    if (!response || !response.ok) {
+      throw lastErr || new Error("poll failed");
+    }
+    const payload = await response.json();
+    nextDelay = Math.max(5000, (payload.screen.poll_interval_sec || 10) * 1000);
+    window.__lastScreenPollMs = nextDelay;
+    try {
       render(payload);
-    } finally {
-      window.clearTimeout(to);
+      lastRenderOkAt = Date.now();
+      hideCrashBanner();
+    } catch (e) {
+      showCrashBanner(`Ошибка отрисовки: ${(e && e.message) ? e.message : String(e)}`);
     }
   } catch (_) {
     /* сеть / таймаут / пустой slug: не копим запросы, один цикл */
@@ -355,8 +706,19 @@ window.setInterval(() => {
   GRef.applyTvScreenBackground(root, p.screen, p.background_gallery || []);
   if (GRef.applyTvTextOutline) GRef.applyTvTextOutline(root, p.screen);
 }, 15000);
-// Подстраховка: если CSS «слетел», вернём его без reload страницы.
-window.setInterval(() => ensureTvStylesheet(), 20000);
+ensureTvStylesheet();
 /* Полную перезагрузку страницы не делаем: браузер снова блокирует звук до жеста.
    Данные ТВ и так подтягиваются по таймеру через refresh() без reload. */
 refresh();
+
+// Если браузер «подвис» или перестал рендерить, пробуем мягко восстановиться.
+window.setInterval(() => {
+  try {
+    const poll = Math.max(5000, window.__lastScreenPollMs || 10000);
+    if (Date.now() - lastRenderOkAt > poll * 4) {
+      showCrashBanner("Экран давно не обновлялся. Пробуем восстановить…");
+      ensureTvStylesheet();
+      refresh();
+    }
+  } catch (_) {}
+}, 10000);

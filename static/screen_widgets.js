@@ -3,7 +3,24 @@
   const marqueeState = new Map();
   // announcementsState: widgetId -> { contentKey, order, pos, lastIdx }
   const announcementsState = new Map();
-  const RANDOM_CAROUSEL_ANIMATIONS = ["slide", "slideUp", "fade", "zoom"];
+  const RANDOM_CAROUSEL_ANIMATIONS = [
+    "slide",
+    "slideUp",
+    "slideDown",
+    "slideFromLeft",
+    "fade",
+    "zoom",
+    "blurSoft",
+    "flipLight",
+    "rotateIn",
+  ];
+
+  /** Совпадает с :root --schedule-fg / --schedule-surface / --muted в styles-tv.css и styles.css (инлайн без var() для ТВ). */
+  const SCHEDULE_THEME = Object.freeze({
+    fg: "#0f172a",
+    surface: "rgba(255, 255, 255, 0.92)",
+    sectionTitle: "#cbd5e1",
+  });
 
   function clearCarouselTimeouts() {
     for (const st of carouselState.values()) {
@@ -159,81 +176,150 @@
       .replace(/</g, "&lt;");
   }
 
+  /** Как на сервере: первая буква предмета — заглавная (в т.ч. после BOM/пробелов); дублируем здесь, чтобы ТВ не зависел от перезапуска сервера и кэша. */
+  function capitalizeSubjectDisplay(raw) {
+    const s = String(raw ?? "").trim();
+    if (!s) return "";
+    const chars = [...s];
+    for (let i = 0; i < chars.length; i++) {
+      const ch = chars[i];
+      if (ch.toLowerCase() !== ch.toUpperCase()) {
+        chars[i] = ch.toUpperCase();
+        break;
+      }
+    }
+    return chars.join("");
+  }
+
   function buildScheduleTable(rows, title, settings) {
     const L = tvUiStrings();
     if (!rows.length) {
-      return `<section class="schedule-section"><h3 class="screen-section-title" style="font-size:${settings.titleFontSize || 20}px;${settings.bold ? "font-weight:700;" : ""}">${title}</h3><div style="${settings.bold ? "font-weight:700;" : ""}">${L.noData}</div></section>`;
+      return `<section class="schedule-section"><h3 class="screen-section-title">${escapeHtml(title)}</h3><div class="schedule-section-msg">${escapeHtml(L.noData)}</div></section>`;
     }
 
-    const classHeaders = rows.map((item) => `<th>${item.class_name}</th>`).join("");
     let maxByIndex = 0;
     for (const row of rows) {
       for (const les of row.lessons || []) {
         const n = Number(les.index);
-        if (Number.isFinite(n) && n > maxByIndex) maxByIndex = n;
+        const subj = String(les.subject || "").trim();
+        const meaningful = Boolean(subj) || les.is_current || les.is_past || les.is_override || les.is_sample_diff;
+        if (meaningful && Number.isFinite(n) && n > maxByIndex) maxByIndex = n;
       }
     }
-    const maxByLength = Math.max(...rows.map((item) => (item.lessons || []).length));
-    const maxLessons = Math.max(maxByIndex, maxByLength, 1);
-    const body = Array.from({ length: maxLessons }, (_, idx) => idx + 1).map((lessonIndex) => {
-      const cells = rows.map((row) => {
-        const lesson = row.lessons.find((item) => item.index === lessonIndex);
-        if (!lesson) {
-          return "<td></td>";
+    const maxLessons = Math.max(maxByIndex, 1);
+
+    const colgroup = `<colgroup><col class="schedule-col-num" />${rows.map(() => "<col />").join("")}</colgroup>`;
+
+    // На части ТВ CSS-переменные/табличные стили применяются нестабильно.
+    // Поэтому делаем минимальные инлайны (background-color/color) для ячеек.
+
+    // На некоторых ТВ hex-цвета с буквами (a-f) обрабатываются нестабильно. Используем rgb(r,g,b).
+    const hexToRgbCss = (v, fallbackCss) => {
+      const s = String(v || "").trim();
+      const m = /^#([0-9a-fA-F]{6})$/.exec(s);
+      if (!m) return fallbackCss;
+      const n = parseInt(m[1], 16);
+      const r = (n >> 16) & 255;
+      const g = (n >> 8) & 255;
+      const b = n & 255;
+      return `rgb(${r},${g},${b})`;
+    };
+    const bgBase = hexToRgbCss(settings.tableBgColor, "rgb(248,244,232)");
+    const textBase = hexToRgbCss(settings.tableTextColor, "rgb(15,23,42)");
+    const bgPast = hexToRgbCss(settings.pastBgColor, "rgb(31,41,55)");
+    const textPast = hexToRgbCss(settings.pastTextColor, "rgb(241,245,249)");
+    const bgCurrent = hexToRgbCss(settings.currentBgColor, "rgb(191,219,254)");
+    const bgOverride = hexToRgbCss(settings.highlightColor, "rgb(187,247,208)");
+    const bgSample = hexToRgbCss(settings.sampleDiffColor, "rgb(254,243,199)");
+
+    const isMeaningfulLesson = (lesson) => {
+      if (!lesson) return false;
+      const subj = String(lesson.subject || "").trim();
+      return Boolean(subj) || lesson.is_current || lesson.is_past || lesson.is_override || lesson.is_sample_diff;
+    };
+
+    const indices = Array.from({ length: maxLessons }, (_, idx) => idx + 1).filter((lessonIndex) =>
+      rows.some((row) => isMeaningfulLesson((row.lessons || []).find((item) => Number(item.index) === lessonIndex)))
+    );
+
+    // Важно для слабых ТВ: избегаем больших style-атрибутов и CSS-переменных.
+    // Раскраска делается на уровне каждой ячейки <td> (inline rgb()).
+    const wrapStyle = "";
+    let devLogHtml = "";
+    try {
+      if (settings && settings.devMode) {
+        let firstOv = "";
+        let ovCount = 0;
+        let badOverrideColors = 0;
+        for (const r of rows) {
+          for (const les of r.lessons || []) {
+            if (les && les.is_override) {
+              ovCount += 1;
+              if (!firstOv) firstOv = String(les.override_color || "");
+              const raw = String(les.override_color || "").trim();
+              if (raw && !/^#[0-9a-fA-F]{6}$/.test(raw)) badOverrideColors += 1;
+            }
+          }
         }
+        const lines = [
+          `DEV schedule ${new Date().toLocaleTimeString()}`,
+          `hdr=${String(settings.headerColor || "")} bg=${String(settings.tableBgColor || "")} text=${String(settings.tableTextColor || "")}`,
+          `pastBg=${String(settings.pastBgColor || "")} pastText=${String(settings.pastTextColor || "")} currentBg=${String(settings.currentBgColor || "")}`,
+          `overrideDefault=${String(settings.highlightColor || "")} sample=${String(settings.sampleDiffColor || "")} border=${String(settings.borderColor || "")}`,
+          `ovCount=${ovCount} firstOvColor=${firstOv} badOvColor=${badOverrideColors}`,
+          `renderMode=inline_rgb_per_cell`,
+        ];
+        devLogHtml = `<pre class="gs-dev-log">${escapeHtml(lines.join("\n"))}</pre>`;
+      }
+    } catch (_) {}
+
+    const bodyFiltered = (indices.length ? indices : [1]).map((lessonIndex) => {
+      const cells = rows.map((row) => {
+        const lesson = (row.lessons || []).find((item) => Number(item.index) === lessonIndex);
+        if (!lesson) return `<td></td>`;
         const classes = [
           lesson.is_override ? "schedule-override" : "",
           lesson.is_sample_diff && !lesson.is_override ? "schedule-sample-diff" : "",
           lesson.is_past ? "schedule-past" : "",
           lesson.is_current ? "schedule-current" : "",
         ].filter(Boolean).join(" ");
-        let inlineStyle = "";
-        if (lesson.is_override) {
-          inlineStyle = ` style="background:${settings.highlightColor || "#fecaca"};"`;
-        } else if (lesson.is_sample_diff) {
-          inlineStyle = ` style="background:${settings.sampleDiffColor || "#fee2e2"};"`;
+        let bg = bgBase;
+        let fg = textBase;
+        let extra = "";
+        if (lesson.is_past) {
+          bg = bgPast;
+          fg = textPast;
+          extra = "text-decoration:line-through;";
+        } else if (lesson.is_current) {
+          bg = bgCurrent;
+          fg = textBase;
+          extra = "font-weight:700;";
         }
-        return `<td class="${classes}"${inlineStyle}>${lesson.subject || ""}</td>`;
+        if (lesson.is_sample_diff && !lesson.is_override) {
+          bg = bgSample;
+          fg = textBase;
+        }
+        if (lesson.is_override) {
+          const oclr = lesson && lesson.override_color ? String(lesson.override_color).trim() : "";
+          bg = hexToRgbCss(oclr, bgOverride);
+          fg = textBase;
+          extra = "font-weight:700;";
+        }
+        const styleAttr = ` style="background-color:${escapeHtmlAttr(bg)};color:${escapeHtmlAttr(fg)};${extra}"`;
+        return `<td class="${classes}"${styleAttr}>${escapeHtml(capitalizeSubjectDisplay(lesson.subject))}</td>`;
       }).join("");
       return `<tr><td class="schedule-lesson-num">${lessonIndex}</td>${cells}</tr>`;
     }).join("");
 
-    const L = tvUiStrings();
-    const colgroup = `<colgroup><col class="schedule-col-num" />${rows.map(() => "<col />").join("")}</colgroup>`;
-
-    // Инлайн-стили: если ТВ «теряет» styles.css, таблица всё равно остаётся читаемой (белый фон + синяя шапка).
-    const tableStyle = `width:100%;border-collapse:collapse;background:rgba(255,255,255,0.92);color:#0f172a;table-layout:fixed;font-size:${settings.fontSize || 16}px;${settings.bold ? "font-weight:700;" : ""}`;
-    const thStyle = `background:${settings.headerColor || "#1e3a5f"};color:#ffffff;border:1px solid rgba(15,23,42,0.12);padding:4px 5px;line-height:1.15;`;
-    const tdStyle = `border:1px solid rgba(15,23,42,0.12);padding:4px 5px;vertical-align:top;line-height:1.15;word-break:break-word;`;
-    const numTdStyle = `background:${settings.headerColor || "#1e3a5f"};color:#ffffff;font-weight:700;text-align:center;vertical-align:middle;white-space:nowrap;padding:4px 8px;border:1px solid rgba(15,23,42,0.12);`;
-    const numThStyle = `background:${settings.headerColor || "#1e3a5f"};color:#ffffff;text-align:center;white-space:nowrap;padding:4px 8px;border:1px solid rgba(15,23,42,0.12);`;
-
-    const bodyStyled = Array.from({ length: maxLessons }, (_, idx) => idx + 1).map((lessonIndex) => {
-      const cells = rows.map((row) => {
-        const lesson = row.lessons.find((item) => item.index === lessonIndex);
-        if (!lesson) return `<td style="${tdStyle}"></td>`;
-        const classes = [
-          lesson.is_override ? "schedule-override" : "",
-          lesson.is_sample_diff && !lesson.is_override ? "schedule-sample-diff" : "",
-          lesson.is_past ? "schedule-past" : "",
-          lesson.is_current ? "schedule-current" : "",
-        ].filter(Boolean).join(" ");
-        let inlineStyle = tdStyle;
-        if (lesson.is_override) inlineStyle += `background:${settings.highlightColor || "#fecaca"};`;
-        else if (lesson.is_sample_diff) inlineStyle += `background:${settings.sampleDiffColor || "#fee2e2"};`;
-        return `<td class="${classes}" style="${inlineStyle}">${lesson.subject || ""}</td>`;
-      }).join("");
-      return `<tr><td class="schedule-lesson-num" style="${numTdStyle}">${lessonIndex}</td>${cells}</tr>`;
-    }).join("");
-
     return `
     <section class="schedule-section">
-      <h3 class="screen-section-title" style="font-size:${settings.titleFontSize || 20}px;${settings.bold ? "font-weight:700;" : ""}">${title}</h3>
-      <div class="schedule-table-wrap">
-        <table class="schedule-table" style="${tableStyle}">
+      <h3 class="screen-section-title">${escapeHtml(title)}</h3>
+      ${devLogHtml}
+      <div class="schedule-table-wrap"${wrapStyle}>
+        <table class="schedule-table">
           ${colgroup}
-          <thead><tr><th style="${numThStyle}">${L.lessonColumn}</th>${rows.map((item) => `<th style="${thStyle}">${item.class_name}</th>`).join("")}</tr></thead>
-          <tbody>${bodyStyled}</tbody>
+          <thead><tr><th>${escapeHtml(L.lessonColumn)}</th>${rows.map((item) => `<th>${escapeHtml(item.class_name)}</th>`).join("")}</tr></thead>
+          <tbody>${bodyFiltered}</tbody>
         </table>
       </div>
     </section>
@@ -421,7 +507,16 @@
     const items = manual.length ? manual : (Array.isArray(marqueeData) ? marqueeData.map((x) => String(x).trim()).filter(Boolean) : []);
     const L = tvUiStrings();
     const text = items.length ? items.join("   •   ") : L.noAnnouncements;
-    const duration = Math.max(6, Number(settings.speedSec || 18));
+    const charCount = Math.max(1, text.length);
+    const cpmRaw = settings.charsPerMin;
+    let duration;
+    if (cpmRaw != null && cpmRaw !== "" && Number.isFinite(Number(cpmRaw)) && Number(cpmRaw) > 0) {
+      const cpm = Math.max(20, Math.min(900, Number(cpmRaw)));
+      /** Один цикл −50%…0 ≈ проход одной копии текста; T = 60·N/CPM даёт близкий к заданному поток знаков/мин при длине N. */
+      duration = Math.max(6, (60 * charCount) / cpm);
+    } else {
+      duration = Math.max(6, Number(settings.speedSec || 18));
+    }
     const durationMs = duration * 1000;
     const contentKey = `${duration}|${text}`;
     let st = marqueeState.get(widget.id);
@@ -742,11 +837,110 @@
     return "";
   }
 
+  const GS_BG_FADE_MS = 520;
+
+  function cssBackgroundImageUrl(raw) {
+    const s = String(raw || "").trim();
+    if (!s) return "";
+    const esc = s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+    return `url("${esc}")`;
+  }
+
+  function ensureTvBgLayers(el) {
+    if (!el.querySelector(".gs-tv-bg-under")) {
+      const under = document.createElement("div");
+      under.className = "gs-tv-bg-under gs-tv-bg-layer";
+      const over = document.createElement("div");
+      over.className = "gs-tv-bg-over gs-tv-bg-layer";
+      el.insertBefore(under, el.firstChild);
+      el.insertBefore(over, under.nextSibling);
+    }
+    return {
+      under: el.querySelector(".gs-tv-bg-under"),
+      over: el.querySelector(".gs-tv-bg-over"),
+    };
+  }
+
   function applyTvScreenBackground(el, screen, gallery) {
     if (!el) return;
     const u = resolveBackgroundImageUrl(screen, gallery);
-    if (u) el.style.background = `url(${u}) center/cover no-repeat`;
-    else el.style.background = "";
+    const prev = el.dataset.gsBgApplied || "";
+    /** После root.innerHTML = "" слои .gs-tv-bg-under/over уничтожены, а dataset остаётся — иначе u===prev даёт ранний return без фона (тёмная заглушка). */
+    const hasBgLayers = Boolean(el.querySelector(".gs-tv-bg-under"));
+    if (u === prev && hasBgLayers) return;
+    el.style.background = "";
+    el._gsBgGen = (el._gsBgGen || 0) + 1;
+    const gen = el._gsBgGen;
+    const { under, over } = ensureTvBgLayers(el);
+    if (!under || !over) return;
+    const grid = el.querySelector(".screen-grid");
+    if (grid) {
+      grid.style.position = "relative";
+      grid.style.zIndex = "2";
+    }
+    const finishNoImage = () => {
+      el.dataset.gsBgApplied = "";
+      under.style.transition = "opacity 0.38s ease";
+      over.style.transition = "opacity 0.38s ease";
+      under.style.opacity = "0";
+      over.style.opacity = "0";
+      if (el._gsBgFadeTimer) window.clearTimeout(el._gsBgFadeTimer);
+      el._gsBgFadeTimer = window.setTimeout(() => {
+        if (gen !== el._gsBgGen) return;
+        under.style.backgroundImage = "";
+        over.style.backgroundImage = "";
+      }, 420);
+    };
+    if (!u) {
+      finishNoImage();
+      return;
+    }
+    const bi = cssBackgroundImageUrl(u);
+    const applyImmediate = () => {
+      if (gen !== el._gsBgGen) return;
+      under.style.transition = "none";
+      over.style.transition = "none";
+      under.style.backgroundImage = bi;
+      under.style.opacity = "1";
+      over.style.opacity = "0";
+      over.style.backgroundImage = "";
+      el.dataset.gsBgApplied = u;
+    };
+    if (!prev) {
+      applyImmediate();
+      return;
+    }
+    const img = new Image();
+    const startFade = () => {
+      if (gen !== el._gsBgGen) return;
+      over.style.transition = "none";
+      over.style.backgroundImage = bi;
+      over.style.opacity = "0";
+      void over.offsetWidth;
+      over.style.transition = `opacity ${GS_BG_FADE_MS}ms ease`;
+      over.style.opacity = "1";
+      if (el._gsBgFadeTimer) window.clearTimeout(el._gsBgFadeTimer);
+      el._gsBgFadeTimer = window.setTimeout(() => {
+        if (gen !== el._gsBgGen) return;
+        under.style.transition = "none";
+        under.style.backgroundImage = bi;
+        under.style.opacity = "1";
+        over.style.transition = "none";
+        over.style.opacity = "0";
+        over.style.backgroundImage = "";
+        el.dataset.gsBgApplied = u;
+      }, GS_BG_FADE_MS + 35);
+    };
+    img.onload = () => {
+      if (gen !== el._gsBgGen) return;
+      if (typeof img.decode === "function") {
+        img.decode().then(startFade).catch(startFade);
+      } else {
+        startFade();
+      }
+    };
+    img.onerror = startFade;
+    img.src = u;
   }
 
   function buildTextOutlineShadow(px, color) {

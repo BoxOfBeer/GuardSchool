@@ -9,11 +9,11 @@ from typing import Any
 from fastapi import HTTPException
 from openpyxl import load_workbook
 
-from gs_admin_http import admin_msg
-from gs_class_key import normalize_class
-from gs_import_state import import_signature, load_import_state, save_import_state
-from gs_jsonio import write_json
-from gs_paths import (
+from .gs_admin_http import admin_msg
+from .gs_class_key import normalize_class
+from .gs_import_state import import_signature, load_import_state, save_import_state
+from .gs_jsonio import write_json
+from .gs_paths import (
     ANNOUNCEMENTS_PATH,
     AUTO_ANNOUNCEMENTS_IMPORT_PATH,
     AUTO_FULL_SCHEDULE_IMPORT_PATH,

@@ -3,3 +3,9 @@ uvicorn
 python-multipart
 openpyxl
 pyinstaller
+tzdata
+httpx
+psycopg2-binary
+backports.zoneinfo>=0.2.1; python_version < "3.9"
+# Pydantic/FastAPI: dict[str, str], list[X], X | Y на Python < 3.10
+eval-type-backport>=0.2.0; python_version < "3.10"

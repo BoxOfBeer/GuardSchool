@@ -1,6 +1,7 @@
 """Пути данных, статики и версия продукта (общий слой без FastAPI)."""
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -8,8 +9,13 @@ if getattr(sys, "frozen", False):
     APP_DIR = Path(sys.executable).resolve().parent
     RESOURCE_DIR = Path(getattr(sys, "_MEIPASS", APP_DIR))
 else:
-    APP_DIR = Path(__file__).resolve().parent
+    # Пакет лежит в guardschool/; data/ и static/ — в корне репозитория (родитель каталога пакета).
+    _PKG_DIR = Path(__file__).resolve().parent
+    APP_DIR = _PKG_DIR.parent
     RESOURCE_DIR = APP_DIR
+
+# Облачный деплой: каталог данных вне репозитория (env задаётся до импорта приложения).
+_env_data = (os.environ.get("GUARDSCHOOL_DATA_DIR") or "").strip()
 
 
 def resolve_brand_logo_path() -> Path | None:
@@ -19,7 +25,7 @@ def resolve_brand_logo_path() -> Path | None:
     return None
 
 
-DATA_DIR = APP_DIR / "data"
+DATA_DIR = Path(_env_data).resolve() if _env_data else (APP_DIR / "data")
 UPLOADS_DIR = DATA_DIR / "uploads"
 BELL_SOUNDS_DIR = UPLOADS_DIR / "bells"
 BACKGROUND_UPLOAD_IMAGE_SUFFIXES = frozenset(
@@ -39,8 +45,9 @@ MARQUEE_PATH = DATA_DIR / "marquee.json"
 OVERRIDES_PATH = DATA_DIR / "overrides.json"
 BELL_SCHEDULES_PATH = DATA_DIR / "bell_schedules.json"
 CHANGE_LOG_PATH = DATA_DIR / "change_log.json"
-APP_VERSION = "1.01.002"
+APP_VERSION = "1.01.014"
 IMPORT_STATE_PATH = DATA_DIR / "import_state.json"
+SYNC_STATE_PATH = DATA_DIR / "sync_state.json"
 AUTO_SCHEDULE_IMPORT_PATH = IMPORT_DIR / "schedule.xlsx"
 AUTO_FULL_SCHEDULE_IMPORT_PATH = IMPORT_DIR / "full_schedule.xlsx"
 AUTO_SCHEDULE_SAMPLE_IMPORT_PATH = IMPORT_DIR / "schedule_sample.xlsx"

@@ -4,8 +4,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from gs_jsonio import read_json, write_json
-from gs_paths import IMPORT_STATE_PATH
+from .gs_jsonio import read_json, write_json
+from .gs_paths import IMPORT_STATE_PATH
 
 
 def load_import_state() -> dict[str, Any]:

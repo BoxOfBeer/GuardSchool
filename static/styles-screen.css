@@ -1,0 +1,419 @@
+/* Screen/TV stylesheet (separated from admin styles).
+   Source: extracted from previous working styles.css (tv-screen / preview / widgets / table / marquee / carousel). */
+
+:root {
+  --bg: #0f172a;
+  --card: #1e293b;
+  --card-2: #334155;
+  --text: #f8fafc;
+  --muted: #cbd5e1;
+  --accent: #38bdf8;
+  --danger: #ef4444;
+}
+
+* { box-sizing: border-box; }
+
+html { background: var(--bg); }
+
+body.screen-body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, "Segoe UI", Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.35;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Preview: same base typography/shadow as TV */
+.screen-preview {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: linear-gradient(135deg, #0f172a, #1d4ed8);
+  border-radius: 18px;
+  overflow: hidden;
+  position: relative;
+  font-family: system-ui, "Segoe UI", Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.35;
+  -webkit-font-smoothing: antialiased;
+  color: var(--text);
+  --gs-tv-text-shadow: none;
+}
+
+.tv-screen {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: linear-gradient(135deg, #0f172a, #1d4ed8);
+  border-radius: 18px;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Слои фона ТВ: плавная смена картинки без мигания всего экрана */
+.gs-tv-bg-layer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-position: center center;
+  background-size: cover;
+  background-repeat: no-repeat;
+  border-radius: inherit;
+}
+
+.gs-tv-bg-over {
+  z-index: 1;
+}
+
+.tv-screen .screen-grid,
+.screen-preview .screen-grid {
+  position: relative;
+  z-index: 2;
+}
+
+.screen-grid {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  grid-template-columns: repeat(32, 1fr);
+  grid-template-rows: repeat(26, 1fr);
+  gap: 6px;
+  padding: 14px;
+}
+
+.screen-widget {
+  border-radius: 12px;
+  padding: 10px;
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  overflow: hidden;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* Расписание: таблица сама задаёт белый фон. Оболочка-«карточка» только мешает (пустая подложка ниже таблицы). */
+.tv-screen .screen-widget[data-widget-type="schedule"],
+.screen-preview .screen-widget[data-widget-type="schedule"] {
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  padding: 0;
+}
+
+.tv-screen .screen-widget[data-widget-type="schedule"] .screen-section-title,
+.screen-preview .screen-widget[data-widget-type="schedule"] .screen-section-title {
+  padding: 6px 10px 0;
+}
+
+.tv-screen .screen-widget[data-widget-type="schedule"] .schedule-table-wrap,
+.screen-preview .screen-widget[data-widget-type="schedule"] .schedule-table-wrap {
+  padding: 0 10px 10px;
+}
+
+.screen-widget.screen-widget--image {
+  z-index: 0;
+  padding: 4px;
+  background: transparent;
+}
+
+.screen-widget.screen-widget--image.no-backdrop {
+  background: transparent;
+}
+
+.screen-widget.screen-widget--emergency {
+  z-index: 40;
+  padding: 16px;
+  border-radius: 0;
+}
+
+.screen-widget--emergency .emergency-overlay-inner {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  line-height: 1.25;
+  box-sizing: border-box;
+  border-radius: 14px;
+  padding: 12px;
+}
+
+.screen-widget--emergency .emergency-overlay-text {
+  max-width: 96%;
+  word-break: break-word;
+  text-shadow: var(--gs-tv-text-shadow, none);
+}
+
+.screen-widget.no-backdrop {
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.schedule-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--gs-sched-bg, rgba(248, 244, 232, 0.92)); /* почти белый/бежевый */
+  color: var(--gs-sched-text, #0f172a);
+  table-layout: fixed;
+}
+
+.schedule-table col.schedule-col-num {
+  width: 4.25em;
+}
+
+.schedule-table thead th:first-child {
+  white-space: nowrap;
+  text-align: center;
+  vertical-align: middle;
+  padding: 4px 8px;
+  box-sizing: border-box;
+}
+
+.schedule-table td.schedule-lesson-num {
+  background: var(--gs-sched-header, rgba(30, 58, 95, 0.92));
+  color: #ffffff;
+  font-weight: 700;
+  text-align: center;
+  vertical-align: middle;
+  white-space: nowrap;
+  padding: 4px 8px;
+  box-sizing: border-box;
+}
+
+.schedule-table th,
+.schedule-table td {
+  border: 1px solid var(--gs-sched-border, rgba(15, 23, 42, 0.12));
+  padding: 4px 5px;
+  vertical-align: top;
+  line-height: 1.15;
+  word-break: break-word;
+}
+
+.schedule-table td {
+  /* На части ТВ фон <table> не прокрашивает ячейки: задаём явно. */
+  background-color: var(--gs-sched-bg, rgba(248, 244, 232, 0.92)) !important;
+  color: var(--gs-sched-text, #0f172a) !important;
+}
+
+.schedule-table th {
+  background: var(--gs-sched-header, rgba(30, 58, 95, 0.92));
+  color: #ffffff;
+}
+
+/* Состояния ячеек */
+.schedule-past {
+  background-color: var(--gs-sched-past-bg, rgba(31, 41, 55, 0.55)) !important; /* тёмно-серый */
+  color: var(--gs-sched-past-text, rgba(241, 245, 249, 0.92)) !important;
+  text-decoration: line-through;
+}
+
+.schedule-current {
+  background-color: var(--gs-sched-current, rgba(191, 219, 254, 0.72)) !important; /* бледно-голубой */
+  color: #0f172a !important;
+  font-weight: 700;
+}
+
+.schedule-override {
+  background-color: var(--gs-sched-override, rgba(187, 247, 208, 0.72)) !important; /* бледно-салатовый по умолчанию */
+  color: #0f172a !important;
+  font-weight: 700;
+}
+
+.schedule-sample-diff {
+  background-color: var(--gs-sched-sample, rgba(254, 243, 199, 0.75)) !important;
+  color: #0f172a !important;
+}
+
+.screen-body { min-height: 100vh; }
+
+.tv-screen {
+  height: 100vh;
+  min-height: 100vh;
+  aspect-ratio: auto;
+  border-radius: 0;
+}
+
+.tv-screen,
+.screen-preview {
+  --gs-tv-text-shadow: none;
+}
+
+.tv-screen .screen-widget,
+.tv-screen .screen-widget *,
+.screen-preview .screen-widget,
+.screen-preview .screen-widget * {
+  text-shadow: var(--gs-tv-text-shadow);
+}
+
+.tv-screen .schedule-table,
+.tv-screen .schedule-table *,
+.screen-preview .schedule-table,
+.screen-preview .schedule-table * {
+  text-shadow: none;
+}
+
+.screen-section-title {
+  margin: 0 0 6px;
+  font-size: 18px;
+}
+
+.schedule-widget-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1 1 auto;
+  justify-content: flex-start;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.schedule-section {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  gap: 6px;
+  min-height: 0;
+  margin: 0;
+  overflow: hidden;
+}
+
+.schedule-table-wrap {
+  flex: 0 0 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  border-radius: 10px;
+  overflow: hidden; /* скругление углов таблицы */
+  background: var(--gs-sched-bg, rgba(248, 244, 232, 0.92));
+}
+
+.gs-crash-banner {
+  position: fixed;
+  z-index: 999999;
+  left: 50%;
+  top: 10px;
+  transform: translateX(-50%);
+  max-width: min(1100px, 96vw);
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 14px;
+  line-height: 1.35;
+  background: rgba(15, 23, 42, 0.92);
+  color: #f8fafc;
+  border: 1px solid rgba(248, 113, 113, 0.55);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+  white-space: pre-wrap;
+}
+
+.gs-dev-log {
+  margin: 0 0 6px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  font-size: 12px;
+  line-height: 1.25;
+  color: #f8fafc;
+  background: rgba(15, 23, 42, 0.78);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  max-height: 140px;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
+.widget-meta {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.bell-status-box {
+  display: grid;
+  gap: 6px;
+  align-content: center;
+  justify-items: center;
+  text-align: center;
+}
+
+.info-widget-box {
+  display: grid;
+  gap: 6px;
+  height: 100%;
+  align-content: center;
+  justify-items: center;
+  text-align: center;
+}
+
+.marquee-box {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  padding: 0 14px 6px;
+  min-height: 34px;
+}
+
+.marquee-track {
+  display: inline-flex;
+  align-items: center;
+  gap: 48px;
+  min-width: max-content;
+  animation: marquee-scroll linear infinite;
+}
+
+.marquee-track span { display: inline-block; }
+
+.carousel-widget {
+  position: relative;
+  padding: 0;
+  overflow: hidden;
+}
+
+.carousel-slide {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  box-sizing: border-box;
+  padding: 10px;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  min-height: 0;
+  opacity: 0;
+  transform: translateX(100%);
+  transition: transform 0.6s ease, opacity 0.6s ease;
+}
+
+.carousel-slide.active {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.carousel-slide.enter-right { opacity: 0; transform: translateX(100%); }
+.carousel-slide.exit-left { opacity: 0; transform: translateX(-100%); }
+.carousel-slide.enter-slide { opacity: 0; transform: translateX(100%); }
+.carousel-slide.exit-slide { opacity: 0; transform: translateX(-100%); }
+.carousel-slide.enter-slideUp { opacity: 0; transform: translateY(100%); }
+.carousel-slide.exit-slideUp { opacity: 0; transform: translateY(-100%); }
+.carousel-slide.enter-fade { opacity: 0; transform: translateX(0); }
+.carousel-slide.exit-fade { opacity: 0; transform: translateX(0); }
+.carousel-slide.enter-zoom { opacity: 0; transform: scale(0.92); }
+.carousel-slide.exit-zoom { opacity: 0; transform: scale(1.08); }
+
+@keyframes marquee-scroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+

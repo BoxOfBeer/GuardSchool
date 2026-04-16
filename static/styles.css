@@ -32,6 +32,34 @@
   color: #ffffff !important;
 }
 
+/* Ручные замены/подсветки должны побеждать фоллбек-раскраску (которая использует !important). */
+.tv-screen .schedule-table td.schedule-override,
+.screen-preview .schedule-table td.schedule-override {
+  background: #fecaca !important;
+  color: #0f172a !important;
+  font-weight: 700 !important;
+}
+
+.tv-screen .schedule-table td.schedule-sample-diff,
+.screen-preview .schedule-table td.schedule-sample-diff {
+  background: #fee2e2 !important;
+  color: #0f172a !important;
+}
+
+.tv-screen .schedule-table td.schedule-current,
+.screen-preview .schedule-table td.schedule-current {
+  background: rgba(191, 219, 254, 0.9) !important;
+  color: #0f172a !important;
+  font-weight: 700 !important;
+}
+
+.tv-screen .schedule-table td.schedule-past,
+.screen-preview .schedule-table td.schedule-past {
+  background: rgba(226, 232, 240, 0.85) !important;
+  color: #64748b !important;
+  text-decoration: line-through;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -91,6 +119,31 @@ body {
   min-width: 0;
   flex-wrap: wrap;
   justify-content: flex-end;
+}
+
+/* Аварийный режим (чекбокс в верхней панели) */
+.top-bar-emergency {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 4px 0 0;
+  padding: 4px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(239, 68, 68, 0.45);
+  background: rgba(127, 29, 29, 0.25);
+  font-size: 13px;
+  font-weight: 600;
+  color: #fecaca;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.top-bar-emergency input {
+  width: 16px;
+  height: 16px;
+  accent-color: #f87171;
+  cursor: pointer;
 }
 
 .top-bar-lang {
@@ -477,7 +530,8 @@ button {
 }
 
 /* Атрибут [hidden] слабее .editor-grid в каскаде — без этого панель «Стрим» оставалась видна под вкладками ТВ */
-#audio-stream-panel[hidden] {
+#audio-stream-panel[hidden],
+#stats-panel[hidden] {
   display: none !important;
 }
 
@@ -1072,6 +1126,173 @@ button {
   white-space: pre-wrap;
   word-break: break-word;
   line-height: 1.45;
+}
+
+/* Панель «Звук ПК» — 3 колонки: форма (2) + плеер (1) */
+.audio-stream-body {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 2fr 1fr;
+  align-items: start;
+}
+
+.audio-stream-meta {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 8px;
+}
+
+.audio-stream-form-area {
+  grid-column: 1 / 2;
+  min-width: 0;
+}
+
+.audio-stream-aside {
+  grid-column: 2 / 3;
+  min-width: 0;
+}
+
+/* Форма настроек стрима */
+.audio-stream-form-grid {
+  display: grid;
+  gap: 10px 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: end;
+}
+
+.audio-stream-span-2 {
+  grid-column: 1 / -1;
+}
+
+.audio-stream-field-stack {
+  display: grid;
+  gap: 4px;
+}
+
+@media (min-width: 1100px) {
+  .audio-stream-form-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* В aside плеер без искусственного max-width */
+.pc-audio-player--aside {
+  max-width: none;
+}
+
+/* Вкладка «Статистика ТВ» */
+.stats-panel-body {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.stats-summary-bar {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.35);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.stats-summary-main {
+  margin: 0;
+  font-weight: 700;
+}
+
+.stats-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: rgba(15, 23, 42, 0.28);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.stats-table th,
+.stats-table td {
+  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+  padding: 8px 10px;
+  vertical-align: top;
+  font-size: 13px;
+}
+
+.stats-table th {
+  background: rgba(15, 23, 42, 0.45);
+  color: var(--muted);
+  font-weight: 700;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.stats-subrow td {
+  padding-top: 0;
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.stats-slug {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.stats-client-list {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+
+.stats-client-device--na,
+.stats-history-empty,
+.stats-clients-empty {
+  color: var(--muted);
+}
+
+.stats-ago-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-variant-numeric: tabular-nums;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(15, 23, 42, 0.35);
+}
+
+.stats-ago--fresh { border-color: rgba(34, 197, 94, 0.45); color: #bbf7d0; }
+.stats-ago--warn { border-color: rgba(234, 179, 8, 0.45); color: #fde68a; }
+.stats-ago--bad { border-color: rgba(239, 68, 68, 0.45); color: #fecaca; }
+.stats-ago--na { color: var(--muted); }
+
+.stats-status-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.stats-led {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.35);
+}
+
+.stats-led--ok { background: rgba(34, 197, 94, 0.85); }
+.stats-led--stale { background: rgba(234, 179, 8, 0.85); }
+.stats-led--never { background: rgba(148, 163, 184, 0.55); }
+
+.stats-history-wrap {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(148, 163, 184, 0.15);
+}
+
+.stats-history-title {
+  margin: 0 0 6px;
+  font-size: 14px;
+}
+
+.stats-history-list {
+  margin: 6px 0 0;
+  padding-left: 18px;
 }
 
 .pc-audio-player {
@@ -2001,6 +2222,29 @@ label.bell-file-upload:hover {
   background: rgba(15, 23, 42, 0.45);
   border-radius: 8px;
   padding: 6px 8px;
+}
+
+.override-row-text {
+  flex: 1 1 auto;
+  min-width: 12rem;
+}
+
+.override-color {
+  width: 38px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.35);
+}
+
+.override-delete-btn {
+  width: 34px;
+  min-width: 34px;
+  height: 30px;
+  padding: 0;
+  line-height: 28px;
+  font-size: 18px;
 }
 
 .compact-form-row {

@@ -8,11 +8,11 @@ from pathlib import Path
 
 from fastapi import HTTPException
 
-from gs_admin_http import admin_msg
-from gs_ensure_dirs import ensure_dirs
-from gs_fs import clear_directory
-from gs_jsonio import read_json, write_json
-from gs_paths import (
+from .gs_admin_http import admin_msg
+from .gs_ensure_dirs import ensure_dirs
+from .gs_fs import clear_directory
+from .gs_jsonio import read_json, write_json
+from .gs_paths import (
     AUTH_PATH,
     BELL_SCHEDULES_PATH,
     CHANGE_LOG_PATH,
@@ -25,7 +25,7 @@ from gs_paths import (
     SCHEDULE_SAMPLE_PATH,
     UPLOADS_DIR,
 )
-from gs_weekly_template import ensure_weekly_schedule_template_file
+from .gs_weekly_template import ensure_weekly_schedule_template_file
 
 
 def export_weekly_schedule_bundle_bytes() -> bytes:
@@ -184,3 +184,10 @@ def import_bundle_bytes(raw_bytes: bytes, *, lang: str = "ru") -> None:
                 target.write_bytes(payload)
             else:
                 (DATA_DIR / path.name).write_bytes(payload)
+
+    try:
+        from .cloud_store import persist_snapshot_to_database
+
+        persist_snapshot_to_database()
+    except Exception:
+        pass

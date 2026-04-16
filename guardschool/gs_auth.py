@@ -7,9 +7,9 @@ from typing import Any
 
 from fastapi import HTTPException, Request
 
-from gs_admin_http import admin_msg, admin_ui_lang
-from gs_jsonio import read_json
-from gs_paths import AUTH_PATH, SESSION_COOKIE
+from .gs_admin_http import admin_msg, admin_ui_lang
+from .gs_jsonio import read_json
+from .gs_paths import AUTH_PATH, SESSION_COOKIE
 
 
 def load_auth() -> dict[str, Any]:

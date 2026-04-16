@@ -7,3 +7,7 @@ dist/
 build/
 build_full/
 full/
+
+# Облако guarddoc.ru: секреты (каркас см. cloud_guarddoc/)
+cloud_guarddoc/.env
+cloud_guarddoc/*.local
