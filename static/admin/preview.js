@@ -210,6 +210,15 @@ export function renderPreview() {
   const hiddenWidgetIds = G.widgetIdsHiddenByCarousel(screen);
   const preview = document.createElement("div");
   preview.className = "screen-grid";
+  const isPortrait = String(screen.orientation || "").toLowerCase() === "portrait";
+  const cols = GRID.cols;
+  const rows = GRID.rows;
+  preview.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+  preview.style.gridTemplateRows = `repeat(${rows}, 1fr)`;
+  // Контейнер превью по умолчанию 16:9 — для портрета выставляем 9:16.
+  if (elements.preview && elements.preview.style) {
+    elements.preview.style.aspectRatio = isPortrait ? "9 / 16" : "16 / 9";
+  }
   if (state.drag) {
     preview.classList.add("show-grid");
   }

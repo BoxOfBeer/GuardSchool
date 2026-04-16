@@ -220,7 +220,7 @@ export function updateStreamStatusBar() {
         !st.resolved_ffplay
       ) {
         diag +=
-          "\n⚠ Не найден ffmpeg/ffplay — расписание на Рупор с этого ПК не сыграет. Установите ffmpeg или укажите путь.";
+          "\n⚠ Не найден ffmpeg/ffplay — звук с этого ПК не сыграет. Установите ffmpeg (Linux: `sudo apt install ffmpeg`) или укажите путь к ffmpeg/ffplay.";
       }
       el.textContent = `${run}${pid} (${busy})${kind}${tail}${diag}`;
       if (state.audioStreamPanelActive) {

@@ -115,6 +115,7 @@ function settingInputs(widget, index) {
   const parts = [];
   parts.push(widgetToggle(t("w.enabled"), widget.enabled, `widget:${index}:enabled`));
   parts.push(widgetToggle(t("w.backdrop"), widget.settings.backdrop !== false, `widget:${index}:settings.backdrop`));
+  parts.push(widgetToggle("Только в меню", widget.menu_only === true, `widget:${index}:menu_only`));
   if (["date", "time", "text", "bell_status", "holidays", "announcements", "marquee", "emergency"].includes(widget.type)) {
     parts.push(widgetInput(t("w.fontSize"), widget.settings.fontSize, `widget:${index}:settings.fontSize`, "number", "standard-input"));
     parts.push(widgetInput(t("w.color"), widget.settings.color, `widget:${index}:settings.color`, "color", "standard-input"));
@@ -346,7 +347,8 @@ export function updateWidgetField(path, value) {
     } else if (key === "backdrop" || key === "useManual" || key === "advanceOnShow" || key === "randomize") widget.settings[key] = Boolean(value);
     else widget.settings[key] = value;
   } else {
-    widget[fieldRaw] = fieldRaw === "enabled" ? Boolean(value) : Number(value);
+    if (fieldRaw === "enabled" || fieldRaw === "menu_only") widget[fieldRaw] = Boolean(value);
+    else widget[fieldRaw] = Number(value);
   }
   clampWidget(widget);
   deps.render();

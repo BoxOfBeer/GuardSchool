@@ -1,5 +1,10 @@
 [
   {
+    "version": "1.01.015",
+    "timestamp": "2026-04-16T20:00:00",
+    "message": "Синхронизация APP_VERSION и cache-bust статики (единый номер релиза). Удалён случайный diff из backups/, каталог backups/ в .gitignore."
+  },
+  {
     "version": "1.01.012",
     "timestamp": "2026-04-16T18:00:00",
     "message": "ТВ: второй лист screen-tv-critical.css (минимальная сетка/виджет/таблица) после styles-tv; упрощён styles-tv (без aspect-ratio/inset/clamp/min()/max-content для старых движков); ensureTvStylesheet обновляет оба. Те же правки в styles.css в зоне ТВ."

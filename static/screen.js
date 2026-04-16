@@ -466,6 +466,7 @@ function render(screenPayload) {
   const { screen, schedule, holidays, announcements, marquee } = screenPayload;
   const root = document.getElementById("screen-root");
   if (!root) return;
+  const menuMode = new URLSearchParams(window.location.search || "").get("gs_menu") === "1";
 
   const layoutSig = JSON.stringify((screen.widgets || []).map((w) => ({
     id: w.id,
@@ -487,13 +488,46 @@ function render(screenPayload) {
 
   const gallery = screenPayload.background_gallery || [];
 
-  if (!canSoftUpdate) {
+  if (menuMode) {
+    // Режим меню: показываем виджеты, помеченные menu_only=true, списком.
+    (GRef.pruneStaleWidgetState || GRef.pruneStaleCarouselState)(screen);
+    GRef.clearAllTimers();
+    root.innerHTML = "";
+    const isPortrait = String(screen.orientation || "").toLowerCase() === "portrait";
+    if (root && root.style) root.style.aspectRatio = isPortrait ? "9 / 16" : "16 / 9";
+    const list = document.createElement("div");
+    list.className = "gs-menu-list";
+    list.style.display = "grid";
+    list.style.gap = "10px";
+    list.style.padding = "14px";
+    list.style.boxSizing = "border-box";
+    (screen.widgets || []).forEach((widget) => {
+      if (widget.enabled === false) return;
+      if (widget.menu_only !== true) return;
+      const item = document.createElement("div");
+      item.className = "screen-widget";
+      item.dataset.widgetId = String(widget.id);
+      item.dataset.widgetType = String(widget.type);
+      item.innerHTML = GRef.renderWidgetHtml(widget, schedule, screen, holidays, announcements || [], marquee || []);
+      if (GRef.applyWidgetBackdropClass) GRef.applyWidgetBackdropClass(item, widget);
+      list.appendChild(item);
+    });
+    root.appendChild(list);
+  } else if (!canSoftUpdate) {
     const grid = document.createElement("div");
     grid.className = "screen-grid";
+    const isPortrait = String(screen.orientation || "").toLowerCase() === "portrait";
+    const cols = isPortrait ? 26 : 32;
+    const rows = isPortrait ? 32 : 26;
+    grid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+    grid.style.gridTemplateRows = `repeat(${rows}, 1fr)`;
+    // Портрет: правим aspect-ratio контейнера.
+    if (root && root.style) root.style.aspectRatio = isPortrait ? "9 / 16" : "16 / 9";
     const hiddenWidgetIds = GRef.widgetIdsHiddenByCarousel(screen);
     const ordered = GRef.sortWidgetsForDom ? GRef.sortWidgetsForDom(screen) : (screen.widgets || []).filter((w) => {
       if (w.enabled === false) return false;
       if (hiddenWidgetIds.has(w.id) && w.type !== "carousel") return false;
+      if (w.menu_only === true) return false;
       return true;
     });
 

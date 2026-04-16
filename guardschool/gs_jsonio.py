@@ -5,14 +5,18 @@ import json
 from pathlib import Path
 from typing import Any
 
+from .tenant_ctx import map_data_path
+
 
 def read_json(path: Path, fallback: Any) -> Any:
+    path = map_data_path(path)
     if not path.exists():
         return fallback
     return json.loads(path.read_text(encoding="utf-8"))
 
 
 def write_json(path: Path, payload: Any) -> None:
+    path = map_data_path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     try:

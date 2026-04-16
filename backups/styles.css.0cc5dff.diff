@@ -1,9 +1,0 @@
-Diff base: 0cc5dff (last committed styles.css)
-Target: working tree (current local edits)
-
-To reapply / inspect:
-- view diff: `git diff 0cc5dff -- static/styles.css`
-- restore to commit: `git checkout 0cc5dff -- static/styles.css`
-
-NOTE: This file is a backup pointer. The full diff is large (~1500 lines) so it is not duplicated here.
-

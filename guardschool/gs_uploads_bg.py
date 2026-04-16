@@ -9,6 +9,7 @@ from .gs_paths import (
     UPLOADS_DIR,
     WIDGET_IMAGES_SUBDIR,
 )
+from .tenant_ctx import map_data_path
 
 
 def safe_rel_uploads_subdir(raw: Any) -> str:
@@ -25,7 +26,8 @@ def list_background_images_from_uploads(subdir: str = "") -> list[str]:
     """Публичные URL изображений в data/uploads/<subdir> (bells не используем)."""
     ensure_dirs()
     rel = safe_rel_uploads_subdir(subdir)
-    base = UPLOADS_DIR / rel if rel else UPLOADS_DIR
+    uploads = map_data_path(UPLOADS_DIR)
+    base = uploads / rel if rel else uploads
     if not base.is_dir():
         return []
     names: list[str] = []
@@ -48,9 +50,10 @@ def list_background_subdirs_from_uploads() -> list[str]:
     out: set[str] = set()
     if any(list_background_images_from_uploads("")):
         out.add("")
-    if not UPLOADS_DIR.is_dir():
+    uploads = map_data_path(UPLOADS_DIR)
+    if not uploads.is_dir():
         return [""]
-    for p in UPLOADS_DIR.iterdir():
+    for p in uploads.iterdir():
         if not p.is_dir():
             continue
         if p.name.startswith(".") or p.name.lower() == "bells" or p.name.lower() == WIDGET_IMAGES_SUBDIR:

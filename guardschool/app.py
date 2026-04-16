@@ -35,6 +35,7 @@ from .gs_auth import (
     require_auth,
 )
 from .cloud_store import hydrate_data_dir_from_database, is_cloud_database_enabled, read_revision_from_database
+from .gs_deploy import deployment_mode
 from .gs_saas_bootstrap import ensure_saas_bootstrap_admin
 from .gs_saas_limits import (
     json_utf8_size,
@@ -105,6 +106,8 @@ from .gs_paths import (
 )
 from .gs_weekly_template import ensure_weekly_schedule_template_file
 from .gs_screen_watch import record_screen_poll, screen_watch_snapshot
+from .saas_db import ensure_public_schema, saas_db_enabled
+from .saas_db import connect_public, ensure_tenant_schema, license_key_hash, random_id, schema_name_for_slug, utcnow
 
 GRID_COLS = 32
 GRID_ROWS = 26
@@ -180,6 +183,7 @@ def default_screen(name: str, slug: str) -> dict[str, Any]:
         "name": name,
         "slug": slug,
         "ip_note": "",
+        "orientation": "landscape",  # landscape|portrait
         "poll_interval_sec": 10,
         "background_image": "",
         "background_rotate_enabled": False,
@@ -1023,6 +1027,8 @@ def sanitize_config(config: dict[str, Any]) -> dict[str, Any]:
         screen.setdefault("background_rotate_epoch", 0)
         screen.setdefault("tv_text_outline_px", 2)
         screen.setdefault("tv_text_outline_color", "rgba(0,0,0,0.85)")
+        ori = str(screen.get("orientation") or "landscape").strip().lower()
+        screen["orientation"] = ori if ori in ("landscape", "portrait") else "landscape"
         try:
             _bri2 = int(screen["background_rotate_interval_sec"])
         except (TypeError, ValueError):
@@ -1842,6 +1848,11 @@ from . import bell_rupor_worker
 
 @asynccontextmanager
 async def _guard_school_lifespan(_app: FastAPI):
+    if saas_db_enabled():
+        try:
+            ensure_public_schema()
+        except Exception:
+            pass
     ensure_saas_bootstrap_admin()
     hydrate_data_dir_from_database()
     cancel_sync = None
@@ -1862,12 +1873,216 @@ async def _guard_school_lifespan(_app: FastAPI):
 
 app = FastAPI(title="GuardSchool", lifespan=_guard_school_lifespan)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
-app.mount("/uploads", StaticFiles(directory=UPLOADS_DIR), name="uploads")
+
+# uploads/ зависят от школы (тенанта) в SaaS, поэтому отдаём через handler, а не StaticFiles mount.
+
+
+@app.middleware("http")
+async def _tenant_middleware(request: Request, call_next):
+    """
+    SaaS: по Host определяем школу и маппим data/ на tenants/<slug>/data.
+    В остальных режимах ничего не делаем.
+    """
+    from .tenant_ctx import set_tenant_slug
+
+    if deployment_mode() == "saas":
+        host = (request.headers.get("host") or "").split(":")[0].strip().lower()
+        slug: str | None = None
+        if host.endswith(".guarddoc.ru"):
+            left = host[: -len(".guarddoc.ru")]
+            if left and left not in ("www", "admin"):
+                slug = left
+        # portal: guarddoc.ru / www.guarddoc.ru -> slug остаётся None
+        set_tenant_slug(slug)
+        if slug:
+            try:
+                from .saas_db import ensure_tenant_schema, saas_db_enabled, schema_name_for_slug
+
+                if saas_db_enabled():
+                    ensure_tenant_schema(schema_name_for_slug(slug))
+            except Exception:
+                pass
+    try:
+        return await call_next(request)
+    finally:
+        if deployment_mode() == "saas":
+            set_tenant_slug(None)
 
 
 @app.get("/api/version")
 def get_public_version() -> dict[str, str]:
     return {"product": "GuardSchool", "version": APP_VERSION}
+
+
+def _require_provider_admin(request: Request) -> None:
+    tok = (os.environ.get("GUARDSCHOOL_PROVIDER_ADMIN_TOKEN") or "").strip()
+    if not tok:
+        raise HTTPException(status_code=501, detail="Provider admin is not configured.")
+    auth = (request.headers.get("authorization") or "").strip()
+    if auth != f"Bearer {tok}":
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+
+def _generate_license_key() -> str:
+    # Читаемый ключ без спорных символов (MVP).
+    raw = secrets.token_hex(12).upper()
+    return f"GS-{raw[:4]}-{raw[4:8]}-{raw[8:12]}-{raw[12:16]}-{raw[16:20]}-{raw[20:24]}"
+
+
+def _demo_token_hash(token: str) -> str:
+    import hashlib
+
+    pepper = (os.environ.get("GUARDSCHOOL_DEMO_PEPPER") or os.environ.get("GUARDSCHOOL_LICENSE_PEPPER") or "").encode("utf-8")
+    raw = (token or "").strip().encode("utf-8")
+    return hashlib.sha256(pepper + b"\n" + raw).hexdigest()
+
+
+@app.get("/api/provider/licenses")
+def provider_list_licenses(request: Request) -> dict[str, Any]:
+    _require_provider_admin(request)
+    if not saas_db_enabled():
+        return {"licenses": []}
+    with connect_public() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT key_hash, plan_id, status, issued_at, expires_at, notes FROM licenses ORDER BY issued_at DESC LIMIT 500"
+            )
+            rows = cur.fetchall() or []
+    return {
+        "licenses": [
+            {
+                "key_hash": r[0],
+                "plan_id": r[1],
+                "status": r[2],
+                "issued_at": r[3].isoformat() if r[3] else None,
+                "expires_at": r[4].isoformat() if r[4] else None,
+                "notes": r[5],
+            }
+            for r in rows
+        ]
+    }
+
+
+@app.post("/api/provider/licenses")
+async def provider_create_license(request: Request) -> dict[str, Any]:
+    _require_provider_admin(request)
+    if not saas_db_enabled():
+        raise HTTPException(status_code=500, detail="SaaS database is not configured.")
+    body = await request.json()
+    plan_id = str(body.get("plan_id") or "").strip() or "free"
+    notes = str(body.get("notes") or "").strip()
+    expires_days = body.get("expires_days", None)
+    expires_at = None
+    if expires_days is not None:
+        try:
+            d = int(expires_days)
+            if d > 0:
+                expires_at = utcnow() + timedelta(days=d)
+        except Exception:
+            pass
+    key = _generate_license_key()
+    key_h = license_key_hash(key)
+    with connect_public() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id FROM plans WHERE id=%s", (plan_id,))
+            if not cur.fetchone():
+                raise HTTPException(status_code=400, detail="Unknown plan_id")
+            cur.execute(
+                "INSERT INTO licenses (key_hash, plan_id, status, expires_at, notes) VALUES (%s,%s,'active',%s,%s)",
+                (key_h, plan_id, expires_at, notes),
+            )
+        conn.commit()
+    return {"status": "ok", "license_key": key, "key_hash": key_h, "plan_id": plan_id, "expires_at": expires_at.isoformat() if expires_at else None}
+
+
+@app.post("/api/provider/licenses/{key_hash}/status")
+async def provider_set_license_status(key_hash: str, request: Request) -> dict[str, str]:
+    _require_provider_admin(request)
+    if not saas_db_enabled():
+        raise HTTPException(status_code=500, detail="SaaS database is not configured.")
+    body = await request.json()
+    status = str(body.get("status") or "").strip() or "active"
+    if status not in ("active", "disabled", "revoked"):
+        raise HTTPException(status_code=400, detail="Invalid status")
+    with connect_public() as conn:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE licenses SET status=%s WHERE key_hash=%s", (status, key_hash))
+            if cur.rowcount <= 0:
+                raise HTTPException(status_code=404, detail="Not found")
+        conn.commit()
+    return {"status": "ok"}
+
+
+@app.post("/api/provider/demo")
+async def provider_create_demo(request: Request) -> dict[str, Any]:
+    _require_provider_admin(request)
+    if deployment_mode() != "saas" or not saas_db_enabled():
+        raise HTTPException(status_code=500, detail="SaaS is not configured.")
+    body = await request.json()
+    slug = str(body.get("tenant_slug") or "").strip().lower()
+    try:
+        ttl_min = int(body.get("expires_minutes") or 60)
+    except Exception:
+        ttl_min = 60
+    ttl_min = max(5, min(180, ttl_min))
+    if not slug:
+        raise HTTPException(status_code=400, detail="tenant_slug required")
+    token = secrets.token_urlsafe(24)
+    th = _demo_token_hash(token)
+    expires_at = utcnow() + timedelta(minutes=ttl_min)
+    with connect_public() as conn:
+        with conn.cursor() as cur:
+            cur.execute("INSERT INTO demo_sessions (token_hash, tenant_slug, expires_at) VALUES (%s,%s,%s)", (th, slug, expires_at))
+        conn.commit()
+    return {"status": "ok", "token": token, "url_path": f"/demo/{token}", "tenant_host": f\"{slug}.guarddoc.ru\", \"expires_at\": expires_at.isoformat()}
+
+
+@app.get("/demo/{token}")
+def demo_login(token: str, request: Request, response: Response) -> Response:
+    if deployment_mode() != "saas" or not saas_db_enabled():
+        raise HTTPException(status_code=404, detail="Not found.")
+    from .tenant_ctx import tenant_slug as current_tenant
+
+    slug = current_tenant()
+    if not slug:
+        raise HTTPException(status_code=404, detail="Not found.")
+    th = _demo_token_hash(token)
+    now = utcnow()
+    with connect_public() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT expires_at FROM demo_sessions WHERE token_hash=%s AND tenant_slug=%s", (th, slug))
+            row = cur.fetchone()
+            if not row or not row[0] or row[0] <= now:
+                raise HTTPException(status_code=403, detail="Demo token expired.")
+            # одноразовый
+            cur.execute("DELETE FROM demo_sessions WHERE token_hash=%s", (th,))
+        conn.commit()
+
+    auth = load_auth()
+    if not auth:
+        raise HTTPException(status_code=428, detail="Tenant is not configured.")
+    token2 = create_session_token(str(auth.get("username") or "admin"), auth)
+    sec = session_cookie_secure(request)
+    response = RedirectResponse("/", status_code=302)
+    response.set_cookie(SESSION_COOKIE, token2, httponly=True, samesite="lax", secure=sec, path="/")
+    return response
+
+
+@app.get("/uploads/{path:path}")
+def uploads_file(path: str) -> Response:
+    from .tenant_ctx import map_data_path
+
+    # UPLOADS_DIR может быть пере-мапплен на tenant data.
+    base = map_data_path(UPLOADS_DIR).resolve()
+    rel = Path(str(path or "").lstrip("/").replace("\\", "/"))
+    # запрет на выход из каталога (..)
+    clean_parts = [p for p in rel.parts if p not in ("..", ".", "")]
+    full = (base / Path(*clean_parts)).resolve()
+    if base not in full.parents and full != base:
+        raise HTTPException(status_code=400, detail="Invalid path.")
+    if not full.is_file():
+        raise HTTPException(status_code=404, detail="Not found.")
+    return FileResponse(full)
 
 
 @app.get("/api/sync/status")
@@ -1925,6 +2140,11 @@ def screen_page(slug: str) -> Response:
     )
 
 
+@app.get("/screen/{slug}/menu")
+def screen_menu(slug: str) -> Response:
+    return RedirectResponse(f"/screen/{slug}?gs_menu=1")
+
+
 @app.get("/screens", response_class=HTMLResponse)
 def screens_index_page() -> Response:
     """Публичная страница выбора экрана (без админской сессии)."""
@@ -1936,7 +2156,87 @@ def screens_index_page() -> Response:
 
 @app.get("/api/bootstrap")
 def bootstrap_state() -> dict[str, Any]:
-    return {"configured": bool(load_auth()), "saas_mode": saas_mode()}
+    return {
+        "configured": bool(load_auth()),
+        "saas_mode": saas_mode(),
+        "deployment_mode": deployment_mode(),
+    }
+
+
+@app.post("/api/saas/register")
+async def saas_register(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    """
+    SaaS: регистрация по ключу лицензии.
+    Создаёт тенанта (схему) и auth.json в tenant data/.
+    """
+    if deployment_mode() != "saas":
+        raise HTTPException(status_code=404, detail="Not found.")
+    if not saas_db_enabled():
+        raise HTTPException(status_code=500, detail="SaaS database is not configured.")
+    lic_key = str(payload.get("license_key") or "").strip()
+    password = str(payload.get("password") or "").strip()
+    slug = str(payload.get("tenant_slug") or "").strip().lower()
+    if not lic_key or not slug:
+        raise HTTPException(status_code=400, detail="license_key and tenant_slug are required.")
+    if not password_is_valid(password):
+        raise HTTPException(status_code=400, detail="Пароль: не менее 8 символов, нужны буквы и цифры.")
+
+    key_h = license_key_hash(lic_key)
+    now = utcnow()
+    schema = schema_name_for_slug(slug)
+
+    with connect_public() as conn:
+        with conn.cursor() as cur:
+            # license must exist and be active
+            cur.execute("SELECT plan_id, status, expires_at FROM licenses WHERE key_hash=%s", (key_h,))
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="Лицензия не найдена.")
+            plan_id, status, expires_at = row[0], row[1], row[2]
+            if str(status) != "active":
+                raise HTTPException(status_code=403, detail="Лицензия отключена.")
+            if expires_at is not None and expires_at <= now:
+                raise HTTPException(status_code=403, detail="Срок лицензии истёк.")
+
+            # one tenant per license (MVP)
+            cur.execute("SELECT id, slug FROM tenants WHERE owner_user_id IN (SELECT id FROM users WHERE license_key_hash=%s)", (key_h,))
+            if cur.fetchone():
+                raise HTTPException(status_code=409, detail="Эта лицензия уже использована.")
+            cur.execute("SELECT id FROM tenants WHERE slug=%s", (slug,))
+            if cur.fetchone():
+                raise HTTPException(status_code=409, detail="Поддомен уже занят.")
+
+            user_id = random_id("u")
+            salt = secrets.token_hex(16)
+            pwd_hash = hash_password(password, salt)
+            cur.execute(
+                "INSERT INTO users (id, license_key_hash, password_salt, password_hash) VALUES (%s,%s,%s,%s)",
+                (user_id, key_h, salt, pwd_hash),
+            )
+            tenant_id = random_id("t")
+            cur.execute(
+                "INSERT INTO tenants (id, slug, schema_name, plan_id, owner_user_id) VALUES (%s,%s,%s,%s,%s)",
+                (tenant_id, slug, schema, plan_id, user_id),
+            )
+        conn.commit()
+
+    # create schema + snapshot table
+    ensure_tenant_schema(schema)
+
+    # create per-tenant auth.json for existing /api/login flow
+    from .tenant_ctx import set_tenant_slug
+
+    set_tenant_slug(slug)
+    try:
+        ensure_dirs()
+        write_json(
+            AUTH_PATH,
+            {"username": lic_key, "salt": salt, "password_hash": pwd_hash},
+        )
+    finally:
+        set_tenant_slug(None)
+
+    return {"status": "ok", "tenant": {"slug": slug, "schema": schema}}
 
 
 @app.post("/api/setup")
@@ -1998,7 +2298,14 @@ def logout(request: Request, response: Response) -> dict[str, str]:
 @app.get("/api/admin/config")
 def get_admin_config(request: Request) -> dict[str, Any]:
     require_auth(request)
-    return load_config()
+    cfg = load_config()
+    # Метаданные, которые нужны UI, но не должны сохраняться в config.json.
+    cfg["_meta"] = {
+        "saas_mode": saas_mode(),
+        "deployment_mode": deployment_mode(),
+        "app_version": APP_VERSION,
+    }
+    return cfg
 
 
 @app.post("/api/admin/config")
@@ -2012,6 +2319,8 @@ async def save_admin_config(request: Request) -> dict[str, str]:
 @app.get("/api/admin/sync-status")
 def get_admin_sync_status(request: Request) -> dict[str, Any]:
     require_auth(request)
+    if deployment_mode() == "saas":
+        raise HTTPException(status_code=404, detail="Not found.")
     from .gs_jsonio import read_json
 
     return {
@@ -2024,6 +2333,8 @@ def get_admin_sync_status(request: Request) -> dict[str, Any]:
 @app.post("/api/admin/sync-now")
 async def post_admin_sync_now(request: Request) -> dict[str, Any]:
     require_auth(request)
+    if deployment_mode() == "saas":
+        raise HTTPException(status_code=404, detail="Not found.")
     from .gs_cloud_sync import run_cloud_sync_once
 
     return await run_cloud_sync_once()

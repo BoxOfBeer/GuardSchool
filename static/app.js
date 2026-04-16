@@ -1,5 +1,5 @@
 /* Загружается как модульный dependency до остальных импортов — window.GuardSchoolScreen всегда к моменту init. */
-import "./screen_widgets.js?v=1.01.012";
+import "./screen_widgets.js?v=1.01.015";
 import {
   setPreviewDeps,
   fetchPreviewPayloadOnce,
@@ -732,8 +732,11 @@ function renderSectionVisibility() {
 
 function renderForm() {
   const screen = selectedScreen();
+  // Сетка зависит от ориентации (для предпросмотра/drag/resize).
+  if (screen.orientation === "portrait") { GRID.cols = 26; GRID.rows = 32; } else { GRID.cols = 32; GRID.rows = 26; }
   elements.screenName.value = screen.name;
   elements.screenSlug.value = screen.slug;
+  if (elements.screenOrientation) elements.screenOrientation.value = screen.orientation === "portrait" ? "portrait" : "landscape";
   elements.screenIpNote.value = screen.ip_note;
   elements.screenPollInterval.value = screen.poll_interval_sec;
   elements.screenBackground.value = screen.background_image || "";
@@ -1021,6 +1024,13 @@ function render() {
 function bindForm() {
   elements.screenName.oninput = (event) => { selectedScreen().name = event.target.value; renderTabs(); };
   elements.screenSlug.oninput = (event) => { selectedScreen().slug = event.target.value; };
+  if (elements.screenOrientation) {
+    elements.screenOrientation.onchange = (event) => {
+      selectedScreen().orientation = (event.target.value === "portrait" ? "portrait" : "landscape");
+      if (selectedScreen().orientation === "portrait") { GRID.cols = 26; GRID.rows = 32; } else { GRID.cols = 32; GRID.rows = 26; }
+      renderPreview();
+    };
+  }
   elements.screenIpNote.oninput = (event) => { selectedScreen().ip_note = event.target.value; };
   elements.screenPollInterval.oninput = (event) => { selectedScreen().poll_interval_sec = Number(event.target.value); };
   if (elements.screenOpenTvBtn) {
@@ -1254,7 +1264,19 @@ async function init() {
     api("/api/admin/schedule"),
     api("/api/admin/bell-sounds").catch(() => ({ files: [] })),
   ]);
+  state.meta = config?._meta || state.meta;
+  if (config && typeof config === "object") delete config._meta;
   state.config = config;
+  if (state.meta?.deployment_mode === "saas") {
+    // SaaS: синхронизация "с SaaS" не имеет смысла (облако и есть источник).
+    const hide = (el) => { if (el) el.closest?.(".settings-row")?.classList?.add("hidden") || (el.hidden = true); };
+    hide(elements.cloudBaseUrl);
+    hide(elements.cloudSyncInterval);
+    hide(elements.cloudSyncEnabled);
+    hide(elements.cloudSyncToken);
+    if (elements.syncStatusLine) elements.syncStatusLine.hidden = true;
+    if (elements.syncNowBtn) elements.syncNowBtn.hidden = true;
+  }
   ensureAdminPaletteHidden();
   ensureAudioStreamConfig();
   /* Иначе скрытые поля «Стрим» остаются пустыми до первого открытия вкладки — сохранение с ТВ затирало бы audio_stream */

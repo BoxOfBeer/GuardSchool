@@ -56,7 +56,23 @@ def _connect():
     import psycopg2
     import psycopg2.extras
 
-    return psycopg2.connect(database_url())
+    conn = psycopg2.connect(database_url())
+    # SaaS: если есть tenant в контексте — используем отдельную схему для school_snapshot.
+    try:
+        from .gs_deploy import deployment_mode
+        from .tenant_ctx import tenant_slug
+        from .saas_db import schema_name_for_slug
+
+        if deployment_mode() == "saas":
+            slug = tenant_slug()
+            if slug:
+                schema = schema_name_for_slug(slug)
+                with conn.cursor() as cur:
+                    cur.execute(f'SET search_path TO "{schema}", public')
+                conn.commit()
+    except Exception:
+        pass
+    return conn
 
 
 def _ensure_table(conn) -> None:

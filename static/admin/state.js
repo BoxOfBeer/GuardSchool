@@ -1,5 +1,6 @@
 export const state = {
   config: null,
+  meta: { saas_mode: false, deployment_mode: "hybrid", app_version: "" },
   selectedScreenId: null,
   audioStreamPanelActive: false,
   statsPanelActive: false,
@@ -46,6 +47,7 @@ export const elements = {
   weeklyScheduleImportInput: document.getElementById("weekly-schedule-import-input"),
   screenName: document.getElementById("screen-name"),
   screenSlug: document.getElementById("screen-slug"),
+  screenOrientation: document.getElementById("screen-orientation"),
   screenIpNote: document.getElementById("screen-ip-note"),
   screenPollInterval: document.getElementById("screen-poll-interval"),
   screenClasses: document.getElementById("screen-classes"),
