@@ -6,6 +6,20 @@
     <title>GuardDoc — экосистема</title>
     <link rel="stylesheet" href="/static/styles.css?v=1.02.001" />
     <style>
+      html.portal-skin,
+      body.portal-skin {
+        min-height: 100%;
+        margin: 0;
+        color: #f4f7ff !important;
+        background: radial-gradient(1200px 600px at 20% 0%, #1a3a6e 0%, #0b1f3d 45%, #071428 100%) !important;
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, "Helvetica Neue", Arial, sans-serif;
+      }
+      body.portal-skin a {
+        color: #9ec5ff;
+      }
+      body.portal-skin a:hover {
+        color: #cfe4ff;
+      }
       .gd-wrap {
         max-width: 980px;
         margin: 0 auto;
@@ -15,18 +29,21 @@
         display: grid;
         gap: 14px;
         padding: 18px;
-        border: 1px solid rgba(0, 0, 0, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.14);
         border-radius: 14px;
-        background: rgba(255, 255, 255, 0.9);
+        background: rgba(10, 28, 52, 0.72);
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+        backdrop-filter: blur(6px);
       }
       .gd-hero h1 {
         margin: 0;
         font-size: 28px;
         line-height: 1.2;
+        color: #fff;
       }
       .gd-hero p {
         margin: 0;
-        opacity: 0.9;
+        color: rgba(244, 247, 255, 0.9);
       }
       .gd-actions {
         display: flex;
@@ -37,18 +54,18 @@
       }
       .gd-btn {
         appearance: none;
-        border: 1px solid rgba(0, 0, 0, 0.16);
+        border: 1px solid rgba(255, 255, 255, 0.22);
         border-radius: 12px;
         padding: 10px 14px;
-        background: #fff;
-        color: #111;
+        background: rgba(255, 255, 255, 0.1);
+        color: #f4f7ff;
         text-decoration: none;
         font-weight: 600;
       }
       .gd-btn.primary {
-        background: #111;
-        color: #fff;
-        border-color: #111;
+        background: #f4f7ff;
+        color: #0b1f3d;
+        border-color: #f4f7ff;
       }
       .gd-grid {
         display: grid;
@@ -57,27 +74,28 @@
         margin-top: 14px;
       }
       .gd-card {
-        border: 1px solid rgba(0, 0, 0, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.12);
         border-radius: 14px;
         padding: 14px;
-        background: rgba(255, 255, 255, 0.86);
+        background: rgba(10, 28, 52, 0.55);
       }
       .gd-card h3 {
         margin: 0 0 6px;
         font-size: 16px;
+        color: #fff;
       }
       .gd-card p {
         margin: 0;
-        opacity: 0.9;
+        color: rgba(244, 247, 255, 0.88);
       }
       .gd-foot {
         margin-top: 18px;
-        opacity: 0.75;
+        color: rgba(244, 247, 255, 0.72);
         font-size: 12px;
       }
     </style>
   </head>
-  <body>
+  <body class="portal-skin">
     <div class="gd-wrap">
       <div class="gd-hero">
         <h1>GuardDoc</h1>

@@ -6,16 +6,39 @@
     <title>GuardSchool — регистрация</title>
     <link rel="stylesheet" href="/static/styles.css?v=1.02.001" />
     <style>
+      /* Перекрываем глобальные стили admin/TV (styles.css): школьный тёмно-синий + белый текст */
+      html.portal-skin,
+      body.portal-skin {
+        min-height: 100%;
+        margin: 0;
+        color: #f4f7ff !important;
+        background: radial-gradient(1200px 600px at 20% 0%, #1a3a6e 0%, #0b1f3d 45%, #071428 100%) !important;
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, "Helvetica Neue", Arial, sans-serif;
+      }
+      body.portal-skin a {
+        color: #9ec5ff;
+      }
+      body.portal-skin a:hover {
+        color: #cfe4ff;
+      }
+      body.portal-skin code {
+        color: #e8f0ff;
+        background: rgba(255, 255, 255, 0.08);
+        padding: 1px 6px;
+        border-radius: 6px;
+      }
       .wrap {
         max-width: 720px;
         margin: 0 auto;
         padding: 28px 18px 60px;
       }
       .card {
-        border: 1px solid rgba(0, 0, 0, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.14);
         border-radius: 14px;
-        padding: 16px;
-        background: rgba(255, 255, 255, 0.9);
+        padding: 20px;
+        background: rgba(10, 28, 52, 0.72);
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+        backdrop-filter: blur(6px);
       }
       .row {
         display: grid;
@@ -24,13 +47,18 @@
       }
       label {
         font-weight: 600;
-        opacity: 0.9;
+        color: #e8f0ff;
       }
       input {
         width: 100%;
         padding: 10px 12px;
         border-radius: 12px;
-        border: 1px solid rgba(0, 0, 0, 0.18);
+        border: 1px solid rgba(255, 255, 255, 0.22);
+        background: rgba(255, 255, 255, 0.96);
+        color: #0b1f3d;
+      }
+      input::placeholder {
+        color: #5a6b82;
       }
       .actions {
         display: flex;
@@ -41,40 +69,41 @@
       button,
       a.btn {
         appearance: none;
-        border: 1px solid rgba(0, 0, 0, 0.16);
+        border: 1px solid rgba(255, 255, 255, 0.22);
         border-radius: 12px;
         padding: 10px 14px;
-        background: #fff;
-        color: #111;
+        background: rgba(255, 255, 255, 0.1);
+        color: #f4f7ff;
         text-decoration: none;
         font-weight: 700;
         cursor: pointer;
       }
       button.primary {
-        background: #111;
-        color: #fff;
-        border-color: #111;
+        background: #f4f7ff;
+        color: #0b1f3d;
+        border-color: #f4f7ff;
       }
       .hint {
         margin-top: 10px;
         font-size: 12px;
-        opacity: 0.75;
+        color: rgba(244, 247, 255, 0.78);
       }
       .out {
         margin-top: 12px;
         padding: 10px 12px;
         border-radius: 12px;
-        border: 1px dashed rgba(0, 0, 0, 0.22);
-        background: rgba(255, 255, 255, 0.7);
+        border: 1px dashed rgba(255, 255, 255, 0.35);
+        background: rgba(0, 0, 0, 0.25);
+        color: #f4f7ff;
         white-space: pre-wrap;
       }
     </style>
   </head>
-  <body>
+  <body class="portal-skin">
     <div class="wrap">
       <div class="card">
-        <h2 style="margin: 0 0 8px">Регистрация GuardSchool</h2>
-        <div style="opacity: 0.9">
+        <h2 style="margin: 0 0 8px; color: #fff">Регистрация GuardSchool</h2>
+        <div style="color: rgba(244, 247, 255, 0.9)">
           Лицензия — это ваш “логин”, пароль вы задаёте сами. После регистрации откроется ваша школа на
           <code>&lt;код_школы&gt;.guarddoc.ru</code>.
         </div>
