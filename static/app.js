@@ -189,12 +189,68 @@ async function refreshSyncStatusLine() {
   }
 }
 
+let _tvLastCode = "";
+
+function renderTvLinks(code) {
+  const wrap = elements.tvLinksWrap;
+  if (!wrap) return;
+  const c = String(code || "").trim();
+  if (!state.config || !Array.isArray(state.config.screens)) {
+    wrap.innerHTML = "";
+    return;
+  }
+  const items = (state.config.screens || []).filter((s) => s && s.slug && s.is_active !== false);
+  if (!c) {
+    wrap.innerHTML = '<div class="hint">Ссылки появятся после генерации кода (кнопка «Сгенерировать код»).</div>';
+    return;
+  }
+  const base = window.location.origin.replace(/\/$/, "");
+  const links = items
+    .map((s) => {
+      const sl = String(s.slug || "").trim();
+      const name = String(s.name || sl).trim();
+      const url = `${base}/t/${encodeURIComponent(c)}/${encodeURIComponent(sl)}`;
+      return `<div style="margin: 6px 0"><div style="font-weight:700">${escapeHtml(name)}</div><a href="${escapeHtmlAttr(
+        url
+      )}" target="_blank" rel="noopener">${escapeHtml(url)}</a></div>`;
+    })
+    .join("");
+  wrap.innerHTML = links || '<div class="hint">Нет активных экранов.</div>';
+}
+
+async function refreshTvAccessUi() {
+  const head = elements.tvAccessHead;
+  const wrap = elements.tvAccessWrap;
+  if (!head || !wrap) return;
+  if (state.meta?.deployment_mode !== "saas") {
+    head.hidden = true;
+    wrap.hidden = true;
+    return;
+  }
+  head.hidden = false;
+  wrap.hidden = false;
+  if (elements.tvCodeOut) elements.tvCodeOut.textContent = "";
+  try {
+    const st = await api("/api/admin/tv-access");
+    const configured = Boolean(st.configured);
+    if (elements.tvCodeOut && !_tvLastCode) {
+      elements.tvCodeOut.textContent = configured
+        ? "Код школы уже сгенерирован. Нажмите «Сгенерировать код», чтобы показать новый код (старые ссылки перестанут работать)."
+        : "Код школы ещё не создан. Нажмите «Сгенерировать код», затем задайте PIN.";
+    }
+  } catch (e) {
+    if (elements.tvCodeOut) elements.tvCodeOut.textContent = `Ошибка: ${e.message || String(e)}`;
+  }
+  renderTvLinks(_tvLastCode);
+}
+
 function openProgramSettingsModal() {
   if (!elements.programSettingsModal) return;
   closeWidgetModal();
   syncProgramSettingsFieldsFromState();
   renderProgramPaletteCheckboxes();
   refreshSyncStatusLine().catch(() => {});
+  refreshTvAccessUi().catch(() => {});
   try {
     GuardSchoolI18n.applyDom(elements.programSettingsModal);
   } catch (_) {}
@@ -225,6 +281,38 @@ function bindProgramSettingsModalOnce() {
     if (e.target.closest("[data-close-program-settings]")) {
       e.preventDefault();
       closeProgramSettingsModal();
+    }
+  });
+
+  elements.tvRotateCodeBtn?.addEventListener("click", async () => {
+    try {
+      const r = await api("/api/admin/tv-access/rotate-code", { method: "POST" });
+      const code = String(r.code || "").trim();
+      _tvLastCode = code;
+      if (elements.tvCodeOut) {
+        elements.tvCodeOut.textContent = `КОД ШКОЛЫ:\n${code}\n\nСохраните его. После обновления страницы код скрывается.`;
+      }
+      renderTvLinks(code);
+    } catch (e) {
+      alert(e.message || String(e));
+    }
+  });
+
+  elements.tvSetPinBtn?.addEventListener("click", async () => {
+    const pin = String(elements.tvPinInput?.value || "").trim();
+    if (!/^[0-9]{4,12}$/.test(pin)) {
+      alert("PIN должен быть 4–12 цифр.");
+      return;
+    }
+    try {
+      await api("/api/admin/tv-access/set-pin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pin }),
+      });
+      alert("PIN сохранён.");
+    } catch (e) {
+      alert(e.message || String(e));
     }
   });
 }

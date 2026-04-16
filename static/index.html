@@ -442,6 +442,21 @@
           <p class="hint program-settings-palette-hint" data-i18n="programSettings.paletteHint">Снятая галочка скрывает тип только в списке под заголовком «Виджеты» (кнопка «Настроить»). На ТВ и в сетке предпросмотра без изменений. Чтобы настроить скрытый блок — отметьте тип снова.</p>
           <div id="program-settings-palette-checkboxes" class="program-settings-palette-grid"></div>
 
+          <h4 id="tv-access-head" class="settings-popover-subhead" style="margin-top: 16px" hidden>Подключение ТВ (SaaS)</h4>
+          <div id="tv-access-wrap" class="settings-row" hidden>
+            <p class="hint" style="margin-top: 0">
+              Сгенерируйте короткий код школы, задайте PIN (4–12 цифр) и используйте ссылки для экранов:
+              <code>/t/&lt;код&gt;/&lt;экран&gt;</code>.
+            </p>
+            <div class="settings-row settings-btn-row" style="justify-content: flex-start; gap: 10px; flex-wrap: wrap">
+              <button type="button" id="tv-rotate-code-btn" class="secondary-btn">Сгенерировать код</button>
+              <input id="tv-pin-input" class="standard-input" inputmode="numeric" placeholder="PIN 4–12 цифр" style="max-width: 180px" />
+              <button type="button" id="tv-set-pin-btn" class="secondary-btn">Сохранить PIN</button>
+            </div>
+            <pre id="tv-code-out" class="settings-probe-out" style="white-space: pre-wrap"></pre>
+            <div id="tv-links-wrap" class="settings-row" style="margin-top: 10px"></div>
+          </div>
+
           <div class="settings-row settings-btn-row">
             <button id="save-config-btn" type="button" class="primary-btn" data-i18n="top.save">Сохранить</button>
             <button id="export-data-btn" type="button" class="secondary-btn" data-i18n="top.export">Экспорт ZIP</button>

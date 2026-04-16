@@ -122,4 +122,11 @@ export const elements = {
   screenPollTimeout: document.getElementById("screen-poll-timeout"),
   syncStatusLine: document.getElementById("sync-status-line"),
   syncNowBtn: document.getElementById("sync-now-btn"),
+  tvAccessHead: document.getElementById("tv-access-head"),
+  tvAccessWrap: document.getElementById("tv-access-wrap"),
+  tvRotateCodeBtn: document.getElementById("tv-rotate-code-btn"),
+  tvPinInput: document.getElementById("tv-pin-input"),
+  tvSetPinBtn: document.getElementById("tv-set-pin-btn"),
+  tvCodeOut: document.getElementById("tv-code-out"),
+  tvLinksWrap: document.getElementById("tv-links-wrap"),
 };
