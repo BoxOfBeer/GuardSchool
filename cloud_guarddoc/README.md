@@ -17,6 +17,27 @@
 | Публичное демо `/try-demo` (портал) | По умолчанию тенант-песочница `demo` и редирект на `demo.<ваш-домен>` (отдельный каталог `tenants/demo/data` с дефолтным `config.json`). Нужна DNS-запись на этот поддомен. Явный хост: `GUARDSCHOOL_TRY_DEMO_REDIRECT_HOST`. Ссылка `/demo/…` на **боевом** поддомене школы без `GUARDSCHOOL_DEMO_ALLOW_ANY_TENANT=1` отклоняется — гости не видят чужие экраны и расписание. Однократный сброс песочницы к дефолту при каждом старте процесса: `GUARDSCHOOL_TRY_DEMO_RESET_ON_START=1`. Старый вариант «всё на одном `GUARDSCHOOL_PUBLIC_SCHOOL_HOST`»: `GUARDSCHOOL_TRY_DEMO_USE_PUBLIC_SCHOOL_HOST=1` и при необходимости `GUARDSCHOOL_DEMO_TENANT_SLUG=school` (данные общие с этой школой — не рекомендуется). Логин владельца песочницы (не обязателен для гостя): `GUARDSCHOOL_TRY_DEMO_ADMIN_USERNAME` / `GUARDSCHOOL_TRY_DEMO_ADMIN_PASSWORD` (≥8 символов, буквы и цифры). Демо на произвольном `tenant_slug` (выдача провайдером): `GUARDSCHOOL_DEMO_ALLOW_ANY_TENANT=1`. |
 | Лимиты (опционально) | `GUARDSCHOOL_SAAS_MAX_SCHEDULE_XLSX_BYTES` (по умолчанию 15 МБ), `GUARDSCHOOL_SAAS_MAX_SCHEDULE_JSON_BYTES` (1 МБ), `GUARDSCHOOL_SAAS_MAX_USER_DATA_BYTES` (15 МБ суммарно JSON), `GUARDSCHOOL_SAAS_MAX_WEEKLY_ZIP_BYTES` (15 МБ) |
 | TLS | Прокси (nginx/caddy) с Let's Encrypt на `guarddoc.ru` |
+| Выход из демо | После «Выйти из демо» браузер уходит на главную портала: по умолчанию `https://guarddoc.ru`. Переопределение: `GUARDSCHOOL_DEMO_EXIT_URL` или `GUARDSCHOOL_PORTAL_PUBLIC_URL`. |
+
+## TLS (certbot + nginx)
+
+Перед выпуском сертификата **DNS** для всех имён должен указывать на сервер (A-запись), иначе ACME HTTP-01 не пройдёт.
+
+Пример **расширения** существующего сертификата новыми поддоменами (подставьте свой путь к конфигу nginx):
+
+```bash
+sudo certbot --nginx -d guarddoc.ru -d www.guarddoc.ru -d school.guarddoc.ru -d demo.guarddoc.ru
+```
+
+Если используете `certonly` + webroot:
+
+```bash
+sudo certbot certonly --webroot -w /var/www/html -d guarddoc.ru -d www.guarddoc.ru -d school.guarddoc.ru -d demo.guarddoc.ru
+```
+
+После успешной выдачи перезагрузите nginx (`sudo nginx -t && sudo systemctl reload nginx`). В `server_name` каждого блока должны быть перечислены нужные хосты, либо отдельные `server` на каждый поддомен с одним и тем же `ssl_certificate` (путь к fullchain из `/etc/letsencrypt/live/...`).
+
+Если в браузере по-прежнему «Не защищено»: проверьте, что открытое имя **входит** в SAN сертификата (вкладка «Сведения о сертификате»), сертификат не просрочен, цепочка до Let's Encrypt полная. Строка «Вы отключили предупреждения…» в Chrome относится к **настройке сайта в браузере**, а не к серверу — включите предупреждения обратно для честной проверки.
 
 ## Демо заказчику (за час)
 

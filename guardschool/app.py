@@ -2191,6 +2191,14 @@ def _demo_allow_any_tenant_token() -> bool:
     return (os.environ.get("GUARDSCHOOL_DEMO_ALLOW_ANY_TENANT") or "").strip().lower() in ("1", "true", "yes", "on")
 
 
+def _demo_exit_redirect_url() -> str:
+    """Куда вести гостя после «Выйти из демо» (главная портала, не /login на поддомене песочницы)."""
+    u = (os.environ.get("GUARDSCHOOL_DEMO_EXIT_URL") or os.environ.get("GUARDSCHOOL_PORTAL_PUBLIC_URL") or "").strip()
+    if u:
+        return u.rstrip("/")
+    return "https://guarddoc.ru"
+
+
 @app.get("/api/provider/licenses")
 def provider_list_licenses(request: Request) -> dict[str, Any]:
     _require_provider_admin(request)
@@ -2726,6 +2734,7 @@ def get_admin_config(request: Request) -> dict[str, Any]:
         "deployment_mode": deployment_mode(),
         "app_version": APP_VERSION,
         "demo_session": verify_demo_session_token(request.cookies.get(SESSION_COOKIE)),
+        "demo_exit_url": _demo_exit_redirect_url(),
     }
     return cfg
 

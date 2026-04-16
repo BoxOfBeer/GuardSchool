@@ -1510,7 +1510,9 @@ const demoLogoutBtn = document.getElementById("demo-session-logout-btn");
 if (demoLogoutBtn) {
   demoLogoutBtn.onclick = async () => {
     await api("/api/logout", { method: "POST" });
-    window.location.href = "/login";
+    const exitUrl = state.meta?.demo_exit_url;
+    window.location.href =
+      typeof exitUrl === "string" && /^https?:\/\//i.test(exitUrl) ? exitUrl : "/login";
   };
 }
 
