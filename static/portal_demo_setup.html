@@ -30,9 +30,9 @@
       <div class="portal-card">
         <h2 style="margin: 0 0 8px; color: #fff">Временное демо</h2>
         <div class="portal-hint">
-          Для гостей с главной страницы: ссылка «Демо» ведёт на <code>/try-demo</code> — без провайдерского токена, сразу
-          редирект в песочницу (тенант из <code>GUARDSCHOOL_DEMO_TENANT_SLUG</code>, по умолчанию совпадает с
-          <code>school</code> на <code>school.guarddoc.ru</code>). Здесь же — расширенная выдача демо для любого
+          Для гостей с главной страницы: ссылка «Демо» ведёт на <code>/try-demo</code> — без провайдерского токена, редирект
+          на поддомен песочницы (тенант <code>GUARDSCHOOL_DEMO_TENANT_SLUG</code>, по умолчанию <code>demo</code> →
+          <code>demo.guarddoc.ru</code>, отдельные данные от боевой школы). Здесь же — расширенная выдача демо для любого
           <code>tenant_slug</code> с Bearer <code>GUARDSCHOOL_PROVIDER_ADMIN_TOKEN</code> (sessionStorage этого браузера).
           Лицензии для операторов: <a href="/ADM" style="color: #cfe0ff">/ADM</a> (логин/пароль из окружения сервера).
         </div>

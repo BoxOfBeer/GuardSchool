@@ -1923,6 +1923,10 @@ async def _guard_school_lifespan(_app: FastAPI):
         except Exception:
             pass
         try:
+            _ensure_try_demo_sandbox_tenant_data()
+        except Exception:
+            pass
+        try:
             cleanup_expired_demo_sessions()
         except Exception:
             pass
@@ -2101,16 +2105,73 @@ def _demo_token_hash(token: str) -> str:
 
 
 def _tenant_ui_host_for_demo(tenant_slug: str) -> str:
-    """Хост в ссылке на демо: либо единый GUARDSCHOOL_PUBLIC_SCHOOL_HOST, либо классический поддомен."""
+    """Хост в ссылке на демо (API провайдера): либо единый GUARDSCHOOL_PUBLIC_SCHOOL_HOST, либо поддомен."""
     fixed = (os.environ.get("GUARDSCHOOL_PUBLIC_SCHOOL_HOST") or "").strip().lower()
     if fixed:
         return fixed
     return f"{tenant_slug}.guarddoc.ru"
 
 
+def _try_demo_redirect_host(slug: str) -> str:
+    """
+    Хост редиректа публичного /try-demo.
+    По умолчанию — поддомен песочницы (<slug>.guarddoc.ru), чтобы Host в middleware
+    совпадал с тенантом и данные не смешивались с боевой школой.
+    """
+    explicit = (os.environ.get("GUARDSCHOOL_TRY_DEMO_REDIRECT_HOST") or "").strip().lower()
+    if explicit:
+        return explicit.split(":")[0]
+    if (os.environ.get("GUARDSCHOOL_TRY_DEMO_USE_PUBLIC_SCHOOL_HOST") or "").strip().lower() in ("1", "true", "yes", "on"):
+        fixed = (os.environ.get("GUARDSCHOOL_PUBLIC_SCHOOL_HOST") or "").strip().lower()
+        if fixed:
+            return fixed.split(":")[0]
+    s = (slug or "demo").strip().lower()
+    return f"{s}.guarddoc.ru"
+
+
 def _try_demo_sandbox_slug() -> str:
-    """Тенант песочницы для /try-demo (должен совпадать с slug из Host на стороне приложения)."""
-    return (os.environ.get("GUARDSCHOOL_DEMO_TENANT_SLUG") or "school").strip().lower()
+    """Slug тенанта песочницы для /try-demo (Host → tenant_slug в SaaS). По умолчанию: demo."""
+    return (os.environ.get("GUARDSCHOOL_DEMO_TENANT_SLUG") or "demo").strip().lower()
+
+
+def _ensure_try_demo_sandbox_tenant_data() -> None:
+    """Создать tenants/<slug>/data с минимальным auth и дефолтным config для публичного демо."""
+    if deployment_mode() != "saas" or not saas_db_enabled():
+        return
+    slug = _try_demo_sandbox_slug()
+    if not slug:
+        return
+    from .tenant_ctx import set_tenant_slug, tenant_slug as _current_slug
+
+    prev = _current_slug()
+    set_tenant_slug(slug)
+    try:
+        ensure_tenant_schema(schema_name_for_slug(slug))
+        ensure_dirs()
+        if not AUTH_PATH.exists() or not load_auth():
+            salt = secrets.token_hex(16)
+            pwd = (os.environ.get("GUARDSCHOOL_TRY_DEMO_ADMIN_PASSWORD") or "").strip()
+            if not pwd or not password_is_valid(pwd):
+                pwd = secrets.token_urlsafe(14) + "Xa9"
+                if not password_is_valid(pwd):
+                    pwd = "TryDemoSandbox1a"
+            user = (os.environ.get("GUARDSCHOOL_TRY_DEMO_ADMIN_USERNAME") or "try-demo").strip() or "try-demo"
+            write_json(AUTH_PATH, {"username": user, "salt": salt, "password_hash": hash_password(pwd, salt)})
+        reset_demo = (os.environ.get("GUARDSCHOOL_TRY_DEMO_RESET_ON_START") or "").strip().lower() in ("1", "true", "yes", "on")
+        if reset_demo:
+            write_json(CONFIG_PATH, sanitize_config(default_config()))
+            write_json(SCHEDULE_PATH, [])
+            write_json(FULL_SCHEDULE_PATH, [])
+            write_json(SCHEDULE_SAMPLE_PATH, [])
+            write_json(HOLIDAYS_PATH, [])
+            write_json(ANNOUNCEMENTS_PATH, [])
+            write_json(MARQUEE_PATH, [])
+            write_json(OVERRIDES_PATH, [])
+            write_json(BELL_SCHEDULES_PATH, default_bell_schedules())
+        elif not CONFIG_PATH.exists():
+            write_json(CONFIG_PATH, sanitize_config(default_config()))
+    finally:
+        set_tenant_slug(prev)
 
 
 def _try_demo_ttl_minutes() -> int:
@@ -2123,6 +2184,11 @@ def _try_demo_ttl_minutes() -> int:
 
 def _try_demo_public_enabled() -> bool:
     return (os.environ.get("GUARDSCHOOL_TRY_DEMO_DISABLE") or "").strip().lower() not in ("1", "true", "yes", "on")
+
+
+def _demo_allow_any_tenant_token() -> bool:
+    """Разрешить /demo/{{token}} на любом tenant_slug (выдача провайдером для «демо реальной школы»). По умолчанию выключено."""
+    return (os.environ.get("GUARDSCHOOL_DEMO_ALLOW_ANY_TENANT") or "").strip().lower() in ("1", "true", "yes", "on")
 
 
 @app.get("/api/provider/licenses")
@@ -2248,6 +2314,18 @@ def demo_login(token: str, request: Request, response: Response) -> Response:
     slug = current_tenant()
     if not slug:
         raise HTTPException(status_code=404, detail="Not found.")
+    sandbox = _try_demo_sandbox_slug()
+    if slug != sandbox and not _demo_allow_any_tenant_token():
+        loc = admin_ui_lang(request)
+        raise HTTPException(
+            status_code=403,
+            detail=admin_msg(
+                loc,
+                "Гостевое демо только на отдельной песочнице. Откройте «Демо» с главной страницы портала, "
+                "а не адрес кабинета вашей школы.",
+                "Guest demo is only on the separate sandbox. Open “Demo” from the portal home page, not your school admin URL.",
+            ),
+        )
     th = _demo_token_hash(token)
     now = utcnow()
     with connect_public() as conn:
@@ -2420,9 +2498,9 @@ def portal_demo_setup_page(request: Request) -> Response:
 @app.get("/try-demo")
 def portal_try_demo(request: Request) -> Response:
     """
-    Публичный «быстрый демо» с портала: без токена провайдера, редирект на приложение с одноразовым /demo/{token}.
-    Песочница: GUARDSCHOOL_DEMO_TENANT_SLUG (по умолчанию school = тот же тенант, что school.guarddoc.ru).
-    Сессия после /demo/ — отдельная «демо-cookie», не пароль владельца (данные тенанта общие; изолированная песочница — другой slug + хост).
+    Публичный «быстрый демо» с портала: редирект на поддомен песочницы с одноразовым /demo/{token}.
+    Данные — отдельный тенант (по умолчанию slug=demo, см. GUARDSCHOOL_DEMO_TENANT_SLUG), с настройками по умолчанию,
+    не боевой кабинет школы. Сессия после /demo/ — демо-cookie (вход без пароля владельца реальной школы).
     """
     if not _is_guarddoc_portal(request):
         raise HTTPException(status_code=404, detail="Not found")
@@ -2446,7 +2524,7 @@ def portal_try_demo(request: Request) -> Response:
                 (th, slug, expires_at),
             )
         conn.commit()
-    target_host = _tenant_ui_host_for_demo(slug)
+    target_host = _try_demo_redirect_host(slug)
     scheme = (os.environ.get("GUARDSCHOOL_PUBLIC_SCHOOL_SCHEME") or "https").strip().lower()
     if scheme not in ("http", "https"):
         scheme = "https"
@@ -2615,8 +2693,11 @@ async def login(request: Request, response: Response, username: str = Form(...),
             status_code=401,
             detail=admin_msg(loc, "Неверный логин или пароль.", "Invalid username or password."),
         )
-    token = create_session_token(username.strip(), auth)
     sec = session_cookie_secure(request)
+    # Сброс старой сессии (в т.ч. демо): delete_cookie должен совпадать с set_cookie по httponly/path,
+    # иначе браузер может не снять HttpOnly-cookie и оставить демо-токен после «выхода»/повторного входа.
+    response.delete_cookie(SESSION_COOKIE, path="/", secure=sec, httponly=True, samesite="lax")
+    token = create_session_token(username.strip(), auth)
     response.set_cookie(
         SESSION_COOKIE,
         token,
@@ -2631,7 +2712,7 @@ async def login(request: Request, response: Response, username: str = Form(...),
 @app.post("/api/logout")
 def logout(request: Request, response: Response) -> dict[str, str]:
     sec = session_cookie_secure(request)
-    response.delete_cookie(SESSION_COOKIE, path="/", secure=sec, samesite="lax")
+    response.delete_cookie(SESSION_COOKIE, path="/", secure=sec, httponly=True, samesite="lax")
     return {"status": "ok"}
 
 

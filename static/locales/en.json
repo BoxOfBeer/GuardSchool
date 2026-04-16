@@ -38,7 +38,7 @@
   "top.export": "Export ZIP",
   "top.import": "Import ZIP",
   "top.logout": "Log out",
-  "top.demoBanner": "Temporary demo access (demo link, not the owner password).",
+  "top.demoBanner": "Sandbox: you opened the demo link — a separate trial instance with default settings (not your live school admin).",
   "top.demoLogout": "Exit demo",
   "top.sound": "Sound",
   "top.soundRupor": "PC speaker",
