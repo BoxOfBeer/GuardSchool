@@ -1,5 +1,10 @@
 [
   {
+    "version": "1.02.001",
+    "timestamp": "2026-04-17T12:00:00",
+    "message": "Релиз линии 1.02.x: SaaS и гибрид — мультитенантность (Host → slug), PostgreSQL public + схемы школ, лицензии/регистрация, режимы GUARDSCHOOL_DEPLOYMENT_MODE, ориентация экрана и меню виджетов, демо-токены. Поднят APP_VERSION и cache-bust админ-статики."
+  },
+  {
     "version": "1.01.015",
     "timestamp": "2026-04-16T20:00:00",
     "message": "Синхронизация APP_VERSION и cache-bust статики (единый номер релиза). Удалён случайный diff из backups/, каталог backups/ в .gitignore."
