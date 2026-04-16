@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GuardSchool — подключение ТВ</title>
+    <link rel="stylesheet" href="/static/styles.css?v=1.02.001" />
+    <style>
+      .wrap {
+        max-width: 520px;
+        margin: 0 auto;
+        padding: 24px 16px 60px;
+      }
+      .card {
+        border: 1px solid rgba(0, 0, 0, 0.08);
+        border-radius: 14px;
+        padding: 16px;
+        background: rgba(255, 255, 255, 0.92);
+      }
+      h2 {
+        margin: 0 0 10px;
+      }
+      .row {
+        display: grid;
+        gap: 6px;
+        margin-top: 10px;
+      }
+      label {
+        font-weight: 700;
+        opacity: 0.9;
+      }
+      input {
+        width: 100%;
+        padding: 12px 14px;
+        border-radius: 12px;
+        border: 1px solid rgba(0, 0, 0, 0.18);
+        font-size: 16px;
+      }
+      button {
+        appearance: none;
+        border: 1px solid rgba(0, 0, 0, 0.16);
+        border-radius: 12px;
+        padding: 12px 14px;
+        background: #111;
+        color: #fff;
+        font-weight: 800;
+        cursor: pointer;
+        width: 100%;
+        margin-top: 12px;
+      }
+      .hint {
+        margin-top: 10px;
+        font-size: 12px;
+        opacity: 0.75;
+      }
+      .out {
+        margin-top: 12px;
+        padding: 10px 12px;
+        border-radius: 12px;
+        border: 1px dashed rgba(0, 0, 0, 0.22);
+        background: rgba(255, 255, 255, 0.7);
+        white-space: pre-wrap;
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="card">
+        <h2>Подключение ТВ</h2>
+        <div style="opacity: 0.9">Введите PIN, который вам выдал администратор школы.</div>
+
+        <div class="row">
+          <label for="pin">PIN</label>
+          <input id="pin" inputmode="numeric" autocomplete="one-time-code" placeholder="4–12 цифр" />
+        </div>
+
+        <button id="go">Подключить</button>
+        <div class="hint" id="meta"></div>
+        <div class="out" id="out"></div>
+      </div>
+    </div>
+    <script type="module" src="/static/tv_pair.js?v=1.02.001"></script>
+  </body>
+</html>
+

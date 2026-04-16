@@ -105,6 +105,30 @@ def ensure_public_schema() -> None:
                         expires_at TIMESTAMPTZ NOT NULL
                     );
                     """,
+                    """
+                    CREATE TABLE IF NOT EXISTS tv_access (
+                        tenant_slug TEXT PRIMARY KEY,
+                        code_hash TEXT NOT NULL UNIQUE,
+                        pin_salt TEXT NOT NULL,
+                        pin_hash TEXT NOT NULL,
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                    );
+                    """,
+                    """
+                    CREATE TABLE IF NOT EXISTS tv_devices (
+                        token_hash TEXT PRIMARY KEY,
+                        tenant_slug TEXT NOT NULL,
+                        screen_slug TEXT NOT NULL,
+                        label TEXT NOT NULL DEFAULT '',
+                        status TEXT NOT NULL DEFAULT 'active', -- active|revoked
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                        last_seen_at TIMESTAMPTZ NULL,
+                        expires_at TIMESTAMPTZ NULL
+                    );
+                    """,
+                    "CREATE INDEX IF NOT EXISTS tv_devices_tenant_idx ON tv_devices(tenant_slug);",
+                    "CREATE INDEX IF NOT EXISTS tv_devices_screen_idx ON tv_devices(tenant_slug, screen_slug);",
                 ],
             )
             # Backward-compatible: add tenant_slug if table existed before.
@@ -177,4 +201,32 @@ def license_key_hash(key: str) -> str:
     pepper = (os.environ.get("GUARDSCHOOL_LICENSE_PEPPER") or "").encode("utf-8")
     raw = (key or "").strip().encode("utf-8")
     return hashlib.sha256(pepper + b"\n" + raw).hexdigest()
+
+
+def tv_pepper_bytes() -> bytes:
+    """
+    Отдельный pepper для ТВ-кодов/PIN. По умолчанию берём GUARDSCHOOL_LICENSE_PEPPER,
+    чтобы не требовать новую переменную в окружении.
+    """
+    raw = (os.environ.get("GUARDSCHOOL_TV_PEPPER") or os.environ.get("GUARDSCHOOL_LICENSE_PEPPER") or "").encode("utf-8")
+    return raw
+
+
+def tv_code_hash(code: str) -> str:
+    pep = tv_pepper_bytes()
+    raw = (code or "").strip().lower().encode("utf-8")
+    return hashlib.sha256(pep + b"\ncode\n" + raw).hexdigest()
+
+
+def tv_pin_hash(pin: str, salt: str) -> str:
+    pep = tv_pepper_bytes()
+    p = (pin or "").strip().encode("utf-8")
+    s = (salt or "").strip().encode("utf-8")
+    return hashlib.sha256(pep + b"\npin\n" + s + b"\n" + p).hexdigest()
+
+
+def tv_device_token_hash(token: str) -> str:
+    pep = tv_pepper_bytes()
+    raw = (token or "").strip().encode("utf-8")
+    return hashlib.sha256(pep + b"\ndevice\n" + raw).hexdigest()
 

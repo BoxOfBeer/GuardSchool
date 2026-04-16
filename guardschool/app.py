@@ -107,7 +107,17 @@ from .gs_paths import (
 from .gs_weekly_template import ensure_weekly_schedule_template_file
 from .gs_screen_watch import record_screen_poll, screen_watch_snapshot
 from .saas_db import ensure_public_schema, saas_db_enabled
-from .saas_db import connect_public, ensure_tenant_schema, license_key_hash, random_id, schema_name_for_slug, utcnow
+from .saas_db import (
+    connect_public,
+    ensure_tenant_schema,
+    license_key_hash,
+    random_id,
+    schema_name_for_slug,
+    tv_code_hash,
+    tv_device_token_hash,
+    tv_pin_hash,
+    utcnow,
+)
 
 GRID_COLS = 32
 GRID_ROWS = 26
@@ -647,6 +657,62 @@ def _require_optional_tv_bearer(request: Request) -> None:
     got = auth[7:].strip()
     if not hmac.compare_digest(got, tok):
         raise HTTPException(status_code=403, detail="Неверный токен ТВ.")
+
+
+def _require_tv_access_for_screen(request: Request, screen_slug: str) -> None:
+    """
+    TV auth в SaaS:
+    - если задан GUARDSCHOOL_TV_BEARER_TOKEN: принимаем либо его, либо device-token (по code+pin pairing)
+    - если не задан: по-старому без авторизации
+    """
+    expected = (os.environ.get("GUARDSCHOOL_TV_BEARER_TOKEN") or "").strip()
+    auth = (request.headers.get("authorization") or "").strip()
+    if not expected:
+        return
+    if not auth.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Требуется токен ТВ (Bearer).")
+    got = auth[7:].strip()
+    if hmac.compare_digest(got, expected):
+        return
+    # device-token: только в SaaS и только в контексте тенанта
+    if deployment_mode() != "saas" or not saas_db_enabled():
+        raise HTTPException(status_code=403, detail="Неверный токен ТВ.")
+    from .tenant_ctx import tenant_slug as current_tenant
+
+    slug = current_tenant()
+    if not slug:
+        raise HTTPException(status_code=403, detail="Неверный токен ТВ.")
+    th = tv_device_token_hash(got)
+    now = utcnow()
+    with connect_public() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT status, expires_at FROM tv_devices
+                WHERE token_hash=%s AND tenant_slug=%s AND screen_slug=%s
+                """,
+                (th, slug, screen_slug),
+            )
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=403, detail="Неверный токен ТВ.")
+            status, expires_at = row[0], row[1]
+            if status != "active":
+                raise HTTPException(status_code=403, detail="Токен ТВ отключён.")
+            if expires_at is not None and expires_at <= now:
+                raise HTTPException(status_code=403, detail="Токен ТВ истёк.")
+            cur.execute(
+                "UPDATE tv_devices SET last_seen_at=now() WHERE token_hash=%s AND tenant_slug=%s AND screen_slug=%s",
+                (th, slug, screen_slug),
+            )
+        conn.commit()
+
+
+def _generate_tv_code() -> str:
+    # Человекочитаемый короткий код: 4-4-4 символа (lower+digits), без спецсимволов.
+    alphabet = "abcdefghjkmnpqrstuvwxyz23456789"
+    raw = "".join(alphabet[secrets.randbelow(len(alphabet))] for _ in range(12))
+    return f"{raw[:4]}-{raw[4:8]}-{raw[8:12]}"
 
 
 def _require_sync_bearer(request: Request) -> None:
@@ -2905,7 +2971,7 @@ def get_screens_index() -> dict[str, Any]:
 
 @app.get("/api/screen/{slug}")
 def get_screen(request: Request, slug: str) -> JSONResponse:
-    _require_optional_tv_bearer(request)
+    _require_tv_access_for_screen(request, slug)
     config = load_config()
     screen = next((item for item in config["screens"] if item["slug"] == slug and item.get("is_active", True)), None)
     if not screen:
@@ -2946,6 +3012,145 @@ def get_screen(request: Request, slug: str) -> JSONResponse:
             "Expires": "0",
         },
     )
+
+
+@app.get("/t/{code}/{screen_slug}", response_class=HTMLResponse)
+def tv_pair_page(code: str, screen_slug: str) -> Response:
+    # Страница ввода PIN для привязки ТВ (сохраняет device-token в localStorage).
+    return FileResponse(STATIC_DIR / "tv_pair.html")
+
+
+@app.post("/api/tv/pair")
+async def tv_pair(request: Request) -> dict[str, Any]:
+    """
+    Pairing ТВ по короткому коду школы + PIN.
+    Возвращает device-token (Bearer) и URL для перехода на /screen/{slug}.
+    """
+    if deployment_mode() != "saas" or not saas_db_enabled():
+        raise HTTPException(status_code=404, detail="Not found.")
+    body = await request.json()
+    code = str(body.get("code") or "").strip().lower()
+    pin = str(body.get("pin") or "").strip()
+    screen_slug = str(body.get("screen_slug") or "").strip()
+    label = str(body.get("label") or "").strip()[:120]
+    if not code or not pin or not screen_slug:
+        raise HTTPException(status_code=400, detail="code, pin, screen_slug required")
+    ch = tv_code_hash(code)
+    with connect_public() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT tenant_slug, pin_salt, pin_hash FROM tv_access WHERE code_hash=%s", (ch,))
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=403, detail="Invalid code or PIN")
+            tenant_slug, pin_salt, pin_hash_db = row[0], row[1], row[2]
+            got = tv_pin_hash(pin, pin_salt)
+            if not hmac.compare_digest(got, str(pin_hash_db or "")):
+                raise HTTPException(status_code=403, detail="Invalid code or PIN")
+            token = secrets.token_urlsafe(24)
+            th = tv_device_token_hash(token)
+            cur.execute(
+                """
+                INSERT INTO tv_devices (token_hash, tenant_slug, screen_slug, label, status)
+                VALUES (%s,%s,%s,%s,'active')
+                ON CONFLICT (token_hash) DO NOTHING
+                """,
+                (th, tenant_slug, screen_slug, label),
+            )
+        conn.commit()
+    return {
+        "status": "ok",
+        "token": token,
+        "tenant_slug": tenant_slug,
+        "screen_slug": screen_slug,
+        "screen_path": f"/screen/{screen_slug}",
+    }
+
+
+@app.get("/api/admin/tv-access")
+def admin_tv_access_get(request: Request) -> dict[str, Any]:
+    require_auth(request)
+    if deployment_mode() != "saas" or not saas_db_enabled():
+        raise HTTPException(status_code=404, detail="Not found.")
+    from .tenant_ctx import tenant_slug as current_tenant
+
+    slug = current_tenant()
+    if not slug:
+        raise HTTPException(status_code=400, detail="Tenant is not resolved.")
+    with connect_public() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1 FROM tv_access WHERE tenant_slug=%s", (slug,))
+            ok = bool(cur.fetchone())
+        conn.commit()
+    return {"status": "ok", "tenant_slug": slug, "configured": ok}
+
+
+@app.post("/api/admin/tv-access/rotate-code")
+async def admin_tv_access_rotate_code(request: Request) -> dict[str, Any]:
+    require_auth(request)
+    if deployment_mode() != "saas" or not saas_db_enabled():
+        raise HTTPException(status_code=404, detail="Not found.")
+    from .tenant_ctx import tenant_slug as current_tenant
+
+    slug = current_tenant()
+    if not slug:
+        raise HTTPException(status_code=400, detail="Tenant is not resolved.")
+    # PIN можно не трогать: если записи нет — создадим дефолтный PIN=0000 (админ поменяет сразу).
+    now = utcnow()
+    code = _generate_tv_code()
+    ch = tv_code_hash(code)
+    with connect_public() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT pin_salt, pin_hash FROM tv_access WHERE tenant_slug=%s", (slug,))
+            row = cur.fetchone()
+            if not row:
+                pin_salt = secrets.token_hex(8)
+                pin_hash_db = tv_pin_hash("0000", pin_salt)
+                cur.execute(
+                    """
+                    INSERT INTO tv_access (tenant_slug, code_hash, pin_salt, pin_hash, created_at, updated_at)
+                    VALUES (%s,%s,%s,%s,now(),now())
+                    """,
+                    (slug, ch, pin_salt, pin_hash_db),
+                )
+            else:
+                pin_salt, pin_hash_db = row[0], row[1]
+                cur.execute(
+                    "UPDATE tv_access SET code_hash=%s, updated_at=now() WHERE tenant_slug=%s",
+                    (ch, slug),
+                )
+        conn.commit()
+    return {"status": "ok", "tenant_slug": slug, "code": code, "pin_hint": "PIN не изменён (если запись новая — PIN=0000)"}
+
+
+@app.post("/api/admin/tv-access/set-pin")
+async def admin_tv_access_set_pin(request: Request) -> dict[str, Any]:
+    require_auth(request)
+    if deployment_mode() != "saas" or not saas_db_enabled():
+        raise HTTPException(status_code=404, detail="Not found.")
+    from .tenant_ctx import tenant_slug as current_tenant
+
+    slug = current_tenant()
+    if not slug:
+        raise HTTPException(status_code=400, detail="Tenant is not resolved.")
+    body = await request.json()
+    pin = str(body.get("pin") or "").strip()
+    if not pin.isdigit() or not (4 <= len(pin) <= 12):
+        raise HTTPException(status_code=400, detail="PIN must be 4..12 digits")
+    pin_salt = secrets.token_hex(8)
+    ph = tv_pin_hash(pin, pin_salt)
+    with connect_public() as conn:
+        with conn.cursor() as cur:
+            # Требуем, чтобы код уже был сгенерен (иначе админ сначала rotate-code).
+            cur.execute("SELECT code_hash FROM tv_access WHERE tenant_slug=%s", (slug,))
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=409, detail="TV code is not generated yet.")
+            cur.execute(
+                "UPDATE tv_access SET pin_salt=%s, pin_hash=%s, updated_at=now() WHERE tenant_slug=%s",
+                (pin_salt, ph, slug),
+            )
+        conn.commit()
+    return {"status": "ok"}
 
 
 @app.get("/api/admin/screen-watch")
