@@ -81,12 +81,121 @@ function getGsTvBearer() {
   }
 }
 
+function ensureDeviceSettingsUi() {
+  try {
+    if (document.getElementById("gs-device-settings-btn")) return;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.id = "gs-device-settings-btn";
+    btn.className = "gs-device-settings-btn";
+    btn.setAttribute("aria-label", "Настройки устройства");
+    btn.textContent = "⚙";
+
+    const panel = document.createElement("div");
+    panel.id = "gs-device-settings-panel";
+    panel.className = "gs-device-settings-panel";
+    panel.hidden = true;
+    panel.innerHTML = `
+      <div class="gs-device-settings-head">
+        <div class="gs-device-settings-title">Настройки для этого устройства</div>
+        <button type="button" class="gs-device-settings-close" id="gs-device-settings-close">Закрыть</button>
+      </div>
+      <div class="gs-device-settings-row">
+        <label for="gs-device-classes">Классы (через запятую)</label>
+        <input id="gs-device-classes" class="gs-device-settings-input" placeholder="например: 6, 9, 11" />
+      </div>
+      <div class="gs-device-settings-row">
+        <label>Режим</label>
+        <div class="gs-device-settings-checks">
+          <label class="opt"><input type="checkbox" id="gs-device-mobile" /> <span>Мобильный режим (лента со скроллом)</span></label>
+          <label class="opt"><input type="checkbox" id="gs-device-persist" /> <span>Сохранять настройки на этом устройстве</span></label>
+        </div>
+      </div>
+      <div class="gs-device-settings-row">
+        <label>Виджеты (по типам)</label>
+        <div id="gs-device-widgets" class="gs-device-settings-checks"></div>
+      </div>
+      <div class="gs-device-settings-actions">
+        <button type="button" class="gs-device-btn-primary" id="gs-device-apply">Применить</button>
+        <button type="button" class="gs-device-btn-secondary" id="gs-device-reset">Сбросить</button>
+      </div>
+    `;
+
+    document.body.appendChild(btn);
+    document.body.appendChild(panel);
+
+    const toggle = (show) => {
+      panel.hidden = !show;
+    };
+    btn.addEventListener("click", () => toggle(panel.hidden));
+    panel.querySelector("#gs-device-settings-close")?.addEventListener("click", () => toggle(false));
+    document.addEventListener(
+      "pointerdown",
+      (ev) => {
+        try {
+          if (panel.hidden) return;
+          if (panel.contains(ev.target) || btn.contains(ev.target)) return;
+          toggle(false);
+        } catch (_) {}
+      },
+      { capture: true }
+    );
+  } catch (_) {}
+}
+
+function devicePrefsKey(slug) {
+  return `gs_device_prefs_${slug}`;
+}
+
+function loadDevicePrefs(slug) {
+  try {
+    const raw = localStorage.getItem(devicePrefsKey(slug));
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch (_) {
+    return null;
+  }
+}
+
+function saveDevicePrefs(slug, prefs) {
+  try {
+    localStorage.setItem(devicePrefsKey(slug), JSON.stringify(prefs || {}));
+  } catch (_) {}
+}
+
+function clearDevicePrefs(slug) {
+  try {
+    localStorage.removeItem(devicePrefsKey(slug));
+  } catch (_) {}
+  try {
+    localStorage.removeItem(`gs_classes_${slug}`);
+    localStorage.removeItem(`gs_mobile_${slug}`);
+    localStorage.removeItem(`gs_mw_${slug}`);
+  } catch (_) {}
+}
+
+function getGsMobileWidgetsForPoll(slug) {
+  try {
+    const q = new URLSearchParams(window.location.search || "");
+    const v = (q.get("gs_mw") || "").trim();
+    if (v) {
+      localStorage.setItem(`gs_mw_${slug}`, v);
+      return v;
+    }
+    return (localStorage.getItem(`gs_mw_${slug}`) || "").trim();
+  } catch (_) {
+    return "";
+  }
+}
+
 function screenPollUrl(base, slug, cid, lab, dev) {
   const classes = getGsClassesForPoll(slug);
   const mobile = getGsMobileForPoll(slug);
+  const mw = getGsMobileWidgetsForPoll(slug);
   const qs = `ts=${Date.now()}&gs_client=${cid}&gs_label=${lab}&gs_device=${dev}`
     + (classes ? `&gs_classes=${encodeURIComponent(classes)}` : "")
-    + (mobile ? `&gs_mobile=1` : "");
+    + (mobile ? `&gs_mobile=1` : "")
+    + (mw ? `&gs_mw=${encodeURIComponent(mw)}` : "");
   const path = `/api/screen/${encodeURIComponent(slug)}?${qs}`;
   if (!base) return path;
   return `${String(base).replace(/\/$/, "")}${path}`;
@@ -516,6 +625,8 @@ function shouldSoftRefreshWidget(widget, scheduleChanged, staticChanged) {
 
 function render(screenPayload) {
   window.__lastScreenPayload = screenPayload;
+  ensureDeviceSettingsUi();
+  syncDeviceSettingsFromPayload(screenPayload);
   tickBellAudio(screenPayload);
   tickEmergencyAudio(screenPayload);
 
@@ -533,6 +644,9 @@ function render(screenPayload) {
   const menuMode = new URLSearchParams(window.location.search || "").get("gs_menu") === "1";
   const qs = new URLSearchParams(window.location.search || "");
   const mobileForced = qs.get("gs_mobile") === "1";
+  const slug = getSlug();
+  const mwRaw = getGsMobileWidgetsForPoll(slug);
+  const mwTypes = mwRaw ? new Set(mwRaw.split(",").map((x) => x.trim()).filter(Boolean)) : null;
   const mobileViewport = (() => {
     try {
       return window.matchMedia && window.matchMedia("(max-width: 720px)").matches;
@@ -604,7 +718,8 @@ function render(screenPayload) {
     const ordered = configured.length
       ? orderedBase.filter((w) => configuredSet.has(String(w.id)))
       : orderedBase;
-    ordered.forEach((widget) => {
+    const filtered = mwTypes ? ordered.filter((w) => mwTypes.has(String(w.type))) : ordered;
+    filtered.forEach((widget) => {
       const item = document.createElement("div");
       item.className = "screen-widget gs-mobile-widget";
       item.dataset.widgetId = String(widget.id);
@@ -711,6 +826,65 @@ function render(screenPayload) {
   GRef.updateAllClocks(root);
   window.__lastScheduleSig = scheduleSig;
   window.__lastStaticSig = staticSig;
+}
+
+function syncDeviceSettingsFromPayload(screenPayload) {
+  try {
+    const slug = getSlug();
+    const panel = document.getElementById("gs-device-settings-panel");
+    if (!panel) return;
+    const inpClasses = panel.querySelector("#gs-device-classes");
+    const chkMobile = panel.querySelector("#gs-device-mobile");
+    const chkPersist = panel.querySelector("#gs-device-persist");
+    const wrapWidgets = panel.querySelector("#gs-device-widgets");
+    const btnApply = panel.querySelector("#gs-device-apply");
+    const btnReset = panel.querySelector("#gs-device-reset");
+    if (!inpClasses || !chkMobile || !chkPersist || !wrapWidgets || !btnApply || !btnReset) return;
+
+    const existing = loadDevicePrefs(slug) || {};
+    const persisted = Boolean(existing.persist);
+    chkPersist.checked = persisted;
+    inpClasses.value = String(existing.classes || localStorage.getItem(`gs_classes_${slug}`) || "").trim();
+    chkMobile.checked = (existing.mobile === true) || (localStorage.getItem(`gs_mobile_${slug}`) === "1");
+
+    const screen = (screenPayload && screenPayload.screen) || {};
+    const types = [...new Set(((screen.widgets || [])).map((w) => w && w.type).filter(Boolean))].filter((t) => t !== "emergency");
+    const selectedTypes = new Set(
+      String(existing.widgetTypes || localStorage.getItem(`gs_mw_${slug}`) || "")
+        .split(",")
+        .map((x) => x.trim())
+        .filter(Boolean)
+    );
+    wrapWidgets.innerHTML = types
+      .map(
+        (t) =>
+          `<label class="opt"><input type="checkbox" value="${String(t)}" ${selectedTypes.has(String(t)) ? "checked" : ""} /> <span>${String(t)}</span></label>`
+      )
+      .join("");
+
+    btnApply.onclick = () => {
+      const classes = String(inpClasses.value || "").trim();
+      const mobile = chkMobile.checked ? "1" : "";
+      const mw = [...wrapWidgets.querySelectorAll('input[type="checkbox"]:checked')].map((x) => String(x.value)).join(",");
+      const persist = chkPersist.checked;
+      try {
+        if (classes) localStorage.setItem(`gs_classes_${slug}`, classes);
+        else localStorage.removeItem(`gs_classes_${slug}`);
+        if (mobile) localStorage.setItem(`gs_mobile_${slug}`, "1");
+        else localStorage.removeItem(`gs_mobile_${slug}`);
+        if (mw) localStorage.setItem(`gs_mw_${slug}`, mw);
+        else localStorage.removeItem(`gs_mw_${slug}`);
+      } catch (_) {}
+      if (persist) saveDevicePrefs(slug, { persist: true, classes, mobile: !!mobile, widgetTypes: mw });
+      else saveDevicePrefs(slug, { persist: false });
+      window.location.reload();
+    };
+
+    btnReset.onclick = () => {
+      clearDevicePrefs(slug);
+      window.location.reload();
+    };
+  } catch (_) {}
 }
 
 function bumpTvStylesheetHref(hrefBase) {

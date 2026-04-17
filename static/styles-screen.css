@@ -72,6 +72,136 @@ body.screen-body {
   min-height: auto;
 }
 
+/* Device settings (floating gear) */
+.gs-device-settings-btn {
+  position: fixed;
+  right: 14px;
+  bottom: 14px;
+  z-index: 9999;
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.72);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  color: #e2e8f0;
+  font-size: 26px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+}
+
+.gs-device-settings-btn:active { transform: scale(0.98); }
+
+.gs-device-settings-panel {
+  position: fixed;
+  right: 14px;
+  bottom: 82px;
+  z-index: 9999;
+  width: min(92vw, 420px);
+  max-height: min(78vh, 720px);
+  overflow: auto;
+  border-radius: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: rgba(2, 6, 23, 0.86);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  color: #f8fafc;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.45);
+  padding: 12px 12px 10px;
+}
+
+.gs-device-settings-panel[hidden] { display: none !important; }
+
+.gs-device-settings-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.gs-device-settings-title {
+  font-weight: 800;
+  font-size: 15px;
+}
+
+.gs-device-settings-close {
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: rgba(15, 23, 42, 0.65);
+  color: #e2e8f0;
+  border-radius: 12px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.gs-device-settings-row {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0;
+}
+
+.gs-device-settings-row label {
+  font-size: 13px;
+  color: rgba(226, 232, 240, 0.92);
+}
+
+.gs-device-settings-input {
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(15, 23, 42, 0.55);
+  color: #f8fafc;
+  padding: 10px 12px;
+  font-size: 15px;
+  outline: none;
+}
+
+.gs-device-settings-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.gs-device-btn-primary {
+  border: 0;
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-weight: 700;
+  background: linear-gradient(135deg, #38bdf8, #0ea5e9);
+  color: #031422;
+  cursor: pointer;
+}
+
+.gs-device-btn-secondary {
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: rgba(15, 23, 42, 0.55);
+  color: #e2e8f0;
+  cursor: pointer;
+}
+
+.gs-device-settings-checks {
+  display: grid;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.gs-device-settings-checks .opt {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  font-size: 14px;
+}
+
+.gs-device-settings-checks input { margin-top: 2px; }
+
 /* Слои фона ТВ: плавная смена картинки без мигания всего экрана */
 .gs-tv-bg-layer {
   position: absolute;

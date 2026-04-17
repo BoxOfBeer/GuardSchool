@@ -1092,6 +1092,14 @@ def sanitize_config(config: dict[str, Any]) -> dict[str, Any]:
         screen = dict(raw_screen)
         screen.setdefault("selected_classes", ["5", "6", "7", "8"])
         screen["selected_classes"] = list(dict.fromkeys(screen.get("selected_classes", [])))
+        # Mobile screen mode (device-friendly vertical layout).
+        screen.setdefault("mobile_mode", False)
+        screen.setdefault("mobile_widget_ids", [])
+        screen["mobile_mode"] = bool(screen.get("mobile_mode", False))
+        if not isinstance(screen.get("mobile_widget_ids"), list):
+            screen["mobile_widget_ids"] = []
+        else:
+            screen["mobile_widget_ids"] = [str(x) for x in screen.get("mobile_widget_ids", []) if str(x)]
         screen.setdefault("background_image", "")
         screen.setdefault("background_rotate_enabled", False)
         screen.setdefault("background_rotate_interval_sec", 3600)
@@ -1137,6 +1145,9 @@ def sanitize_config(config: dict[str, Any]) -> dict[str, Any]:
         dedupe_widgets(screen)
 
         valid_widget_ids = {widget["id"] for widget in screen["widgets"]}
+        # Keep only ids that exist in screen.widgets (order preserved).
+        if isinstance(screen.get("mobile_widget_ids"), list):
+            screen["mobile_widget_ids"] = [x for x in screen["mobile_widget_ids"] if x in valid_widget_ids]
         for widget in screen["widgets"]:
             if widget["type"] == "schedule":
                 classes = widget["settings"].get("classes") or screen["selected_classes"]
