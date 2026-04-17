@@ -18,6 +18,20 @@
 | Лимиты (опционально) | `GUARDSCHOOL_SAAS_MAX_SCHEDULE_XLSX_BYTES` (по умолчанию 15 МБ), `GUARDSCHOOL_SAAS_MAX_SCHEDULE_JSON_BYTES` (1 МБ), `GUARDSCHOOL_SAAS_MAX_USER_DATA_BYTES` (15 МБ суммарно JSON), `GUARDSCHOOL_SAAS_MAX_WEEKLY_ZIP_BYTES` (15 МБ) |
 | TLS | Прокси (nginx/caddy) с Let's Encrypt на `guarddoc.ru` |
 | Выход из демо | После «Выйти из демо» браузер уходит на главную портала: по умолчанию `https://guarddoc.ru`. Переопределение: `GUARDSCHOOL_DEMO_EXIT_URL` или `GUARDSCHOOL_PORTAL_PUBLIC_URL`. |
+| Библиотека для песочницы демо | `GUARDSCHOOL_TRY_DEMO_LIBRARY_DIR` — абсолютный путь к каталогу с такой же структурой, как у `data/` основной школи (подкаталоги `uploads/` и при необходимости `break_music/`). При старте процесса они копируются в `tenants/<demo>/data` (слияние файлов). |
+
+## ADM (лицензии, провайдер)
+
+Страница **`/ADM`** (заглавными буквами). Запрос **`/adm`** перенаправляется на `/ADM` (302).
+
+Если вместо страницы приходит JSON `{"detail":"Not found"}` на **`/ADM`**: приложение не считает запрос порталом — чаще всего до uvicorn доходит **`Host: 127.0.0.1`** без внешнего имени. В `location /` для портала обязательно **`proxy_set_header Host $host;`** и желательно **`proxy_set_header X-Forwarded-Host $host;`** (см. пример в этом каталоге), затем `nginx -t` и reload.
+
+Чтобы не видеть «ADM не настроен» и иметь возможность создавать лицензии, в окружении сервиса задайте **один** из вариантов:
+
+1. **Логин и пароль** для формы входа: `GUARDSCHOOL_PORTAL_ADM_USERNAME` и `GUARDSCHOOL_PORTAL_ADM_PASSWORD` (требования к паролю как у админа школы: ≥8 символов, буквы и цифры).
+2. **Токен провайдера** для страницы с полем Bearer: `GUARDSCHOOL_PROVIDER_ADMIN_TOKEN`.
+
+Панель REG.RU с DNS (`ns1.hosting.reg.ru` и т.п.) **не создаёт и не чинит** TLS и не включает ADM: это только зона DNS. Сертификат выдаётся **на сервере** (certbot/nginx) или отдельным продуктом хостинга, если сайт обслуживается **не** вашим nginx на VPS, а площадкой REG — тогда пути к сертификату и к приложению могут не совпадать с инструкцией выше.
 
 ## TLS (certbot + nginx)
 
@@ -51,6 +65,7 @@ location / {
     proxy_pass http://127.0.0.1:8000;
     proxy_http_version 1.1;
     proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;

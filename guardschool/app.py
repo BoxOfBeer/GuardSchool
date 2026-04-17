@@ -2019,7 +2019,16 @@ PORTAL_ADM_COOKIE_MAX_AGE_SEC = 7 * 24 * 3600
 
 
 def _portal_request_host(request: Request) -> str:
-    return (request.headers.get("host") or "").split(":")[0].strip().lower()
+    """
+    Имя хоста для портала guarddoc.ru. За nginx с proxy_pass на 127.0.0.1 иногда приходит
+    Host=127.0.0.1 — тогда берём X-Forwarded-Host (добавьте в nginx: proxy_set_header X-Forwarded-Host $host;).
+    """
+    host = (request.headers.get("host") or "").split(":")[0].strip().lower()
+    if host in ("127.0.0.1", "localhost", "[::1]") or host.startswith("127."):
+        ff = (request.headers.get("x-forwarded-host") or "").strip()
+        if ff:
+            return ff.split(",")[0].strip().split(":")[0].strip().lower()
+    return host
 
 
 def _is_guarddoc_portal_host(host: str) -> bool:
@@ -2134,6 +2143,31 @@ def _try_demo_sandbox_slug() -> str:
     return (os.environ.get("GUARDSCHOOL_DEMO_TENANT_SLUG") or "demo").strip().lower()
 
 
+def _seed_try_demo_library_from_env() -> None:
+    """
+    Опционально: скопировать в data/ песочницы каталоги uploads и break_music из «эталонного» data
+    (GUARDSCHOOL_TRY_DEMO_LIBRARY_DIR = абсолютный путь к корню data, например …/tenants/school/data).
+    """
+    from .tenant_ctx import map_data_path
+
+    raw = (os.environ.get("GUARDSCHOOL_TRY_DEMO_LIBRARY_DIR") or "").strip()
+    if not raw:
+        return
+    src_root = Path(raw).resolve()
+    if not src_root.is_dir():
+        return
+    for sub, dest_base in (
+        ("uploads", UPLOADS_DIR),
+        ("break_music", BREAK_MUSIC_DIR),
+    ):
+        sub_path = src_root / sub
+        if not sub_path.is_dir():
+            continue
+        dest = map_data_path(dest_base)
+        dest.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(sub_path, dest, dirs_exist_ok=True)
+
+
 def _ensure_try_demo_sandbox_tenant_data() -> None:
     """Создать tenants/<slug>/data с минимальным auth и дефолтным config для публичного демо."""
     if deployment_mode() != "saas" or not saas_db_enabled():
@@ -2148,6 +2182,10 @@ def _ensure_try_demo_sandbox_tenant_data() -> None:
     try:
         ensure_tenant_schema(schema_name_for_slug(slug))
         ensure_dirs()
+        try:
+            _seed_try_demo_library_from_env()
+        except Exception:
+            pass
         if not AUTH_PATH.exists() or not load_auth():
             salt = secrets.token_hex(16)
             pwd = (os.environ.get("GUARDSCHOOL_TRY_DEMO_ADMIN_PASSWORD") or "").strip()
@@ -2434,6 +2472,12 @@ def portal_provider_redirect(request: Request) -> Response:
     return RedirectResponse("/ADM", status_code=302)
 
 
+@app.get("/adm")
+def portal_adm_redirect_lowercase() -> Response:
+    """Редирект /adm → /ADM (без проверки Host: иначе за кривым прокси был бы 404 вместо редиректа)."""
+    return RedirectResponse("/ADM", status_code=302)
+
+
 @app.post("/api/portal-adm/login")
 async def portal_adm_login(request: Request) -> Response:
     if not _is_guarddoc_portal(request):
@@ -2485,10 +2529,19 @@ def portal_adm_page(request: Request) -> Response:
     return HTMLResponse(
         content=(
             "<!doctype html><html lang='ru'><head><meta charset='utf-8' /><title>ADM</title></head>"
-            "<body style='font-family:system-ui;padding:24px;max-width:640px'>"
-            "<p>ADM не настроен. Укажите в окружении пару "
-            "<code>GUARDSCHOOL_PORTAL_ADM_USERNAME</code> + <code>GUARDSCHOOL_PORTAL_ADM_PASSWORD</code> "
-            "или токен <code>GUARDSCHOOL_PROVIDER_ADMIN_TOKEN</code>.</p>"
+            "<body style='font-family:system-ui;padding:24px;max-width:720px;line-height:1.5'>"
+            "<h1 style='font-size:1.1rem'>ADM: лицензии не настроены</h1>"
+            "<p>На сервере GuardSchool (процесс uvicorn) задайте <strong>один</strong> из вариантов:</p>"
+            "<ul>"
+            "<li><strong>Вход по логину/паролю</strong> в веб-форме: переменные "
+            "<code>GUARDSCHOOL_PORTAL_ADM_USERNAME</code> и <code>GUARDSCHOOL_PORTAL_ADM_PASSWORD</code> "
+            "(пароль ≥8 символов, буквы и цифры), затем перезапуск сервиса. Откройте "
+            "<a href='/ADM'>/ADM</a> (именно заглавные ADM).</li>"
+            "<li><strong>Провайдер по токену</strong> (страница с Bearer): "
+            "<code>GUARDSCHOOL_PROVIDER_ADMIN_TOKEN</code> — тот же секрет вставляется в браузере на /ADM.</li>"
+            "</ul>"
+            "<p>DNS в панели REG.RU (ns1.hosting.reg.ru) только указывает на сервер; лицензии создаёт это приложение, "
+            "а не панель домена.</p>"
             "</body></html>"
         ),
         status_code=503,

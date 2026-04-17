@@ -629,6 +629,12 @@ const GS_ADMIN_SESSION_SECTION = "gs_admin_section";
 function restoreAdminUiFromSession() {
   if (!state.config?.screens?.length) return;
   try {
+    if (state.meta?.demo_session) {
+      state.statsPanelActive = false;
+      if (sessionStorage.getItem(GS_ADMIN_SESSION_TOP) === "stats") {
+        sessionStorage.setItem(GS_ADMIN_SESSION_TOP, "screen");
+      }
+    }
     const sec = sessionStorage.getItem(GS_ADMIN_SESSION_SECTION);
     if (sec && ["main", "schedule", "preview", "history"].includes(sec)) state.activeSection = sec;
     const top = sessionStorage.getItem(GS_ADMIN_SESSION_TOP);
@@ -636,7 +642,7 @@ function restoreAdminUiFromSession() {
     if (top === "audio") {
       state.audioStreamPanelActive = true;
       state.statsPanelActive = false;
-    } else if (top === "stats") {
+    } else if (top === "stats" && !state.meta?.demo_session) {
       state.statsPanelActive = true;
       state.audioStreamPanelActive = false;
     } else {
@@ -758,17 +764,19 @@ function renderTabs() {
   };
   elements.tabs.appendChild(audioBtn);
 
-  const statsBtn = document.createElement("button");
-  statsBtn.type = "button";
-  statsBtn.className = `top-nav-btn ${state.statsPanelActive ? "active" : ""}`;
-  statsBtn.textContent = t("tabs.stats");
-  statsBtn.onclick = () => {
-    closeWidgetModal();
-    state.statsPanelActive = true;
-    state.audioStreamPanelActive = false;
-    render();
-  };
-  elements.tabs.appendChild(statsBtn);
+  if (!state.meta?.demo_session) {
+    const statsBtn = document.createElement("button");
+    statsBtn.type = "button";
+    statsBtn.className = `top-nav-btn ${state.statsPanelActive ? "active" : ""}`;
+    statsBtn.textContent = t("tabs.stats");
+    statsBtn.onclick = () => {
+      closeWidgetModal();
+      state.statsPanelActive = true;
+      state.audioStreamPanelActive = false;
+      render();
+    };
+    elements.tabs.appendChild(statsBtn);
+  }
 
   state.config.screens.forEach((screen) => {
     const button = document.createElement("button");
@@ -1033,6 +1041,10 @@ function renderOverrides() {
 }
 
 function render() {
+  if (state.meta?.demo_session && state.statsPanelActive) {
+    state.statsPanelActive = false;
+    leaveStatsPanel();
+  }
   const tabPanel = document.getElementById("section-tabs-panel");
   const screenWrap = document.getElementById("screen-editor-wrap");
   const audioPanel = document.getElementById("audio-stream-panel");
