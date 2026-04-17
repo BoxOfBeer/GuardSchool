@@ -33,7 +33,9 @@ from .gs_auth import (
     create_session_token,
     hash_password,
     is_authenticated,
+    is_demo_session_for_admin_ui,
     load_auth,
+    obliterate_session_cookies,
     password_is_valid,
     require_auth,
     verify_demo_session_token,
@@ -2643,6 +2645,7 @@ def demo_login(token: str, request: Request, response: Response) -> Response:
     sec = session_cookie_secure(request)
     max_age = max(60, exp_epoch - int(time.time()))
     response = RedirectResponse("/", status_code=302)
+    obliterate_session_cookies(response)
     response.set_cookie(
         SESSION_COOKIE,
         token2,
@@ -3002,9 +3005,7 @@ async def login(request: Request, response: Response, username: str = Form(...),
             detail=admin_msg(loc, "Неверный логин или пароль.", "Invalid username or password."),
         )
     sec = session_cookie_secure(request)
-    # Сброс старой сессии (в т.ч. демо): delete_cookie должен совпадать с set_cookie по httponly/path,
-    # иначе браузер может не снять HttpOnly-cookie и оставить демо-токен после «выхода»/повторного входа.
-    response.delete_cookie(SESSION_COOKIE, path="/", secure=sec, httponly=True, samesite="lax")
+    obliterate_session_cookies(response)
     token = create_session_token(username.strip(), auth)
     response.set_cookie(
         SESSION_COOKIE,
@@ -3019,18 +3020,8 @@ async def login(request: Request, response: Response, username: str = Form(...),
 
 @app.post("/api/logout")
 def logout(request: Request, response: Response) -> dict[str, str]:
-    """Снимает обычную и демо-сессию (один cookie `SESSION_COOKIE`)."""
-    sec = session_cookie_secure(request)
-    response.delete_cookie(SESSION_COOKIE, path="/", secure=sec, httponly=True, samesite="lax")
-    response.set_cookie(
-        SESSION_COOKIE,
-        "",
-        max_age=0,
-        path="/",
-        secure=sec,
-        httponly=True,
-        samesite="lax",
-    )
+    """Снимает обычную и демо-сессию (cookie `SESSION_COOKIE`, оба варианта Secure)."""
+    obliterate_session_cookies(response)
     return {"status": "ok"}
 
 
@@ -3043,7 +3034,7 @@ def get_admin_config(request: Request) -> dict[str, Any]:
         "saas_mode": saas_mode(),
         "deployment_mode": deployment_mode(),
         "app_version": APP_VERSION,
-        "demo_session": verify_demo_session_token(request.cookies.get(SESSION_COOKIE)),
+        "demo_session": is_demo_session_for_admin_ui(request),
         "demo_exit_url": _demo_exit_redirect_url(),
     }
     return cfg

@@ -8,6 +8,7 @@ import time
 from typing import Any
 
 from fastapi import HTTPException, Request
+from starlette.responses import Response
 
 from .gs_admin_http import admin_msg, admin_ui_lang
 from .gs_jsonio import read_json
@@ -25,6 +26,25 @@ def hash_password(password: str, salt: str) -> str:
 
 def password_is_valid(password: str) -> bool:
     return len(password) >= 8 and any(ch.isalpha() for ch in password) and any(ch.isdigit() for ch in password)
+
+
+def obliterate_session_cookies(response: Response) -> None:
+    """
+    Снять session-cookie в вариантах Secure=True и Secure=False.
+    Иначе после входа по HTTP (cookie без Secure) и работы по HTTPS (delete только с Secure)
+    в браузере остаётся старая демо-cookie — плашка «Демо» не исчезает после обычного логина.
+    """
+    for sec in (True, False):
+        response.delete_cookie(SESSION_COOKIE, path="/", secure=sec, httponly=True, samesite="lax")
+        response.set_cookie(
+            SESSION_COOKIE,
+            "",
+            max_age=0,
+            path="/",
+            secure=sec,
+            httponly=True,
+            samesite="lax",
+        )
 
 
 def create_session_token(username: str, auth: dict[str, Any]) -> str:
@@ -68,6 +88,18 @@ def verify_demo_session_token(token: str | None) -> bool:
     msg = f"__gsdemo__:{exp}".encode("utf-8")
     expected = hmac.new(_demo_session_secret_bytes(), msg, hashlib.sha256).hexdigest()
     return hmac.compare_digest(expected, parts[2])
+
+
+def is_demo_session_for_admin_ui(request: Request) -> bool:
+    """
+    Плашка «Демо» только при действительной демо-сессии.
+    Если cookie — обычный вход школы (даже при сбоях с дублями Secure), не показывать демо.
+    """
+    token = request.cookies.get(SESSION_COOKIE)
+    auth = load_auth()
+    if auth and token and verify_session_token(token, auth):
+        return False
+    return verify_demo_session_token(token)
 
 
 def verify_session_token(token: str | None, auth: dict[str, Any]) -> bool:
