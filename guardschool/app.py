@@ -2856,7 +2856,10 @@ def root(request: Request) -> Response:
         return RedirectResponse("/setup")
     if not is_authenticated(request):
         return RedirectResponse("/login")
-    return FileResponse(STATIC_DIR / "index.html")
+    return FileResponse(
+        STATIC_DIR / "index.html",
+        headers={"Cache-Control": "no-cache, must-revalidate"},
+    )
 
 
 @app.get("/register", response_class=HTMLResponse)
@@ -3273,7 +3276,7 @@ def logout(request: Request, response: Response) -> dict[str, str]:
 
 
 @app.get("/api/admin/config")
-async def get_admin_config(request: Request) -> dict[str, Any]:
+async def get_admin_config(request: Request) -> Response:
     require_auth(request)
     cfg = load_config()
     # Метаданные, которые нужны UI, но не должны сохраняться в config.json.
@@ -3284,7 +3287,7 @@ async def get_admin_config(request: Request) -> dict[str, Any]:
         "demo_session": is_demo_session_for_admin_ui(request),
         "demo_exit_url": _demo_exit_redirect_url(),
     }
-    return cfg
+    return JSONResponse(cfg, headers={"Cache-Control": "no-store"})
 
 
 @app.post("/api/admin/config")
