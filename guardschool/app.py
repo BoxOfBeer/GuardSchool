@@ -2043,6 +2043,26 @@ def get_public_version() -> dict[str, str]:
     return {"product": "GuardSchool", "version": APP_VERSION}
 
 
+@app.get("/api/_debug/tenant")
+def debug_tenant(request: Request) -> dict[str, Any]:
+    """Диагностика SaaS tenant routing (только для провайдера)."""
+    _require_provider_admin(request)
+    from .tenant_ctx import tenant_slug as current_tenant
+    from .tenant_ctx import map_data_path
+    return {
+        "host": _request_host_for_routing(request),
+        "deployment_mode": deployment_mode(),
+        "public_school_host": _public_school_host_normalized(),
+        "tenant_slug": current_tenant(),
+        "auth_path": str(map_data_path(AUTH_PATH)),
+        "config_path": str(map_data_path(CONFIG_PATH)),
+        "cookies": {
+            "tenant": request.cookies.get(SAAS_TENANT_COOKIE),
+            "session": request.cookies.get(SESSION_COOKIE),
+        },
+    }
+
+
 PORTAL_ADM_COOKIE_NAME = "gs_portal_adm"
 PORTAL_ADM_COOKIE_MAX_AGE_SEC = 7 * 24 * 3600
 
