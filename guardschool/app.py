@@ -2970,7 +2970,12 @@ def portal_try_demo(request: Request) -> Response:
 
 
 @app.get("/setup", response_class=HTMLResponse)
-def setup_page() -> Response:
+def setup_page(request: Request) -> Response:
+    # В SaaS на общем школьном хосте (school.*) первичная настройка не нужна:
+    # админ = владелец лицензии, а auth.json создаётся регистрацией.
+    host = _portal_request_host(request)
+    if deployment_mode() == "saas" and saas_db_enabled() and _is_public_school_host(host):
+        raise HTTPException(status_code=404, detail="Not found.")
     return FileResponse(STATIC_DIR / "setup.html")
 
 
@@ -3108,6 +3113,9 @@ async def saas_register(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
 
 @app.post("/api/setup")
 async def setup_admin(request: Request, username: str = Form(...), password: str = Form(...)) -> dict[str, str]:
+    host = _portal_request_host(request)
+    if deployment_mode() == "saas" and saas_db_enabled() and _is_public_school_host(host):
+        raise HTTPException(status_code=404, detail="Not found.")
     loc = admin_ui_lang(request)
     if load_auth():
         raise HTTPException(
