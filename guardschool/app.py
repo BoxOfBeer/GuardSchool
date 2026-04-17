@@ -2326,7 +2326,18 @@ def provider_list_licenses(request: Request) -> dict[str, Any]:
             rows = cur.fetchall() or []
     return {
         "licenses": [
-            _license_row_public(r[0], r[1], r[3], r[4], r[5], r[6], r[7], r[8] or "", r[9], r[10], r[2])
+            _license_row_public(
+                r[0],  # key_hash
+                r[1],  # license_no
+                r[3],  # plan_id
+                r[4],  # status
+                r[5],  # issued_at
+                r[6],  # expires_at
+                r[7] or "",  # notes
+                r[8],  # tenant_slug
+                r[9],  # owner_user_id
+                r[2],  # key_plaintext (optional)
+            )
             for r in rows
         ]
     }
@@ -2354,7 +2365,18 @@ def provider_get_license(key_hash: str, request: Request) -> dict[str, Any]:
             row = cur.fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Not found")
-    lic = _license_row_public(row[0], row[1], row[3], row[4], row[5], row[6], row[7], row[8] or "", row[9], row[10], row[2])
+    lic = _license_row_public(
+        row[0],  # key_hash
+        row[1],  # license_no
+        row[3],  # plan_id
+        row[4],  # status
+        row[5],  # issued_at
+        row[6],  # expires_at
+        row[7] or "",  # notes
+        row[8],  # tenant_slug
+        row[9],  # owner_user_id
+        row[2],  # key_plaintext (optional)
+    )
     return {"license": lic}
 
 
