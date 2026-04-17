@@ -114,6 +114,11 @@
       async function api(path, opts = {}) {
         const r = await fetch(path, { ...opts, credentials: "include" });
         const data = await r.json().catch(() => ({}));
+        // Если сессия истекла/нет cookie — сразу отправляем на форму логина
+        if (r.status === 401) {
+          window.location.replace("/ADM");
+          throw new Error("401: Unauthorized");
+        }
         if (!r.ok) throw new Error(`${r.status}: ${data.detail || JSON.stringify(data)}`);
         return data;
       }
@@ -122,7 +127,8 @@
         try {
           await fetch("/api/portal-adm/logout", { method: "POST", credentials: "include" });
         } catch (_) {}
-        window.location.href = "/ADM";
+        // Сразу уходим на логин, чтобы не требовался ручной refresh
+        window.location.replace("/ADM");
       });
 
       function renderList(data) {

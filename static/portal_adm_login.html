@@ -48,7 +48,8 @@
         const username = String(document.getElementById("user").value || "").trim();
         const password = String(document.getElementById("pass").value || "");
         out.style.display = "block";
-        out.textContent = "";
+        // Показываем статус, чтобы не было ощущения "пустой плашки"
+        out.textContent = "Входим…";
         try {
           const r = await fetch("/api/portal-adm/login", {
             method: "POST",
@@ -58,7 +59,9 @@
           });
           const data = await r.json().catch(() => ({}));
           if (!r.ok) throw new Error(data.detail || r.status);
-          window.location.href = "/ADM";
+          // После установки cookie делаем замену локации (без сохранения в истории)
+          // чтобы UI сразу обновился (без ручного F5).
+          window.location.replace("/ADM");
         } catch (e) {
           out.textContent = String(e.message || e);
         }
