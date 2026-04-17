@@ -13,6 +13,7 @@ import re
 import secrets
 import shutil
 import time
+import base64
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -2012,7 +2013,8 @@ async def _tenant_middleware(request: Request, call_next):
         host = _request_host_for_routing(request)
         slug: str | None = None
         if _is_public_school_host(host):
-            cook = (request.cookies.get(SAAS_TENANT_COOKIE) or "").strip().lower()
+            cook_raw = request.cookies.get(SAAS_TENANT_COOKIE) or ""
+            cook = _decode_saas_tenant_cookie_value(cook_raw)
             if cook and _saas_tenant_slug_cookie_ok(cook):
                 slug = cook
         elif host.endswith(".guarddoc.ru"):
@@ -2091,6 +2093,29 @@ def _saas_tenant_slug_cookie_ok(slug: str) -> bool:
     if s in ("www", "admin"):
         return False
     return all(ch.isalnum() or ch == "-" for ch in s)
+
+
+def _encode_saas_tenant_cookie_value(slug: str) -> str:
+    """Cookie должна быть ASCII: кодируем slug в base64url (utf-8) без паддинга."""
+    raw = (slug or "").strip().lower()
+    return base64.urlsafe_b64encode(raw.encode("utf-8")).decode("ascii").rstrip("=")
+
+
+def _decode_saas_tenant_cookie_value(value: str) -> str | None:
+    """Декодировать cookie gs_saas_tenant; поддерживаем и старый plain (ASCII) формат."""
+    v = (value or "").strip()
+    if not v:
+        return None
+    vv = v.strip().lower()
+    # Старый формат: plain ASCII slug.
+    if all(ch.isalnum() or ch == "-" for ch in vv):
+        return vv
+    try:
+        padded = vv + "=" * ((4 - (len(vv) % 4)) % 4)
+        decoded = base64.urlsafe_b64decode(padded.encode("ascii")).decode("utf-8").strip().lower()
+        return decoded or None
+    except Exception:
+        return None
 
 
 def _school_entry_url() -> str:
@@ -3173,7 +3198,7 @@ async def login(request: Request, response: Response, username: str = Form(...),
         )
         response.set_cookie(
             SAAS_TENANT_COOKIE,
-            tenant_slug_val,
+            _encode_saas_tenant_cookie_value(tenant_slug_val),
             httponly=True,
             samesite="lax",
             secure=sec,
