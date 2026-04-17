@@ -1312,6 +1312,25 @@ def class_sort_key(value: str) -> tuple[int, str]:
     return 10_000, normalized
 
 
+def distinct_schedule_class_names_from_sources(
+    dated: list[dict[str, Any]] | None,
+    weekly: list[dict[str, Any]] | None,
+    sample: list[dict[str, Any]] | None,
+) -> list[str]:
+    """Уникальные подписи классов из расписания по датам, недели и образца — для галочек в админке."""
+    by_key: dict[str, str] = {}
+    for source in (dated or [], weekly or [], sample or []):
+        for item in source:
+            raw = str(item.get("class_name") or "").strip()
+            if not raw:
+                continue
+            k = normalize_class(raw)
+            by_key.setdefault(k, raw)
+    out = list(by_key.values())
+    out.sort(key=class_sort_key)
+    return out
+
+
 def time_to_minutes(value: str) -> int:
     hours, minutes = value.split(":")
     return int(hours) * 60 + int(minutes)
@@ -2988,10 +3007,17 @@ async def saas_register(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
     lic_key = str(payload.get("license_key") or "").strip()
     password = str(payload.get("password") or "").strip()
     slug = str(payload.get("tenant_slug") or "").strip().lower()
-    if not lic_key or not slug:
-        raise HTTPException(status_code=400, detail="license_key and tenant_slug are required.")
+    if not lic_key:
+        raise HTTPException(status_code=400, detail="license_key is required.")
     if not password_is_valid(password):
         raise HTTPException(status_code=400, detail="Пароль: не менее 8 символов, нужны буквы и цифры.")
+
+    # tenant_slug в SaaS — внутренний id: используем в cookie и в schema name.
+    # Для публичной регистрации можно не передавать tenant_slug: сгенерируем безопасный.
+    if not slug:
+        slug = f"s{secrets.token_hex(6)}"  # 13 символов, латиница+цифры
+    if not _saas_tenant_slug_cookie_ok(slug):
+        raise HTTPException(status_code=400, detail="tenant_slug: используйте латиницу/цифры/дефис (например, s1a2b3c4d5e6f).")
 
     key_h = license_key_hash(lic_key)
     now = utcnow()
@@ -3572,16 +3598,22 @@ def list_bell_sounds(request: Request) -> dict[str, Any]:
 @app.get("/api/admin/schedule")
 def get_schedule_snapshot(request: Request) -> dict[str, Any]:
     require_auth(request)
+    schedule_rows = load_schedule()
+    full_rows = load_full_schedule()
+    sample_rows = load_schedule_sample()
     return {
-        "schedule": load_schedule(),
+        "schedule": schedule_rows,
         "holidays": load_holidays(),
         "announcements": load_announcements(),
         "marquee": load_marquee_items(),
         "overrides": load_overrides(),
         "bells": load_bell_schedules(),
         "history": load_change_log(),
-        "full_schedule_rows": len(load_full_schedule()),
-        "schedule_sample_rows": len(load_schedule_sample()),
+        "full_schedule_rows": len(full_rows),
+        "schedule_sample_rows": len(sample_rows),
+        "schedule_class_options": distinct_schedule_class_names_from_sources(
+            schedule_rows, full_rows, sample_rows
+        ),
         "imports": {
             "schedule_path": str(AUTO_SCHEDULE_IMPORT_PATH),
             "full_schedule_path": str(AUTO_FULL_SCHEDULE_IMPORT_PATH),

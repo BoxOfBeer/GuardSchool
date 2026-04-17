@@ -37,8 +37,8 @@
         </div>
 
         <div class="row">
-          <label class="portal-label" for="tenant">Код школы в базе</label>
-          <input id="tenant" class="portal-field" placeholder="короткий уникальный id, например gus51" autocomplete="off" />
+          <label class="portal-label" for="tenant">Название школы (для вас)</label>
+          <input id="tenant" class="portal-field" placeholder="например: Школа №51" autocomplete="off" />
         </div>
         <div class="row">
           <label class="portal-label" for="key">Ключ лицензии</label>
@@ -77,13 +77,15 @@
       }
 
       go.addEventListener("click", async () => {
+        // tenant_slug — внутренний id. Для пользователя его не показываем; генерируем сами.
+        const slug = `s${crypto.getRandomValues(new Uint8Array(6)).reduce((a, b) => a + b.toString(16).padStart(2, "0"), "")}`;
         const payload = {
-          tenant_slug: String(tenant.value || "").trim().toLowerCase(),
+          tenant_slug: slug,
           license_key: String(key.value || "").trim(),
           password: String(pass.value || ""),
         };
-        if (!payload.tenant_slug || !payload.license_key || !payload.password) {
-          show("Заполните: код школы, ключ лицензии и пароль.");
+        if (!payload.license_key || !payload.password) {
+          show("Заполните: ключ лицензии и пароль.");
           return;
         }
         go.disabled = true;
@@ -100,11 +102,7 @@
           }
           const entry = String(data.school_entry_url || "https://school.guarddoc.ru/").replace(/\/?$/, "/");
           show(
-            `Готово.\n\nВход для всех школ — на одном адресе (логин = ключ лицензии, пароль = заданный здесь):\n${entry}\n\nНа сервере для этого режима нужен GUARDSCHOOL_PUBLIC_SCHOOL_HOST (например school.guarddoc.ru) и прокси на приложение.\n\nОтвет сервера: ${JSON.stringify(
-              data,
-              null,
-              2
-            )}`
+            `Лицензия активирована.\n\nОткройте:\n${entry}\n\nЛогин: ключ лицензии\nПароль: тот, что вы задали здесь.`
           );
         } catch (e) {
           show(String(e));

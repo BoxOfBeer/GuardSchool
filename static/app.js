@@ -591,7 +591,11 @@ function compareClassNames(a, b) {
 }
 
 function availableClassOptions() {
-  const classNames = [...new Set((state.schedule || []).map((item) => item.class_name).filter(Boolean))].sort(compareClassNames);
+  const apiNames = state.scheduleClassOptions;
+  const fromDatedOnly = [...new Set((state.schedule || []).map((item) => item.class_name).filter(Boolean))];
+  const rawNames =
+    Array.isArray(apiNames) && apiNames.length > 0 ? [...apiNames] : fromDatedOnly;
+  const classNames = [...new Set(rawNames)].sort(compareClassNames);
   const gradeNames = [...new Set(classNames
     .map((item) => normalizeClass(item).match(/^(\d+)/)?.[1])
     .filter(Boolean))]
@@ -1394,6 +1398,7 @@ async function init() {
   /* Иначе скрытые поля «Стрим» остаются пустыми до первого открытия вкладки — сохранение с ТВ затирало бы audio_stream */
   syncAudioStreamFormFromState();
   state.schedule = schedule.schedule || [];
+  state.scheduleClassOptions = schedule.schedule_class_options || [];
   state.fullScheduleRows = schedule.full_schedule_rows ?? 0;
   state.scheduleSampleRows = schedule.schedule_sample_rows ?? 0;
   state.overrides = schedule.overrides || [];

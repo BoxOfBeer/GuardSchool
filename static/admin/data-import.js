@@ -17,6 +17,13 @@ export function setDataImportDeps(d) {
   deps = { ...deps, ...d };
 }
 
+function applyScheduleSnapshot(snapshot) {
+  state.schedule = snapshot.schedule || [];
+  state.scheduleClassOptions = snapshot.schedule_class_options || [];
+  state.fullScheduleRows = snapshot.full_schedule_rows;
+  state.scheduleSampleRows = snapshot.schedule_sample_rows;
+}
+
 export async function uploadBackground(file) {
   const formData = new FormData();
   formData.append("file", file);
@@ -31,9 +38,7 @@ export async function uploadScheduleDated(file) {
   formData.append("file", file);
   const payload = await api("/api/admin/upload-schedule", { method: "POST", body: formData });
   const snapshot = await api("/api/admin/schedule");
-  state.schedule = snapshot.schedule || [];
-  state.fullScheduleRows = snapshot.full_schedule_rows;
-  state.scheduleSampleRows = snapshot.schedule_sample_rows;
+  applyScheduleSnapshot(snapshot);
   state.history = snapshot.history || [];
   state.appVersion = snapshot.app_version || state.appVersion;
   alert(tf("alert.uploadDated", { n: payload.rows }));
@@ -45,9 +50,7 @@ export async function uploadFullSchedule(file) {
   formData.append("file", file);
   const payload = await api("/api/admin/upload-full-schedule", { method: "POST", body: formData });
   const snapshot = await api("/api/admin/schedule");
-  state.schedule = snapshot.schedule || [];
-  state.fullScheduleRows = snapshot.full_schedule_rows;
-  state.scheduleSampleRows = snapshot.schedule_sample_rows;
+  applyScheduleSnapshot(snapshot);
   state.history = snapshot.history || [];
   state.appVersion = snapshot.app_version || state.appVersion;
   alert(tf("alert.uploadFull", { n: payload.rows }));
@@ -59,9 +62,7 @@ export async function uploadScheduleSample(file) {
   formData.append("file", file);
   const payload = await api("/api/admin/upload-schedule-sample", { method: "POST", body: formData });
   const snapshot = await api("/api/admin/schedule");
-  state.schedule = snapshot.schedule || [];
-  state.fullScheduleRows = snapshot.full_schedule_rows;
-  state.scheduleSampleRows = snapshot.schedule_sample_rows;
+  applyScheduleSnapshot(snapshot);
   state.history = snapshot.history || [];
   state.appVersion = snapshot.app_version || state.appVersion;
   alert(tf("alert.uploadSample", { n: payload.rows }));
@@ -73,7 +74,7 @@ export async function uploadHolidays(file) {
   formData.append("file", file);
   const payload = await api("/api/admin/upload-holidays", { method: "POST", body: formData });
   const snapshot = await api("/api/admin/schedule");
-  state.schedule = snapshot.schedule || [];
+  applyScheduleSnapshot(snapshot);
   state.overrides = snapshot.overrides || [];
   state.announcements = snapshot.announcements || [];
   alert(tf("alert.uploadHolidays", { n: payload.rows }));
@@ -110,9 +111,7 @@ export async function importWeeklyScheduleZip(file) {
   formData.append("file", file);
   const res = await api("/api/admin/import-weekly-schedule", { method: "POST", body: formData });
   const snapshot = await api("/api/admin/schedule");
-  state.schedule = snapshot.schedule || [];
-  state.fullScheduleRows = snapshot.full_schedule_rows;
-  state.scheduleSampleRows = snapshot.schedule_sample_rows;
+  applyScheduleSnapshot(snapshot);
   state.history = snapshot.history || [];
   state.appVersion = snapshot.app_version || state.appVersion;
   alert(tf("alert.importWeek", { full: res.full_schedule_rows ?? "—", sample: res.schedule_sample_rows ?? "—" }));

@@ -5,6 +5,7 @@ import hashlib
 import hmac
 import os
 import time
+import base64
 from typing import Any
 
 from fastapi import HTTPException, Request
@@ -58,12 +59,18 @@ def obliterate_session_cookies(response: Response) -> None:
 
 
 def create_session_token(username: str, auth: dict[str, Any]) -> str:
+    """
+    Сессионная cookie должна быть ASCII (заголовок Set-Cookie кодируется latin-1).
+    Поэтому username упаковываем в base64url (utf-8) без паддинга.
+    """
+    user_raw = (username or "").strip()
+    user_b64 = base64.urlsafe_b64encode(user_raw.encode("utf-8")).decode("ascii").rstrip("=")
     signature = hmac.new(
         auth["password_hash"].encode("utf-8"),
-        username.encode("utf-8"),
+        user_raw.encode("utf-8"),
         hashlib.sha256,
     ).hexdigest()
-    return f"{username}:{signature}"
+    return f"{user_b64}:{signature}"
 
 
 def _demo_session_secret_bytes() -> bytes:
@@ -115,7 +122,13 @@ def is_demo_session_for_admin_ui(request: Request) -> bool:
 def verify_session_token(token: str | None, auth: dict[str, Any]) -> bool:
     if not token or ":" not in token or not auth:
         return False
-    username, signature = token.split(":", 1)
+    user_b64, signature = token.split(":", 1)
+    try:
+        # добавить padding до кратности 4
+        padded = user_b64 + "=" * ((4 - (len(user_b64) % 4)) % 4)
+        username = base64.urlsafe_b64decode(padded.encode("ascii")).decode("utf-8")
+    except Exception:
+        return False
     if username != auth.get("username"):
         return False
     expected = create_session_token(username, auth).split(":", 1)[1]

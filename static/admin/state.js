@@ -6,6 +6,8 @@ export const state = {
   statsPanelActive: false,
   activeSection: "main",
   schedule: [],
+  /** Имена классов для галочек «Расписание»: объединение по датам + неделя + образец (с сервера). */
+  scheduleClassOptions: [],
   overrides: [],
   bells: null,
   bellSoundFiles: [],
