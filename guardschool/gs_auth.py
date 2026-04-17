@@ -12,7 +12,7 @@ from starlette.responses import Response
 
 from .gs_admin_http import admin_msg, admin_ui_lang
 from .gs_jsonio import read_json
-from .gs_paths import AUTH_PATH, SESSION_COOKIE
+from .gs_paths import AUTH_PATH, SAAS_TENANT_COOKIE, SESSION_COOKIE
 
 
 def load_auth() -> dict[str, Any]:
@@ -38,6 +38,16 @@ def obliterate_session_cookies(response: Response) -> None:
         response.delete_cookie(SESSION_COOKIE, path="/", secure=sec, httponly=True, samesite="lax")
         response.set_cookie(
             SESSION_COOKIE,
+            "",
+            max_age=0,
+            path="/",
+            secure=sec,
+            httponly=True,
+            samesite="lax",
+        )
+        response.delete_cookie(SAAS_TENANT_COOKIE, path="/", secure=sec, httponly=True, samesite="lax")
+        response.set_cookie(
+            SAAS_TENANT_COOKIE,
             "",
             max_age=0,
             path="/",

@@ -103,6 +103,7 @@ from .gs_paths import (
     OVERRIDES_PATH,
     SCHEDULE_PATH,
     SCHEDULE_SAMPLE_PATH,
+    SAAS_TENANT_COOKIE,
     SESSION_COOKIE,
     STATIC_DIR,
     SYNC_STATE_PATH,
@@ -1982,16 +1983,20 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 async def _tenant_middleware(request: Request, call_next):
     """
     SaaS: по Host определяем школу и маппим data/ на tenants/<slug>/data.
-    Примеры: foo.guarddoc.ru → slug foo; school.guarddoc.ru → slug school.
-    Отдельная логика «один общий хост, школа только по лицензии в БД» в этом слое пока не реализована.
-    В остальных режимах ничего не делаем.
+    Примеры: foo.guarddoc.ru → slug foo.
+    Если задан GUARDSCHOOL_PUBLIC_SCHOOL_HOST и Host совпадает с ним — slug берём из cookie
+    gs_saas_tenant (после входа на общем school.*), а не из поддомена.
     """
     from .tenant_ctx import set_tenant_slug
 
     if deployment_mode() == "saas":
-        host = (request.headers.get("host") or "").split(":")[0].strip().lower()
+        host = _request_host_for_routing(request)
         slug: str | None = None
-        if host.endswith(".guarddoc.ru"):
+        if _is_public_school_host(host):
+            cook = (request.cookies.get(SAAS_TENANT_COOKIE) or "").strip().lower()
+            if cook and _saas_tenant_slug_cookie_ok(cook):
+                slug = cook
+        elif host.endswith(".guarddoc.ru"):
             left = host[: -len(".guarddoc.ru")]
             if left and left not in ("www", "admin"):
                 slug = left
@@ -2021,10 +2026,10 @@ PORTAL_ADM_COOKIE_NAME = "gs_portal_adm"
 PORTAL_ADM_COOKIE_MAX_AGE_SEC = 7 * 24 * 3600
 
 
-def _portal_request_host(request: Request) -> str:
+def _request_host_for_routing(request: Request) -> str:
     """
-    Имя хоста для портала guarddoc.ru. За nginx с proxy_pass на 127.0.0.1 иногда приходит
-    Host=127.0.0.1 — тогда берём X-Forwarded-Host (добавьте в nginx: proxy_set_header X-Forwarded-Host $host;).
+    Внешний host для SaaS-маршрутизации и портала.
+    За nginx с proxy_pass на 127.0.0.1 иногда приходит Host=127.0.0.1 — тогда X-Forwarded-Host.
     """
     host = (request.headers.get("host") or "").split(":")[0].strip().lower()
     if host in ("127.0.0.1", "localhost", "[::1]") or host.startswith("127."):
@@ -2034,12 +2039,45 @@ def _portal_request_host(request: Request) -> str:
     return host
 
 
+def _portal_request_host(request: Request) -> str:
+    """Алиас: имя хоста для портала guarddoc.ru."""
+    return _request_host_for_routing(request)
+
+
 def _is_guarddoc_portal_host(host: str) -> bool:
     return host in ("guarddoc.ru", "www.guarddoc.ru")
 
 
 def _is_guarddoc_portal(request: Request) -> bool:
     return _is_guarddoc_portal_host(_portal_request_host(request))
+
+
+def _public_school_host_normalized() -> str | None:
+    """Единый хост входа школ (school.*): без порта, нижний регистр."""
+    raw = (os.environ.get("GUARDSCHOOL_PUBLIC_SCHOOL_HOST") or "").strip().lower()
+    if not raw:
+        return None
+    return raw.split(":")[0]
+
+
+def _is_public_school_host(host: str) -> bool:
+    pub = _public_school_host_normalized()
+    return bool(pub and host.split(":")[0].strip().lower() == pub)
+
+
+def _saas_tenant_slug_cookie_ok(slug: str) -> bool:
+    s = (slug or "").strip().lower()
+    if not s or len(s) > 48:
+        return False
+    if s in ("www", "admin"):
+        return False
+    return all(ch.isalnum() or ch == "-" for ch in s)
+
+
+def _school_entry_url() -> str:
+    scheme = (os.environ.get("GUARDSCHOOL_PUBLIC_SCHOOL_SCHEME") or "https").strip().lower().rstrip("/") or "https"
+    host = _public_school_host_normalized() or "school.guarddoc.ru"
+    return f"{scheme}://{host}/"
 
 
 def _portal_adm_cookie_secret() -> bytes:
@@ -3010,7 +3048,11 @@ async def saas_register(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
     finally:
         set_tenant_slug(None)
 
-    return {"status": "ok", "tenant": {"slug": slug, "schema": schema}}
+    return {
+        "status": "ok",
+        "tenant": {"slug": slug, "schema": schema},
+        "school_entry_url": _school_entry_url(),
+    }
 
 
 @app.post("/api/setup")
@@ -3038,6 +3080,81 @@ async def setup_admin(request: Request, username: str = Form(...), password: str
 @app.post("/api/login")
 async def login(request: Request, response: Response, username: str = Form(...), password: str = Form(...)) -> dict[str, str]:
     loc = admin_ui_lang(request)
+    host = _portal_request_host(request)
+
+    if deployment_mode() == "saas" and saas_db_enabled() and _is_public_school_host(host):
+        u = username.strip()
+        if not u:
+            raise HTTPException(
+                status_code=401,
+                detail=admin_msg(loc, "Неверный логин или пароль.", "Invalid username or password."),
+            )
+        key_h = license_key_hash(u)
+        with connect_public() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT u.password_salt, u.password_hash, t.slug
+                    FROM users u
+                    INNER JOIN tenants t ON t.owner_user_id = u.id
+                    WHERE u.license_key_hash = %s
+                    """,
+                    (key_h,),
+                )
+                row = cur.fetchone()
+        if not row or hash_password(password, row[0]) != row[1]:
+            raise HTTPException(
+                status_code=401,
+                detail=admin_msg(loc, "Неверный логин или пароль.", "Invalid username or password."),
+            )
+        tenant_slug_val = str(row[2]).strip().lower()
+        from .tenant_ctx import set_tenant_slug, tenant_slug as tenant_slug_get
+
+        prev = tenant_slug_get()
+        set_tenant_slug(tenant_slug_val)
+        try:
+            auth = load_auth()
+            if not auth:
+                raise HTTPException(
+                    status_code=503,
+                    detail=admin_msg(
+                        loc,
+                        "Данные школы не подготовлены. Обратитесь к поддержке.",
+                        "School tenant data is not provisioned.",
+                    ),
+                )
+            if str(auth.get("username") or "").strip() != u:
+                raise HTTPException(
+                    status_code=503,
+                    detail=admin_msg(
+                        loc,
+                        "Несоответствие учётной записи и данных школы. Обратитесь к поддержке.",
+                        "Auth data mismatch for this school.",
+                    ),
+                )
+        finally:
+            set_tenant_slug(prev)
+        obliterate_session_cookies(response)
+        token = create_session_token(u, auth)
+        sec = session_cookie_secure(request)
+        response.set_cookie(
+            SESSION_COOKIE,
+            token,
+            httponly=True,
+            samesite="lax",
+            secure=sec,
+            path="/",
+        )
+        response.set_cookie(
+            SAAS_TENANT_COOKIE,
+            tenant_slug_val,
+            httponly=True,
+            samesite="lax",
+            secure=sec,
+            path="/",
+        )
+        return {"status": "ok"}
+
     auth = load_auth()
     if not auth:
         raise HTTPException(

@@ -56,4 +56,6 @@ AUTO_HOLIDAYS_IMPORT_PATH = IMPORT_DIR / "holidays.xlsx"
 AUTO_ANNOUNCEMENTS_IMPORT_PATH = IMPORT_DIR / "announcements.xlsx"
 AUTO_MARQUEE_IMPORT_PATH = IMPORT_DIR / "marquee.xlsx"
 SESSION_COOKIE = "gornii_session"
+# SaaS: при GUARDSCHOOL_PUBLIC_SCHOOL_HOST хранит slug школы для единого входа (например school.*).
+SAAS_TENANT_COOKIE = "gs_saas_tenant"
 WIDGET_IMAGES_SUBDIR = "widget_images"
