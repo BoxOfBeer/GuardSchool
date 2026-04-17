@@ -73,6 +73,32 @@ function initGsHybridFromUrl() {
 
 initGsHybridFromUrl();
 
+// Быстрый «удалённый» сброс кэша/настроек для конкретного экрана:
+// удобно, когда устройство (телефон) застряло на старых localStorage значениях (gs_mw/gs_mobile/gs_classes или base URL).
+// Использование: добавить в адрес `?gs_reset=1` (параметр удалится сам).
+(function maybeResetDevicePrefsOnce() {
+  try {
+    const slug = getSlug();
+    if (!slug) return;
+    const q = new URLSearchParams(window.location.search || "");
+    if (q.get("gs_reset") !== "1") return;
+    try {
+      clearDevicePrefs(slug);
+    } catch (_) {}
+    try {
+      localStorage.removeItem("gs_primary_base");
+      localStorage.removeItem("gs_fallback_base");
+      // bearer тоже может мешать (например, если устарел) — сбрасываем при явном reset
+      localStorage.removeItem("gs_tv_bearer");
+    } catch (_) {}
+    q.delete("gs_reset");
+    const ns = q.toString();
+    const url = window.location.pathname + (ns ? `?${ns}` : "") + window.location.hash;
+    window.history.replaceState({}, "", url);
+    window.location.reload();
+  } catch (_) {}
+})();
+
 function getGsTvBearer() {
   try {
     return (localStorage.getItem("gs_tv_bearer") || "").trim();
@@ -1058,3 +1084,16 @@ window.setInterval(() => {
     }
   } catch (_) {}
 }, 10000);
+
+// На мобильных браузерах таймеры в фоне/при блокировке экрана могут «замерзать».
+// Когда вкладка снова становится активной — сразу делаем refresh (вместо ожидания setTimeout).
+document.addEventListener("visibilitychange", () => {
+  try {
+    if (document.visibilityState === "visible") refresh();
+  } catch (_) {}
+});
+window.addEventListener("online", () => {
+  try {
+    refresh();
+  } catch (_) {}
+});
