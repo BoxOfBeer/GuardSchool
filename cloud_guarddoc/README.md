@@ -71,7 +71,17 @@ location / {
 
 ### SSH с вашего ПК
 
-Ассистент в Cursor **не подключается** к вашему VPS по SSH. Удобный вход без пароля в файлах репозитория: скопируйте **`ssh-local.example.bat`** → **`ssh-local.bat`** (файл в `.gitignore`), укажите `SSH_TARGET=`, при необходимости настройте **SSH-ключ** на сервере (`~/.ssh/authorized_keys`). Пароли в bat-файлах и в git не храните.
+Ассистент в Cursor **не подключается** к вашему VPS по SSH. Удобный вход без пароля:
+
+1. **Один раз** в PowerShell из корня репозитория (подставьте свой `user@host` при необходимости):
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File .\cloud_guarddoc\setup-ssh-key-windows.ps1
+   ```
+   Скрипт создаст `%USERPROFILE%\.ssh\id_ed25519_guarddoc`, затем запросит **пароль SSH один раз** и добавит публичный ключ в `authorized_keys` на сервере. Флаг `-SkipInstall` — только создать ключ и показать `.pub` для ручной вставки.
+
+2. Скопируйте **`ssh-local.example.bat`** → **`ssh-local.bat`** (в `.gitignore`); при наличии ключа bat вызовет `ssh -i ...`. Фрагмент для `~/.ssh/config`: **`ssh-config-snippet.example.txt`**.
+
+Пароли в bat-файлах и в git не храните.
 
 ## Демо заказчику (за час)
 

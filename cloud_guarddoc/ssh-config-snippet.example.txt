@@ -1,0 +1,7 @@
+# Фрагмент для C:\Users\<вы>\.ssh\config — после setup-ssh-key-windows.ps1
+# Тогда достаточно: ssh guarddoc
+
+Host guarddoc
+    HostName 195.208.2.62
+    User root
+    IdentityFile ~/.ssh/id_ed25519_guarddoc
