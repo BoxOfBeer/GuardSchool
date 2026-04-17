@@ -2044,7 +2044,7 @@ def get_public_version() -> dict[str, str]:
 
 
 @app.get("/api/_debug/tenant")
-def debug_tenant(request: Request) -> dict[str, Any]:
+async def debug_tenant(request: Request) -> dict[str, Any]:
     """Диагностика SaaS tenant routing (только для провайдера)."""
     _require_provider_admin(request)
     from .tenant_ctx import tenant_slug as current_tenant
