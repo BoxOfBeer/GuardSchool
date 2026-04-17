@@ -1514,17 +1514,28 @@ if (elements.weeklyScheduleTemplateBtn) {
   elements.weeklyScheduleTemplateBtn.onclick = () =>
     downloadWeeklyScheduleTemplateXlsx().catch((e) => alert(e.message || String(e)));
 }
-elements.logoutBtn.onclick = async () => {
+async function adminLogoutThenNavigate(href) {
   await api("/api/logout", { method: "POST" });
-  window.location.href = "/login";
-};
+  try {
+    sessionStorage.removeItem(GS_ADMIN_SESSION_TOP);
+    sessionStorage.removeItem(GS_ADMIN_SESSION_SCREEN);
+    sessionStorage.removeItem(GS_ADMIN_SESSION_SECTION);
+  } catch (_) {}
+  if (state.meta) state.meta.demo_session = false;
+  state.statsPanelActive = false;
+  state.audioStreamPanelActive = false;
+  window.location.href = href;
+}
+
+elements.logoutBtn.onclick = () => adminLogoutThenNavigate("/login");
+
 const demoLogoutBtn = document.getElementById("demo-session-logout-btn");
 if (demoLogoutBtn) {
-  demoLogoutBtn.onclick = async () => {
-    await api("/api/logout", { method: "POST" });
+  demoLogoutBtn.onclick = () => {
     const exitUrl = state.meta?.demo_exit_url;
-    window.location.href =
+    const href =
       typeof exitUrl === "string" && /^https?:\/\//i.test(exitUrl) ? exitUrl : "/login";
+    adminLogoutThenNavigate(href);
   };
 }
 

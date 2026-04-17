@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
+import calendar
 import hashlib
 import hmac
 import io
@@ -2237,6 +2238,75 @@ def _demo_exit_redirect_url() -> str:
     return "https://guarddoc.ru"
 
 
+def _license_ts_utc(dt: datetime) -> datetime:
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def _add_calendar_years(dt: datetime, years: int) -> datetime:
+    """Добавить целое число календарных лет к моменту (UTC), с учётом 29 февраля."""
+    if years <= 0:
+        return _license_ts_utc(dt)
+    d = _license_ts_utc(dt)
+    y = d.year + years
+    mo, da = d.month, d.day
+    if mo == 2 and da == 29:
+        da = min(da, calendar.monthrange(y, mo)[1])
+    try:
+        return d.replace(year=y, month=mo, day=da)
+    except ValueError:
+        return d.replace(year=y, month=2, day=28)
+
+
+def _license_row_public(
+    key_hash: str,
+    plan_id: str,
+    status: str,
+    issued_at: Any,
+    expires_at: Any,
+    notes: str,
+    tenant_slug: str | None,
+    owner_user_id: str | None,
+) -> dict[str, Any]:
+    iy: int | None = None
+    ey: int | None = None
+    try:
+        if isinstance(issued_at, datetime):
+            iy = _license_ts_utc(issued_at).year
+    except Exception:
+        pass
+    try:
+        if isinstance(expires_at, datetime):
+            ey = _license_ts_utc(expires_at).year
+    except Exception:
+        pass
+    return {
+        "key_hash": key_hash,
+        "plan_id": plan_id,
+        "status": status,
+        "issued_at": issued_at.isoformat() if issued_at else None,
+        "expires_at": expires_at.isoformat() if expires_at else None,
+        "issued_year": iy,
+        "expires_year": ey,
+        "notes": notes or "",
+        "tenant_slug": tenant_slug or None,
+        "owner_user_id": owner_user_id or None,
+        "registered": bool(owner_user_id),
+    }
+
+
+_LICENSE_LIST_SQL = """
+SELECT l.key_hash, l.plan_id, l.status, l.issued_at, l.expires_at, l.notes,
+       t.slug, u.id
+FROM licenses l
+LEFT JOIN users u ON u.license_key_hash = l.key_hash
+LEFT JOIN tenants t ON t.owner_user_id = u.id
+ORDER BY l.issued_at DESC
+LIMIT 500
+"""
+
+
 @app.get("/api/provider/licenses")
 def provider_list_licenses(request: Request) -> dict[str, Any]:
     _require_provider_admin(request)
@@ -2244,23 +2314,40 @@ def provider_list_licenses(request: Request) -> dict[str, Any]:
         return {"licenses": []}
     with connect_public() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                "SELECT key_hash, plan_id, status, issued_at, expires_at, notes FROM licenses ORDER BY issued_at DESC LIMIT 500"
-            )
+            cur.execute(_LICENSE_LIST_SQL)
             rows = cur.fetchall() or []
     return {
         "licenses": [
-            {
-                "key_hash": r[0],
-                "plan_id": r[1],
-                "status": r[2],
-                "issued_at": r[3].isoformat() if r[3] else None,
-                "expires_at": r[4].isoformat() if r[4] else None,
-                "notes": r[5],
-            }
+            _license_row_public(r[0], r[1], r[2], r[3], r[4], r[5] or "", r[6], r[7])
             for r in rows
         ]
     }
+
+
+@app.get("/api/provider/licenses/{key_hash}")
+def provider_get_license(key_hash: str, request: Request) -> dict[str, Any]:
+    """Одна лицензия + признак регистрации и slug тенанта (если уже привязана)."""
+    _require_provider_admin(request)
+    if not saas_db_enabled():
+        raise HTTPException(status_code=500, detail="SaaS database is not configured.")
+    with connect_public() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT l.key_hash, l.plan_id, l.status, l.issued_at, l.expires_at, l.notes,
+                       t.slug, u.id
+                FROM licenses l
+                LEFT JOIN users u ON u.license_key_hash = l.key_hash
+                LEFT JOIN tenants t ON t.owner_user_id = u.id
+                WHERE l.key_hash = %s
+                """,
+                (key_hash,),
+            )
+            row = cur.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Not found")
+    lic = _license_row_public(row[0], row[1], row[2], row[3], row[4], row[5] or "", row[6], row[7])
+    return {"license": lic}
 
 
 @app.post("/api/provider/licenses")
@@ -2271,15 +2358,31 @@ async def provider_create_license(request: Request) -> dict[str, Any]:
     body = await request.json()
     plan_id = str(body.get("plan_id") or "").strip() or "free"
     notes = str(body.get("notes") or "").strip()
-    expires_days = body.get("expires_days", None)
-    expires_at = None
-    if expires_days is not None:
+    default_years: int | None = None
+    raw_def = (os.environ.get("GUARDSCHOOL_LICENSE_DEFAULT_TERM_YEARS") or "").strip()
+    if raw_def:
         try:
-            d = int(expires_days)
+            dy = int(raw_def)
+            if dy > 0:
+                default_years = dy
+        except ValueError:
+            pass
+    expires_at: datetime | None = None
+    if body.get("expires_years") is not None:
+        try:
+            y = int(body.get("expires_years"))
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="expires_years must be integer.") from None
+        expires_at = None if y <= 0 else _add_calendar_years(utcnow(), y)
+    elif body.get("expires_days") is not None:
+        try:
+            d = int(body.get("expires_days"))
             if d > 0:
                 expires_at = utcnow() + timedelta(days=d)
-        except Exception:
-            pass
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="expires_days must be integer.") from None
+    elif default_years is not None:
+        expires_at = _add_calendar_years(utcnow(), default_years)
     key = _generate_license_key()
     key_h = license_key_hash(key)
     with connect_public() as conn:
@@ -2307,6 +2410,150 @@ async def provider_set_license_status(key_hash: str, request: Request) -> dict[s
     with connect_public() as conn:
         with conn.cursor() as cur:
             cur.execute("UPDATE licenses SET status=%s WHERE key_hash=%s", (status, key_hash))
+            if cur.rowcount <= 0:
+                raise HTTPException(status_code=404, detail="Not found")
+        conn.commit()
+    return {"status": "ok"}
+
+
+def _parse_license_expires_at_raw(raw: Any) -> datetime | None:
+    """None из JSON → снять срок; ISO-строка → дата окончания (UTC)."""
+    if raw is None:
+        return None
+    if isinstance(raw, str):
+        s = raw.strip()
+        if not s:
+            return None
+        try:
+            iso = s.replace("Z", "+00:00")
+            dt = datetime.fromisoformat(iso)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt.astimezone(timezone.utc).replace(tzinfo=None)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid expires_at (use ISO-8601).") from None
+    raise HTTPException(status_code=400, detail="Invalid expires_at type.")
+
+
+@app.patch("/api/provider/licenses/{key_hash}")
+async def provider_patch_license(key_hash: str, request: Request) -> dict[str, str]:
+    """
+    Частичное обновление: notes, plan_id, status, expires_at, expires_days,
+    expires_years_from_issue (целое лет от даты выдачи лицензии; 0 = снять срок),
+    expires_years_from_now (целое лет от текущего момента).
+    Смена plan_id разрешена и после регистрации школы (переход между планами).
+    """
+    _require_provider_admin(request)
+    if not saas_db_enabled():
+        raise HTTPException(status_code=500, detail="SaaS database is not configured.")
+    body = await request.json()
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="JSON object required.")
+    sets: list[str] = []
+    params: list[Any] = []
+    if "status" in body:
+        st = str(body.get("status") or "").strip() or "active"
+        if st not in ("active", "disabled", "revoked"):
+            raise HTTPException(status_code=400, detail="Invalid status")
+        sets.append("status=%s")
+        params.append(st)
+    if "notes" in body:
+        sets.append("notes=%s")
+        params.append(str(body.get("notes") or ""))
+    if "plan_id" in body:
+        pid = str(body.get("plan_id") or "").strip() or "free"
+        sets.append("plan_id=%s")
+        params.append(pid)
+    exp_dt: datetime | None | str = "omit"
+    years_from_issue: int | None = None
+    if "expires_at" in body:
+        exp_dt = _parse_license_expires_at_raw(body.get("expires_at"))
+    elif "expires_years_from_issue" in body and body.get("expires_years_from_issue") is not None:
+        try:
+            ny = int(body.get("expires_years_from_issue"))
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="expires_years_from_issue must be integer.") from None
+        if ny <= 0:
+            exp_dt = None
+        else:
+            exp_dt = "fetch_issue"
+            years_from_issue = ny
+    elif "expires_years_from_now" in body and body.get("expires_years_from_now") is not None:
+        try:
+            ny = int(body.get("expires_years_from_now"))
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="expires_years_from_now must be integer.") from None
+        exp_dt = None if ny <= 0 else _add_calendar_years(utcnow(), ny)
+    elif "expires_days" in body and body.get("expires_days") is not None:
+        try:
+            d = int(body.get("expires_days"))
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="expires_days must be integer.")
+        if d <= 0:
+            exp_dt = None
+        else:
+            exp_dt = utcnow() + timedelta(days=d)
+    if not sets and exp_dt == "omit":
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "No fields to update (status, notes, plan_id, expires_at, expires_days, "
+                "expires_years_from_issue, expires_years_from_now)."
+            ),
+        )
+    with connect_public() as conn:
+        with conn.cursor() as cur:
+            if exp_dt == "fetch_issue":
+                if years_from_issue is None:
+                    raise HTTPException(status_code=500, detail="Internal expiry resolution error.")
+                cur.execute("SELECT issued_at FROM licenses WHERE key_hash=%s", (key_hash,))
+                row = cur.fetchone()
+                if not row:
+                    raise HTTPException(status_code=404, detail="Not found")
+                issued = row[0]
+                base = issued if isinstance(issued, datetime) else utcnow()
+                exp_dt = _add_calendar_years(base, years_from_issue)
+            if "plan_id" in body:
+                pid = str(body.get("plan_id") or "").strip() or "free"
+                cur.execute("SELECT id FROM plans WHERE id=%s", (pid,))
+                if not cur.fetchone():
+                    raise HTTPException(status_code=400, detail="Unknown plan_id")
+            if exp_dt != "omit":
+                sets.append("expires_at=%s")
+                params.append(exp_dt)
+            if not sets:
+                raise HTTPException(status_code=400, detail="No fields to update.")
+            sql = f"UPDATE licenses SET {', '.join(sets)} WHERE key_hash=%s"
+            params.append(key_hash)
+            cur.execute(sql, tuple(params))
+            if cur.rowcount <= 0:
+                raise HTTPException(status_code=404, detail="Not found")
+            if "plan_id" in body:
+                pid_sync = str(body.get("plan_id") or "").strip() or "free"
+                cur.execute(
+                    "UPDATE tenants SET plan_id=%s WHERE owner_user_id IN "
+                    "(SELECT id FROM users WHERE license_key_hash=%s)",
+                    (pid_sync, key_hash),
+                )
+        conn.commit()
+    return {"status": "ok"}
+
+
+@app.delete("/api/provider/licenses/{key_hash}")
+def provider_delete_license(key_hash: str, request: Request) -> dict[str, str]:
+    """Удалить только неиспользованную лицензию (нет пользователя с этим key_hash)."""
+    _require_provider_admin(request)
+    if not saas_db_enabled():
+        raise HTTPException(status_code=500, detail="SaaS database is not configured.")
+    with connect_public() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1 FROM users WHERE license_key_hash=%s LIMIT 1", (key_hash,))
+            if cur.fetchone():
+                raise HTTPException(
+                    status_code=409,
+                    detail="License already used for registration; revoke or disable instead of delete.",
+                )
+            cur.execute("DELETE FROM licenses WHERE key_hash=%s", (key_hash,))
             if cur.rowcount <= 0:
                 raise HTTPException(status_code=404, detail="Not found")
         conn.commit()
@@ -2540,8 +2787,8 @@ def portal_adm_page(request: Request) -> Response:
             "<li><strong>Провайдер по токену</strong> (страница с Bearer): "
             "<code>GUARDSCHOOL_PROVIDER_ADMIN_TOKEN</code> — тот же секрет вставляется в браузере на /ADM.</li>"
             "</ul>"
-            "<p>DNS в панели REG.RU (ns1.hosting.reg.ru) только указывает на сервер; лицензии создаёт это приложение, "
-            "а не панель домена.</p>"
+            "<p>Доступ к ADM включается <strong>только</strong> этими переменными в окружении процесса на сервере. "
+            "Логин и пароль администратора школы (например, на поддомене <code>school.*</code>) — отдельная сущность и к выдаче лицензий не относится.</p>"
             "</body></html>"
         ),
         status_code=503,
@@ -2772,8 +3019,18 @@ async def login(request: Request, response: Response, username: str = Form(...),
 
 @app.post("/api/logout")
 def logout(request: Request, response: Response) -> dict[str, str]:
+    """Снимает обычную и демо-сессию (один cookie `SESSION_COOKIE`)."""
     sec = session_cookie_secure(request)
     response.delete_cookie(SESSION_COOKIE, path="/", secure=sec, httponly=True, samesite="lax")
+    response.set_cookie(
+        SESSION_COOKIE,
+        "",
+        max_age=0,
+        path="/",
+        secure=sec,
+        httponly=True,
+        samesite="lax",
+    )
     return {"status": "ok"}
 
 

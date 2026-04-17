@@ -14,11 +14,12 @@
 | `GUARDSCHOOL_ADMIN_PASSWORD` | Пароль первого админа (≥8 символов, буквы+цифры); создаётся **автоматически** без `/setup` |
 | `GUARDSCHOOL_ADMIN_USERNAME` | Логин (по умолчанию `admin`) |
 | `GUARDSCHOOL_SKIP_SAAS_BOOTSTRAP` | `1` — **не** создавать админа из env (удалили `auth.json` → откройте `/setup` и задайте логин/пароль вручную) |
-| Публичное демо `/try-demo` (портал) | По умолчанию тенант-песочница `demo` и редирект на `demo.<ваш-домен>` (отдельный каталог `tenants/demo/data` с дефолтным `config.json`). Нужна DNS-запись на этот поддомен. Явный хост: `GUARDSCHOOL_TRY_DEMO_REDIRECT_HOST`. Ссылка `/demo/…` на **боевом** поддомене школы без `GUARDSCHOOL_DEMO_ALLOW_ANY_TENANT=1` отклоняется — гости не видят чужие экраны и расписание. Однократный сброс песочницы к дефолту при каждом старте процесса: `GUARDSCHOOL_TRY_DEMO_RESET_ON_START=1`. Старый вариант «всё на одном `GUARDSCHOOL_PUBLIC_SCHOOL_HOST`»: `GUARDSCHOOL_TRY_DEMO_USE_PUBLIC_SCHOOL_HOST=1` и при необходимости `GUARDSCHOOL_DEMO_TENANT_SLUG=school` (данные общие с этой школой — не рекомендуется). Логин владельца песочницы (не обязателен для гостя): `GUARDSCHOOL_TRY_DEMO_ADMIN_USERNAME` / `GUARDSCHOOL_TRY_DEMO_ADMIN_PASSWORD` (≥8 символов, буквы и цифры). Демо на произвольном `tenant_slug` (выдача провайдером): `GUARDSCHOOL_DEMO_ALLOW_ANY_TENANT=1`. |
+| Публичное демо `/try-demo` (портал) | По умолчанию тенант-песочница **`demo`** (`GUARDSCHOOL_DEMO_TENANT_SLUG`, каталог `tenants/demo/data`). **Не задавайте slug песочницы равным боевой школе** (например `school`): иначе плашка «Демо» и cookie `/demo/…` окажутся на том же `school.*`, что и рабочий кабинет. Редирект на `demo.<домен>`; явный хост: `GUARDSCHOOL_TRY_DEMO_REDIRECT_HOST`. Ссылка `/demo/…` на **другом** поддомене школы без `GUARDSCHOOL_DEMO_ALLOW_ANY_TENANT=1` отклоняется. Однократный сброс песочницы при старте: `GUARDSCHOOL_TRY_DEMO_RESET_ON_START=1`. «Всё на одном хосте» (`GUARDSCHOOL_TRY_DEMO_USE_PUBLIC_SCHOOL_HOST` + `GUARDSCHOOL_PUBLIC_SCHOOL_HOST`) — только если осознанно смешиваете хосты; иначе гости и демо-cookie попадут на URL боевой школы. Логин владельца песочницы: `GUARDSCHOOL_TRY_DEMO_ADMIN_USERNAME` / `GUARDSCHOOL_TRY_DEMO_ADMIN_PASSWORD`. Провайдер: `GUARDSCHOOL_DEMO_ALLOW_ANY_TENANT=1`. |
 | Лимиты (опционально) | `GUARDSCHOOL_SAAS_MAX_SCHEDULE_XLSX_BYTES` (по умолчанию 15 МБ), `GUARDSCHOOL_SAAS_MAX_SCHEDULE_JSON_BYTES` (1 МБ), `GUARDSCHOOL_SAAS_MAX_USER_DATA_BYTES` (15 МБ суммарно JSON), `GUARDSCHOOL_SAAS_MAX_WEEKLY_ZIP_BYTES` (15 МБ) |
 | TLS | Прокси (nginx/caddy) с Let's Encrypt на `guarddoc.ru` |
 | Выход из демо | После «Выйти из демо» браузер уходит на главную портала: по умолчанию `https://guarddoc.ru`. Переопределение: `GUARDSCHOOL_DEMO_EXIT_URL` или `GUARDSCHOOL_PORTAL_PUBLIC_URL`. |
 | Библиотека для песочницы демо | `GUARDSCHOOL_TRY_DEMO_LIBRARY_DIR` — абсолютный путь к каталогу с такой же структурой, как у `data/` основной школи (подкаталоги `uploads/` и при необходимости `break_music/`). При старте процесса они копируются в `tenants/<demo>/data` (слияние файлов). |
+| Лицензии: срок по умолчанию | `GUARDSCHOOL_LICENSE_DEFAULT_TERM_YEARS` — если при `POST /api/provider/licenses` не указаны `expires_years` и `expires_days`, выставить срок в календарных годах от момента выдачи (например `1`). |
 
 ## ADM (лицензии, провайдер)
 
@@ -31,11 +32,13 @@
 1. **Логин и пароль** для формы входа: `GUARDSCHOOL_PORTAL_ADM_USERNAME` и `GUARDSCHOOL_PORTAL_ADM_PASSWORD` (требования к паролю как у админа школы: ≥8 символов, буквы и цифры).
 2. **Токен провайдера** для страницы с полем Bearer: `GUARDSCHOOL_PROVIDER_ADMIN_TOKEN`.
 
-Панель REG.RU с DNS (`ns1.hosting.reg.ru` и т.п.) **не создаёт и не чинит** TLS и не включает ADM: это только зона DNS. Сертификат выдаётся **на сервере** (certbot/nginx) или отдельным продуктом хостинга, если сайт обслуживается **не** вашим nginx на VPS, а площадкой REG — тогда пути к сертификату и к приложению могут не совпадать с инструкцией выше.
+Это **не** логин админки школы на `school.*`: ADM — отдельный провайдерский вход на корневом домене портала (`guarddoc.ru` / `www`), данные для него только в переменных окружения сервиса.
+
+**API лицензий (провайдер / ADM):** `GET …/licenses` — список (`tenant_slug`, `registered`, таймштампы `issued_at` / `expires_at`, поля **`issued_year`** и **`expires_year`** для отчётности); `GET …/{key_hash}`; `POST …` — тело: `plan_id`, `notes`, опционально **`expires_years`** (календарных лет от момента выдачи) или **`expires_days`**; если не задано ни то ни другое, при установленном **`GUARDSCHOOL_LICENSE_DEFAULT_TERM_YEARS`** (целое &gt;0) срок выставляется автоматически. **`PATCH …/{key_hash}`** — в т.ч. **`plan_id`** (разрешена смена плана после регистрации: SaaS ↔ полный комплект и т.д.), **`expires_years_from_issue`** (лет от **`issued_at`** в БД; `0` — снять срок), **`expires_years_from_now`** (лет от текущего UTC). Приоритет полей срока в одном запросе: `expires_at` → `expires_years_from_issue` → `expires_years_from_now` → `expires_days`. `DELETE` — только неиспользованная лицензия.
 
 ## TLS (certbot + nginx)
 
-Перед выпуском сертификата **DNS** для всех имён должен указывать на сервер (A-запись), иначе ACME HTTP-01 не пройдёт.
+Перед выпуском сертификата **DNS** у регистратора для всех имён должен указывать на ваш сервер (A-запись), иначе ACME HTTP-01 не пройдёт; сами записи не «включают» HTTPS — сертификат выпускаете вы на машине (certbot/nginx).
 
 Пример **расширения** существующего сертификата новыми поддоменами (подставьте свой путь к конфигу nginx):
 

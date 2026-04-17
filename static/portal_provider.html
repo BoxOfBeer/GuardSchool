@@ -72,8 +72,12 @@
             </select>
           </div>
           <div class="grow">
+            <label class="portal-label" for="years">Срок (лет), календарных от выдачи</label>
+            <input id="years" class="portal-field" inputmode="numeric" placeholder="например 1" />
+          </div>
+          <div class="grow">
             <label class="portal-label" for="days">Срок (дней), пусто = без срока</label>
-            <input id="days" class="portal-field" inputmode="numeric" placeholder="например 365" />
+            <input id="days" class="portal-field" inputmode="numeric" placeholder="если не заданы годы — 365" />
           </div>
           <div class="grow">
             <label class="portal-label" for="notes">Заметка</label>
@@ -90,8 +94,10 @@
           <thead>
             <tr>
               <th>key_hash</th>
+              <th>tenant</th>
               <th>plan</th>
               <th>status</th>
+              <th>issued</th>
               <th>expires</th>
               <th>notes</th>
               <th>действия</th>
@@ -151,15 +157,30 @@
                 .replace(/</g, "&lt;")
                 .replace(/>/g, "&gt;")
                 .replace(/"/g, "&quot;");
+            const issuedShort = x.issued_at ? String(x.issued_at).slice(0, 10) : "—";
+            const expShort = x.expires_at ? String(x.expires_at).slice(0, 10) : "—";
+            const iy = x.issued_year != null ? ` год выдачи: ${x.issued_year}` : "";
+            const ey = x.expires_year != null ? ` год оконч.: ${x.expires_year}` : "";
             return `<tr>
-              <td><code>${esc(kh.slice(0, 12))}…</code></td>
+              <td title="${esc(kh)}"><code>${esc(kh.slice(0, 12))}…</code></td>
+              <td>${esc(x.tenant_slug || "—")}</td>
               <td>${esc(x.plan_id)}</td>
               <td>${esc(x.status)}</td>
-              <td>${esc(x.expires_at || "—")}</td>
+              <td title="${esc(x.issued_at || "")}${iy}">${esc(issuedShort)}</td>
+              <td title="${esc(x.expires_at || "")}${ey}">${esc(expShort)}</td>
               <td>${esc(x.notes || "")}</td>
-              <td>
+              <td style="white-space:normal">
+                <button type="button" class="portal-btn" data-act="info" data-kh="${esc(kh)}">инфо</button>
                 <button type="button" class="portal-btn" data-act="disable" data-kh="${esc(kh)}">off</button>
                 <button type="button" class="portal-btn" data-act="active" data-kh="${esc(kh)}">on</button>
+                <button type="button" class="portal-btn" data-act="revoke" data-kh="${esc(kh)}">revoke</button>
+                <button type="button" class="portal-btn" data-act="patch-notes" data-kh="${esc(kh)}">заметка</button>
+                <button type="button" class="portal-btn" data-act="patch-days" data-kh="${esc(kh)}">срок</button>
+                <button type="button" class="portal-btn" data-act="y-issue-1" data-kh="${esc(kh)}" title="Продлить на 1 календарный год от даты выдачи">+1г⊕выдача</button>
+                <button type="button" class="portal-btn" data-act="y-now-1" data-kh="${esc(kh)}" title="Окончание через 1 календарный год от сегодня">+1г⊕сейчас</button>
+                <button type="button" class="portal-btn" data-act="patch-years-issue" data-kh="${esc(kh)}">лет⊕выдача</button>
+                <button type="button" class="portal-btn" data-act="patch-plan" data-kh="${esc(kh)}">план</button>
+                <button type="button" class="portal-btn" data-act="delete" data-kh="${esc(kh)}">удалить</button>
               </td>
             </tr>`;
           })
@@ -179,9 +200,17 @@
         try {
           const plan_id = String(document.getElementById("plan").value || "free");
           const notes = String(document.getElementById("notes").value || "");
+          const yearsRaw = String(document.getElementById("years").value || "").trim();
           const daysRaw = String(document.getElementById("days").value || "").trim();
           const body = { plan_id, notes };
-          if (daysRaw) body.expires_days = Number(daysRaw);
+          if (yearsRaw) {
+            const ny = Number(yearsRaw);
+            if (!Number.isFinite(ny) || ny <= 0) {
+              show("Укажите целое число лет > 0 или оставьте поле пустым.");
+              return;
+            }
+            body.expires_years = ny;
+          } else if (daysRaw) body.expires_days = Number(daysRaw);
           const r = await api("/api/provider/licenses", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -200,13 +229,81 @@
         const kh = btn.getAttribute("data-kh");
         const act = btn.getAttribute("data-act");
         if (!kh) return;
-        const status = act === "active" ? "active" : "disabled";
         try {
-          await api(`/api/provider/licenses/${encodeURIComponent(kh)}/status`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ status }),
-          });
+          if (act === "info") {
+            const one = await api(`/api/provider/licenses/${encodeURIComponent(kh)}`);
+            show(JSON.stringify(one.license || one, null, 2));
+            return;
+          }
+          if (act === "active" || act === "disable") {
+            const status = act === "active" ? "active" : "disabled";
+            await api(`/api/provider/licenses/${encodeURIComponent(kh)}/status`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ status }),
+            });
+          } else if (act === "revoke") {
+            await api(`/api/provider/licenses/${encodeURIComponent(kh)}/status`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ status: "revoked" }),
+            });
+          } else if (act === "patch-notes") {
+            const n = prompt("Заметка к лицензии (можно пусто)", "");
+            if (n === null) return;
+            await api(`/api/provider/licenses/${encodeURIComponent(kh)}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ notes: n }),
+            });
+          } else if (act === "patch-days") {
+            const d = prompt("Срок в днях от сегодня (пусто = снять срок действия)", "");
+            if (d === null) return;
+            const body =
+              String(d).trim() === "" ? { expires_at: null } : { expires_days: Number(String(d).trim()) };
+            if (body.expires_days !== undefined && !Number.isFinite(body.expires_days)) {
+              show("Некорректное число дней.");
+              return;
+            }
+            await api(`/api/provider/licenses/${encodeURIComponent(kh)}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(body),
+            });
+          } else if (act === "y-issue-1") {
+            await api(`/api/provider/licenses/${encodeURIComponent(kh)}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ expires_years_from_issue: 1 }),
+            });
+          } else if (act === "y-now-1") {
+            await api(`/api/provider/licenses/${encodeURIComponent(kh)}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ expires_years_from_now: 1 }),
+            });
+          } else if (act === "patch-years-issue") {
+            const y = prompt("Календарных лет от даты выдачи лицензии (0 = снять срок)", "1");
+            if (y === null) return;
+            await api(`/api/provider/licenses/${encodeURIComponent(kh)}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ expires_years_from_issue: Number(String(y).trim()) }),
+            });
+          } else if (act === "patch-plan") {
+            const p = prompt("План: free | paid | saas_only", "free");
+            if (p === null) return;
+            const plan_id = String(p).trim() || "free";
+            await api(`/api/provider/licenses/${encodeURIComponent(kh)}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ plan_id }),
+            });
+          } else if (act === "delete") {
+            if (!confirm("Удалить лицензию безвозвратно? Доступно только если ключ ещё не использовали для регистрации."))
+              return;
+            await api(`/api/provider/licenses/${encodeURIComponent(kh)}`, { method: "DELETE" });
+          } else return;
           await reload();
         } catch (err) {
           show(String(err.message || err));
