@@ -8,9 +8,9 @@
     <link rel="stylesheet" href="/static/portal_skin.css?v=2" />
     <style>
       .wrap {
-        max-width: 980px;
+        max-width: 100%;
         margin: 0 auto;
-        padding: 28px 18px 60px;
+        padding: 16px 16px 32px;
       }
       .row {
         display: grid;
@@ -26,6 +26,21 @@
       }
       .grow {
         flex: 1 1 220px;
+      }
+      .toolbar.inputs-row .grow {
+        flex: 1 1 260px;
+      }
+      .toolbar.inputs-row .grow.compact {
+        flex: 0 1 220px;
+      }
+      .toolbar.actions-row {
+        align-items: center;
+        gap: 8px;
+      }
+      .table-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
       }
       table {
         width: 100%;
@@ -53,13 +68,16 @@
         <p class="portal-hint" style="margin-top: 0">
           Сессия по cookie браузера. Выйти — кнопка ниже. API те же: <code>/api/provider/licenses</code> (допускается вход по cookie).
         </p>
-        <div class="toolbar">
-          <button type="button" class="portal-btn" id="logout">Выйти</button>
+        <div class="toolbar actions-row">
           <a class="portal-btn" href="/">На портал</a>
+          <button type="button" class="portal-btn" id="logout">Выйти</button>
+          <button type="button" class="portal-btn" id="reload">Обновить список</button>
+          <div style="flex: 1 1 auto"></div>
+          <div class="portal-out" id="out"></div>
         </div>
 
-        <div class="toolbar" style="margin-top: 18px">
-          <div class="grow">
+        <div class="toolbar inputs-row" style="margin-top: 12px">
+          <div class="grow compact">
             <label class="portal-label" for="plan">План</label>
             <select id="plan" class="portal-field">
               <option value="free">free</option>
@@ -80,10 +98,7 @@
             <input id="notes" class="portal-field" placeholder="школа / контакт" />
           </div>
           <button type="button" class="portal-btn primary" id="create">Создать лицензию</button>
-          <button type="button" class="portal-btn" id="reload">Обновить список</button>
         </div>
-
-        <div class="portal-out" id="out"></div>
 
         <table>
           <thead>
@@ -146,26 +161,36 @@
             const expShort = x.expires_at ? String(x.expires_at).slice(0, 10) : "—";
             const iy = x.issued_year != null ? ` год выдачи: ${x.issued_year}` : "";
             const ey = x.expires_year != null ? ` год оконч.: ${x.expires_year}` : "";
+            const licNo = x.license_no != null ? String(x.license_no) : "—";
+            const licKey = x.license_key ? String(x.license_key) : "";
+            const khShort = `${kh.slice(0, 12)}…`;
+            const khTitle = `hash: ${kh}${licNo !== "—" ? ` | № ${licNo}` : ""}${licKey ? " | key сохранён" : ""}`;
             return `<tr>
-              <td title="${esc(kh)}"><code>${esc(kh.slice(0, 12))}…</code></td>
+              <td title="${esc(khTitle)}">
+                <div><strong>№ ${esc(licNo)}</strong></div>
+                <div><code>${esc(khShort)}</code></div>
+                ${licKey ? `<div><code>${esc(licKey)}</code></div>` : ""}
+              </td>
               <td>${esc(x.tenant_slug || "—")}</td>
               <td>${esc(x.plan_id)}</td>
               <td>${esc(x.status)}</td>
               <td title="${esc(x.issued_at || "")}${iy}">${esc(issuedShort)}</td>
               <td title="${esc(x.expires_at || "")}${ey}">${esc(expShort)}</td>
               <td>${esc(x.notes || "")}</td>
-              <td style="white-space:normal">
-                <button type="button" class="portal-btn" data-act="info" data-kh="${esc(kh)}">инфо</button>
-                <button type="button" class="portal-btn" data-act="disable" data-kh="${esc(kh)}">off</button>
-                <button type="button" class="portal-btn" data-act="active" data-kh="${esc(kh)}">on</button>
-                <button type="button" class="portal-btn" data-act="revoke" data-kh="${esc(kh)}">revoke</button>
-                <button type="button" class="portal-btn" data-act="patch-notes" data-kh="${esc(kh)}">заметка</button>
-                <button type="button" class="portal-btn" data-act="patch-days" data-kh="${esc(kh)}">срок</button>
-                <button type="button" class="portal-btn" data-act="y-issue-1" data-kh="${esc(kh)}" title="Продлить на 1 календарный год от даты выдачи">+1г⊕выдача</button>
-                <button type="button" class="portal-btn" data-act="y-now-1" data-kh="${esc(kh)}" title="Окончание через 1 календарный год от сегодня">+1г⊕сейчас</button>
-                <button type="button" class="portal-btn" data-act="patch-years-issue" data-kh="${esc(kh)}">лет⊕выдача</button>
-                <button type="button" class="portal-btn" data-act="patch-plan" data-kh="${esc(kh)}">план</button>
-                <button type="button" class="portal-btn" data-act="delete" data-kh="${esc(kh)}">удалить</button>
+              <td>
+                <div class="table-actions">
+                  <button type="button" class="portal-btn" data-act="info" data-kh="${esc(kh)}">инфо</button>
+                  <button type="button" class="portal-btn" data-act="disable" data-kh="${esc(kh)}">off</button>
+                  <button type="button" class="portal-btn" data-act="active" data-kh="${esc(kh)}">on</button>
+                  <button type="button" class="portal-btn" data-act="revoke" data-kh="${esc(kh)}">revoke</button>
+                  <button type="button" class="portal-btn" data-act="patch-notes" data-kh="${esc(kh)}">заметка</button>
+                  <button type="button" class="portal-btn" data-act="patch-days" data-kh="${esc(kh)}">дни</button>
+                  <button type="button" class="portal-btn" data-act="y-issue-1" data-kh="${esc(kh)}" title="Продлить на 1 календарный год от даты выдачи">+1г⊕выдача</button>
+                  <button type="button" class="portal-btn" data-act="y-now-1" data-kh="${esc(kh)}" title="Окончание через 1 календарный год от сегодня">+1г⊕сейчас</button>
+                  <button type="button" class="portal-btn" data-act="patch-years-issue" data-kh="${esc(kh)}">лет⊕выдача</button>
+                  <button type="button" class="portal-btn" data-act="patch-plan" data-kh="${esc(kh)}">план</button>
+                  <button type="button" class="portal-btn" data-act="delete" data-kh="${esc(kh)}">удалить</button>
+                </div>
               </td>
             </tr>`;
           })

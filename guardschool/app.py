@@ -2263,6 +2263,7 @@ def _add_calendar_years(dt: datetime, years: int) -> datetime:
 
 def _license_row_public(
     key_hash: str,
+    license_no: Any,
     plan_id: str,
     status: str,
     issued_at: Any,
@@ -2270,6 +2271,7 @@ def _license_row_public(
     notes: str,
     tenant_slug: str | None,
     owner_user_id: str | None,
+    key_plaintext: Any = None,
 ) -> dict[str, Any]:
     iy: int | None = None
     ey: int | None = None
@@ -2285,6 +2287,10 @@ def _license_row_public(
         pass
     return {
         "key_hash": key_hash,
+        "license_no": int(license_no) if license_no is not None else None,
+        # Полный ключ показываем только если он сохранён в БД (по запросу владельца).
+        # Обычно клиенты видят только при выдаче; для восстановления — перевыпуск.
+        "license_key": (str(key_plaintext) if isinstance(key_plaintext, str) and key_plaintext else None),
         "plan_id": plan_id,
         "status": status,
         "issued_at": issued_at.isoformat() if issued_at else None,
@@ -2299,7 +2305,7 @@ def _license_row_public(
 
 
 _LICENSE_LIST_SQL = """
-SELECT l.key_hash, l.plan_id, l.status, l.issued_at, l.expires_at, l.notes,
+SELECT l.key_hash, l.license_no, l.key_plaintext, l.plan_id, l.status, l.issued_at, l.expires_at, l.notes,
        t.slug, u.id
 FROM licenses l
 LEFT JOIN users u ON u.license_key_hash = l.key_hash
@@ -2320,7 +2326,7 @@ def provider_list_licenses(request: Request) -> dict[str, Any]:
             rows = cur.fetchall() or []
     return {
         "licenses": [
-            _license_row_public(r[0], r[1], r[2], r[3], r[4], r[5] or "", r[6], r[7])
+            _license_row_public(r[0], r[1], r[3], r[4], r[5], r[6], r[7], r[8] or "", r[9], r[10], r[2])
             for r in rows
         ]
     }
@@ -2336,7 +2342,7 @@ def provider_get_license(key_hash: str, request: Request) -> dict[str, Any]:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT l.key_hash, l.plan_id, l.status, l.issued_at, l.expires_at, l.notes,
+                SELECT l.key_hash, l.license_no, l.key_plaintext, l.plan_id, l.status, l.issued_at, l.expires_at, l.notes,
                        t.slug, u.id
                 FROM licenses l
                 LEFT JOIN users u ON u.license_key_hash = l.key_hash
@@ -2348,7 +2354,7 @@ def provider_get_license(key_hash: str, request: Request) -> dict[str, Any]:
             row = cur.fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Not found")
-    lic = _license_row_public(row[0], row[1], row[2], row[3], row[4], row[5] or "", row[6], row[7])
+    lic = _license_row_public(row[0], row[1], row[3], row[4], row[5], row[6], row[7], row[8] or "", row[9], row[10], row[2])
     return {"license": lic}
 
 
@@ -2393,11 +2399,28 @@ async def provider_create_license(request: Request) -> dict[str, Any]:
             if not cur.fetchone():
                 raise HTTPException(status_code=400, detail="Unknown plan_id")
             cur.execute(
-                "INSERT INTO licenses (key_hash, plan_id, status, expires_at, notes) VALUES (%s,%s,'active',%s,%s)",
-                (key_h, plan_id, expires_at, notes),
+                "INSERT INTO licenses (key_hash, key_plaintext, plan_id, status, expires_at, notes) VALUES (%s,%s,%s,'active',%s,%s)",
+                (key_h, key, plan_id, expires_at, notes),
             )
         conn.commit()
-    return {"status": "ok", "license_key": key, "key_hash": key_h, "plan_id": plan_id, "expires_at": expires_at.isoformat() if expires_at else None}
+    # Вернём и license_no для “номера”, который можно восстановить/support.
+    lic_no = None
+    try:
+        with connect_public() as conn2:
+            with conn2.cursor() as cur2:
+                cur2.execute("SELECT license_no FROM licenses WHERE key_hash=%s", (key_h,))
+                r = cur2.fetchone()
+                lic_no = r[0] if r else None
+    except Exception:
+        pass
+    return {
+        "status": "ok",
+        "license_no": int(lic_no) if lic_no is not None else None,
+        "license_key": key,
+        "key_hash": key_h,
+        "plan_id": plan_id,
+        "expires_at": expires_at.isoformat() if expires_at else None,
+    }
 
 
 @app.post("/api/provider/licenses/{key_hash}/status")
