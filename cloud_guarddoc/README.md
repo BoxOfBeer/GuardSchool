@@ -77,7 +77,8 @@ location / {
    ```powershell
    powershell -ExecutionPolicy Bypass -File .\cloud_guarddoc\setup-ssh-key-windows.ps1
    ```
-   Скрипт создаст `%USERPROFILE%\.ssh\id_ed25519_guarddoc`, затем запросит **пароль SSH один раз** и добавит публичный ключ в `authorized_keys` на сервере. Флаг `-SkipInstall` — только создать ключ и показать `.pub` для ручной вставки.
+   Скрипт создаст `%USERPROFILE%\.ssh\id_ed25519_guarddoc`, затем запросит **пароль SSH один раз** и добавит публичный ключ в `authorized_keys` на сервере. Флаг `-SkipInstall` — только создать ключ и показать `.pub` для ручной вставки.  
+   Сообщения в скрипте на **английском**, чтобы Windows PowerShell 5.1 не ломал разбор из‑за кодировки UTF‑8 без BOM.
 
 2. Скопируйте **`ssh-local.example.bat`** → **`ssh-local.bat`** (в `.gitignore`); при наличии ключа bat вызовет `ssh -i ...`. Фрагмент для `~/.ssh/config`: **`ssh-config-snippet.example.txt`**.
 
