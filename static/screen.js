@@ -642,9 +642,8 @@ function render(screenPayload) {
   const root = document.getElementById("screen-root");
   if (!root) return;
   const menuMode = new URLSearchParams(window.location.search || "").get("gs_menu") === "1";
-  const qs = new URLSearchParams(window.location.search || "");
-  const mobileForced = qs.get("gs_mobile") === "1";
   const slug = getSlug();
+  const mobileForced = getGsMobileForPoll(slug);
   const mwRaw = getGsMobileWidgetsForPoll(slug);
   const mwTypes = mwRaw ? new Set(mwRaw.split(",").map((x) => x.trim()).filter(Boolean)) : null;
   const mobileViewport = (() => {
