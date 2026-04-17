@@ -93,6 +93,11 @@ body {
   z-index: 60;
 }
 
+/* `hidden` в HTML должен побеждать display из классов. */
+.demo-session-banner[hidden] {
+  display: none !important;
+}
+
 .top-bar {
   display: flex;
   align-items: center;
