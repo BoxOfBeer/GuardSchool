@@ -2128,8 +2128,8 @@ def _decode_saas_tenant_cookie_value(value: str) -> str | None:
     v = (value or "").strip()
     if not v:
         return None
-    vv = v.strip().lower()
-    if vv.startswith("b64."):
+    vv = v.strip()
+    if vv.lower().startswith("b64."):
         vv = vv[4:]
         try:
             padded = vv + "=" * ((4 - (len(vv) % 4)) % 4)
@@ -2138,8 +2138,9 @@ def _decode_saas_tenant_cookie_value(value: str) -> str | None:
         except Exception:
             return None
     # Старый формат: plain ASCII slug.
-    if all(ch.isalnum() or ch == "-" for ch in vv):
-        return vv
+    vv_low = vv.lower()
+    if all(ch.isalnum() or ch == "-" for ch in vv_low):
+        return vv_low
     return None
 
 
