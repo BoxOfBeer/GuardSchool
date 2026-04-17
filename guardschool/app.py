@@ -2098,7 +2098,9 @@ def _saas_tenant_slug_cookie_ok(slug: str) -> bool:
 def _encode_saas_tenant_cookie_value(slug: str) -> str:
     """Cookie должна быть ASCII: кодируем slug в base64url (utf-8) без паддинга."""
     raw = (slug or "").strip().lower()
-    return base64.urlsafe_b64encode(raw.encode("utf-8")).decode("ascii").rstrip("=")
+    b64 = base64.urlsafe_b64encode(raw.encode("utf-8")).decode("ascii").rstrip("=")
+    # Нужен префикс, иначе base64-строка неотличима от "обычного" ASCII slug.
+    return f"b64.{b64}"
 
 
 def _decode_saas_tenant_cookie_value(value: str) -> str | None:
@@ -2107,15 +2109,18 @@ def _decode_saas_tenant_cookie_value(value: str) -> str | None:
     if not v:
         return None
     vv = v.strip().lower()
+    if vv.startswith("b64."):
+        vv = vv[4:]
+        try:
+            padded = vv + "=" * ((4 - (len(vv) % 4)) % 4)
+            decoded = base64.urlsafe_b64decode(padded.encode("ascii")).decode("utf-8").strip().lower()
+            return decoded or None
+        except Exception:
+            return None
     # Старый формат: plain ASCII slug.
     if all(ch.isalnum() or ch == "-" for ch in vv):
         return vv
-    try:
-        padded = vv + "=" * ((4 - (len(vv) % 4)) % 4)
-        decoded = base64.urlsafe_b64decode(padded.encode("ascii")).decode("utf-8").strip().lower()
-        return decoded or None
-    except Exception:
-        return None
+    return None
 
 
 def _school_entry_url() -> str:
