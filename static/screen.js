@@ -625,8 +625,21 @@ function shouldSoftRefreshWidget(widget, scheduleChanged, staticChanged) {
 
 function render(screenPayload) {
   window.__lastScreenPayload = screenPayload;
-  ensureDeviceSettingsUi();
-  syncDeviceSettingsFromPayload(screenPayload);
+  // Device-настройки (шестерёнка) показываем только для экранов, где включён mobile_mode.
+  // Иначе на обычных ТВ/ПК (tv-1) она путает и даёт ощущение "конфиг не подтянулся".
+  const screenForUi = (screenPayload && screenPayload.screen) || {};
+  const deviceUiAllowed = Boolean(screenForUi && screenForUi.mobile_mode);
+  if (deviceUiAllowed) {
+    ensureDeviceSettingsUi();
+    syncDeviceSettingsFromPayload(screenPayload);
+  } else {
+    try {
+      const panel = document.getElementById("gs-device-settings-panel");
+      if (panel && panel.remove) panel.remove();
+      const btn = document.getElementById("gs-device-settings-btn");
+      if (btn && btn.remove) btn.remove();
+    } catch (_) {}
+  }
   tickBellAudio(screenPayload);
   tickEmergencyAudio(screenPayload);
 
@@ -712,11 +725,14 @@ function render(screenPayload) {
     const hiddenWidgetIds = GRef.widgetIdsHiddenByCarousel(screen);
     const configured = Array.isArray(screen.mobile_widget_ids) ? screen.mobile_widget_ids.map(String) : [];
     const configuredSet = new Set(configured);
-    const orderedBase = (GRef.sortWidgetsForDom ? GRef.sortWidgetsForDom(screen) : (screen.widgets || []))
-      .filter((w) => w && w.enabled !== false && w.menu_only !== true && w.type !== "emergency" && !(hiddenWidgetIds.has(w.id) && w.type !== "carousel"));
+    const orderedAll = (GRef.sortWidgetsForDom ? GRef.sortWidgetsForDom(screen) : (screen.widgets || []))
+      .filter((w) => w && w.menu_only !== true && w.type !== "emergency" && !(hiddenWidgetIds.has(w.id) && w.type !== "carousel"));
+    const orderedDefault = orderedAll.filter((w) => w.enabled !== false);
+    // Если список mobile_widget_ids задан — это явный выбор пользователя, показываем выбранные,
+    // даже если виджет был выключен в сетке (иначе выбор "не работает").
     const ordered = configured.length
-      ? orderedBase.filter((w) => configuredSet.has(String(w.id)))
-      : orderedBase;
+      ? orderedAll.filter((w) => configuredSet.has(String(w.id)))
+      : orderedDefault;
     const filtered = mwTypes ? ordered.filter((w) => mwTypes.has(String(w.type))) : ordered;
     filtered.forEach((widget) => {
       const item = document.createElement("div");
@@ -880,6 +896,10 @@ function syncDeviceSettingsFromPayload(screenPayload) {
     };
 
     btnReset.onclick = () => {
+      const ok = window.confirm(
+        "Сбросить настройки устройства для этого экрана?\n\nБудут очищены: выбранные классы, принудительный мобильный режим и фильтр виджетов. Серверный конфиг экранов не изменится."
+      );
+      if (!ok) return;
       clearDevicePrefs(slug);
       window.location.reload();
     };
