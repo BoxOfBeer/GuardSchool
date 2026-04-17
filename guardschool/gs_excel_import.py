@@ -10,7 +10,7 @@ from fastapi import HTTPException
 from openpyxl import load_workbook
 
 from .gs_admin_http import admin_msg
-from .gs_class_key import normalize_class
+from .gs_class_key import class_name_from_excel, normalize_class
 from .gs_import_state import import_signature, load_import_state, save_import_state
 from .gs_jsonio import write_json
 from .gs_paths import (
@@ -108,6 +108,28 @@ def parse_lesson_column_index(header: str) -> int | None:
     except ValueError:
         return None
     return n if 1 <= n <= 24 else None
+
+
+def _is_blank_excel_scalar(value: Any) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, str) and value.strip() == "":
+        return True
+    return False
+
+
+def _resolve_class_cell_value(sheet: Any, excel_row: int, class_col_idx: int, values_only_val: Any) -> Any:
+    """Для объединённых ячеек values_only даёт None — подставляем значение с якоря диапазона."""
+    if not _is_blank_excel_scalar(values_only_val):
+        return values_only_val
+    col = class_col_idx + 1
+    cell = sheet.cell(row=excel_row, column=col)
+    if type(cell).__name__ != "MergedCell":
+        return cell.value
+    for rng in sheet.merged_cells.ranges:
+        if cell.coordinate in rng:
+            return sheet.cell(row=rng.min_row, column=rng.min_col).value
+    return values_only_val
 
 
 def _pad_row_to_width(row: tuple[Any, ...] | list[Any] | None, width: int) -> list[Any]:
@@ -215,11 +237,14 @@ def parse_weekly_schedule_excel(file_path: Path, *, lang: str = "ru") -> list[di
         )
 
     result: list[dict[str, Any]] = []
-    for row in data_rows:
+    for i, row in enumerate(data_rows):
+        excel_row = i + 2
         raw_wd = row[weekday_col_idx] if weekday_col_idx < len(row) else None
         raw_class = row[class_col_idx] if class_col_idx < len(row) else None
+        raw_class = _resolve_class_cell_value(sheet, excel_row, class_col_idx, raw_class)
         wd = parse_weekday_value(raw_wd)
-        if wd is None or not raw_class:
+        class_label = class_name_from_excel(raw_class)
+        if wd is None or not class_label:
             continue
 
         lessons = []
@@ -230,8 +255,8 @@ def parse_weekly_schedule_excel(file_path: Path, *, lang: str = "ru") -> list[di
         result.append(
             {
                 "weekday": wd,
-                "class_name": str(raw_class).strip(),
-                "class_key": normalize_class(str(raw_class)),
+                "class_name": class_label,
+                "class_key": normalize_class(class_label),
                 "lessons": lessons,
             }
         )
@@ -284,10 +309,13 @@ def parse_excel(file_path: Path, *, lang: str = "ru") -> list[dict[str, Any]]:
         )
 
     result: list[dict[str, Any]] = []
-    for row in data_rows:
+    for i, row in enumerate(data_rows):
+        excel_row = i + 2
         raw_date = row[date_col_idx] if date_col_idx < len(row) else None
         raw_class = row[class_col_idx] if class_col_idx < len(row) else None
-        if not raw_date or not raw_class:
+        raw_class = _resolve_class_cell_value(sheet, excel_row, class_col_idx, raw_class)
+        class_label = class_name_from_excel(raw_class)
+        if not raw_date or not class_label:
             continue
 
         if isinstance(raw_date, datetime):
@@ -305,8 +333,8 @@ def parse_excel(file_path: Path, *, lang: str = "ru") -> list[dict[str, Any]]:
         result.append(
             {
                 "date": parsed_date.isoformat(),
-                "class_name": str(raw_class).strip(),
-                "class_key": normalize_class(str(raw_class)),
+                "class_name": class_label,
+                "class_key": normalize_class(class_label),
                 "lessons": lessons,
             }
         )
