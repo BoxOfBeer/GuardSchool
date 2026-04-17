@@ -82,10 +82,42 @@ function getGsTvBearer() {
 }
 
 function screenPollUrl(base, slug, cid, lab, dev) {
-  const qs = `ts=${Date.now()}&gs_client=${cid}&gs_label=${lab}&gs_device=${dev}`;
+  const classes = getGsClassesForPoll(slug);
+  const mobile = getGsMobileForPoll(slug);
+  const qs = `ts=${Date.now()}&gs_client=${cid}&gs_label=${lab}&gs_device=${dev}`
+    + (classes ? `&gs_classes=${encodeURIComponent(classes)}` : "")
+    + (mobile ? `&gs_mobile=1` : "");
   const path = `/api/screen/${encodeURIComponent(slug)}?${qs}`;
   if (!base) return path;
   return `${String(base).replace(/\/$/, "")}${path}`;
+}
+
+function getGsMobileForPoll(slug) {
+  try {
+    const q = new URLSearchParams(window.location.search || "");
+    if (q.get("gs_mobile") === "1") {
+      localStorage.setItem(`gs_mobile_${slug}`, "1");
+      return true;
+    }
+    const raw = localStorage.getItem(`gs_mobile_${slug}`) || "";
+    return raw === "1";
+  } catch (_) {
+    return false;
+  }
+}
+
+function getGsClassesForPoll(slug) {
+  try {
+    const q = new URLSearchParams(window.location.search || "");
+    const v = (q.get("gs_classes") || "").trim();
+    if (v) {
+      localStorage.setItem(`gs_classes_${slug}`, v);
+      return v;
+    }
+    return (localStorage.getItem(`gs_classes_${slug}`) || "").trim();
+  } catch (_) {
+    return "";
+  }
 }
 
 async function fetchScreenPayload(url, headers, timeoutMs) {
@@ -499,6 +531,16 @@ function render(screenPayload) {
   const root = document.getElementById("screen-root");
   if (!root) return;
   const menuMode = new URLSearchParams(window.location.search || "").get("gs_menu") === "1";
+  const qs = new URLSearchParams(window.location.search || "");
+  const mobileForced = qs.get("gs_mobile") === "1";
+  const mobileViewport = (() => {
+    try {
+      return window.matchMedia && window.matchMedia("(max-width: 720px)").matches;
+    } catch (_) {
+      return false;
+    }
+  })();
+  const mobileMode = (screen && screen.mobile_mode) && (mobileForced || mobileViewport);
 
   const layoutSig = JSON.stringify((screen.widgets || []).map((w) => ({
     id: w.id,
@@ -541,6 +583,41 @@ function render(screenPayload) {
       item.dataset.widgetId = String(widget.id);
       item.dataset.widgetType = String(widget.type);
       item.innerHTML = GRef.renderWidgetHtml(widget, schedule, screen, holidays, announcements || [], marquee || []);
+      if (GRef.applyWidgetBackdropClass) GRef.applyWidgetBackdropClass(item, widget);
+      list.appendChild(item);
+    });
+    root.appendChild(list);
+  } else if (mobileMode) {
+    // Мобильный режим: вертикальная лента, без сетки, со скроллом.
+    (GRef.pruneStaleWidgetState || GRef.pruneStaleCarouselState)(screen);
+    GRef.clearAllTimers();
+    root.innerHTML = "";
+    root.classList.add("gs-mobile-screen");
+    if (root && root.style) root.style.aspectRatio = "";
+    const list = document.createElement("div");
+    list.className = "gs-mobile-list";
+    const hiddenWidgetIds = GRef.widgetIdsHiddenByCarousel(screen);
+    const configured = Array.isArray(screen.mobile_widget_ids) ? screen.mobile_widget_ids.map(String) : [];
+    const configuredSet = new Set(configured);
+    const orderedBase = (GRef.sortWidgetsForDom ? GRef.sortWidgetsForDom(screen) : (screen.widgets || []))
+      .filter((w) => w && w.enabled !== false && w.menu_only !== true && w.type !== "emergency" && !(hiddenWidgetIds.has(w.id) && w.type !== "carousel"));
+    const ordered = configured.length
+      ? orderedBase.filter((w) => configuredSet.has(String(w.id)))
+      : orderedBase;
+    ordered.forEach((widget) => {
+      const item = document.createElement("div");
+      item.className = "screen-widget gs-mobile-widget";
+      item.dataset.widgetId = String(widget.id);
+      item.dataset.widgetType = String(widget.type);
+      if (widget.type === "carousel") {
+        item.classList.add("carousel-widget");
+        const childWidgets = GRef.orderedCarouselChildWidgets
+          ? GRef.orderedCarouselChildWidgets(screen, widget)
+          : (screen.widgets || []).filter((it) => (widget.settings.childWidgetIds || []).includes(it.id));
+        GRef.startCarousel(item, widget, childWidgets, schedule, screen, holidays, announcements || [], marquee || []);
+      } else {
+        item.innerHTML = GRef.renderWidgetHtml(widget, schedule, screen, holidays, announcements || [], marquee || []);
+      }
       if (GRef.applyWidgetBackdropClass) GRef.applyWidgetBackdropClass(item, widget);
       list.appendChild(item);
     });

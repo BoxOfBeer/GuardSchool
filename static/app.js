@@ -407,6 +407,9 @@ function createDefaultScreen(index) {
     tv_text_outline_px: 2,
     tv_text_outline_color: "rgba(0,0,0,0.85)",
     selected_classes: ["5", "6", "7", "8"],
+    mobile_mode: false,
+    /** Список id виджетов, которые рендерить в мобильном режиме (вертикальная лента). */
+    mobile_widget_ids: [],
     bell_schedule_template: "standard",
     weekday_bell_templates: {},
     template: "default_schedule",
@@ -556,6 +559,35 @@ function createDefaultScreen(index) {
       },
     ],
   };
+}
+
+function renderMobileWidgetCheckboxes() {
+  const wrap = elements.screenMobileWidgets;
+  if (!wrap) return;
+  const screen = selectedScreen();
+  const widgets = Array.isArray(screen.widgets) ? screen.widgets : [];
+  const selected = new Set((screen.mobile_widget_ids || []).map(String));
+  const rows = widgets
+    .filter((w) => w && w.enabled !== false && w.menu_only !== true && w.type !== "emergency")
+    .map((w) => {
+      const title = String(w.title || "").trim() || t(`widget.${w.type}`) || w.type;
+      return `
+        <label class="toggle-label class-option">
+          <input type="checkbox" value="${escapeHtmlAttr(String(w.id))}" ${selected.has(String(w.id)) ? "checked" : ""}>
+          <span>${escapeHtml(title)} <span class="hint" style="margin-left:6px;opacity:.8">(${escapeHtml(String(w.type))})</span></span>
+        </label>
+      `;
+    })
+    .join("");
+  wrap.innerHTML = rows || `<div class="hint">Нет виджетов для выбора.</div>`;
+  wrap.querySelectorAll('input[type="checkbox"]').forEach((input) => {
+    input.addEventListener("change", () => {
+      const values = [...wrap.querySelectorAll('input[type="checkbox"]:checked')].map((x) => String(x.value));
+      // Порядок = порядок виджетов на экране (как в списке).
+      screen.mobile_widget_ids = values;
+      renderPreview();
+    });
+  });
 }
 
 function widgetCollapseStorageKey(screenId, widgetId) {
@@ -841,6 +873,7 @@ function renderForm() {
   elements.screenName.value = screen.name;
   elements.screenSlug.value = screen.slug;
   if (elements.screenOrientation) elements.screenOrientation.value = screen.orientation === "portrait" ? "portrait" : "landscape";
+  if (elements.screenMobileMode) elements.screenMobileMode.checked = Boolean(screen.mobile_mode);
   elements.screenIpNote.value = screen.ip_note;
   elements.screenPollInterval.value = screen.poll_interval_sec;
   elements.screenBackground.value = screen.background_image || "";
@@ -861,6 +894,7 @@ function renderForm() {
   }
   renderBellTemplateOptions();
   renderClassCheckboxes();
+  renderMobileWidgetCheckboxes();
   renderBackgroundGallery().catch(() => {});
   syncProgramSettingsFieldsFromState();
   renderProgramPaletteCheckboxes();
@@ -1136,6 +1170,12 @@ function bindForm() {
     elements.screenOrientation.onchange = (event) => {
       selectedScreen().orientation = (event.target.value === "portrait" ? "portrait" : "landscape");
       if (selectedScreen().orientation === "portrait") { GRID.cols = 26; GRID.rows = 32; } else { GRID.cols = 32; GRID.rows = 26; }
+      renderPreview();
+    };
+  }
+  if (elements.screenMobileMode) {
+    elements.screenMobileMode.onchange = () => {
+      selectedScreen().mobile_mode = Boolean(elements.screenMobileMode.checked);
       renderPreview();
     };
   }

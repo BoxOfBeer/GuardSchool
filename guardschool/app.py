@@ -3878,10 +3878,21 @@ def get_screens_index() -> dict[str, Any]:
 def get_screen(request: Request, slug: str) -> JSONResponse:
     _require_tv_access_for_screen(request, slug)
     config = load_config()
-    screen = next((item for item in config["screens"] if item["slug"] == slug and item.get("is_active", True)), None)
+    screen0 = next((item for item in config["screens"] if item["slug"] == slug and item.get("is_active", True)), None)
+    screen = screen0
     if not screen:
         raise HTTPException(status_code=404, detail="Экран не найден.")
     qp = request.query_params
+    # Персонализация для устройства: можно передать ?gs_classes=6A,9 и сохранить в localStorage клиента.
+    # Это переопределяет selected_classes только для этого запроса (телефона), конфиг в БД/файле не трогаем.
+    raw_classes = str(qp.get("gs_classes") or "").strip()
+    if raw_classes:
+        parts = [p.strip() for p in raw_classes.split(",") if p.strip()]
+        parts = parts[:12]
+        if parts:
+            # shallow copy: не мутируем config.json в памяти
+            screen = dict(screen0)
+            screen["selected_classes"] = parts
     record_screen_poll(
         request,
         slug,

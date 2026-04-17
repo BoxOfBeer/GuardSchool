@@ -51,6 +51,27 @@ body.screen-body {
   position: relative;
 }
 
+/* Mobile screen: no fixed aspect ratio, vertical scroll list. */
+.tv-screen.gs-mobile-screen {
+  aspect-ratio: auto;
+  border-radius: 0;
+  overflow: auto;
+}
+
+.gs-mobile-list {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  min-height: 100vh;
+}
+
+.gs-mobile-widget {
+  min-height: auto;
+}
+
 /* Слои фона ТВ: плавная смена картинки без мигания всего экрана */
 .gs-tv-bg-layer {
   position: absolute;

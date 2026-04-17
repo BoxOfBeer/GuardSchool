@@ -68,6 +68,10 @@
                   <option value="portrait">Портретная (9:16)</option>
                 </select>
               </label>
+              <label class="compact-field toggle-label" style="align-items:center; gap: 10px">
+                <input id="screen-mobile-mode" type="checkbox">
+                <span>Мобильный режим (вертикальная лента, скролл)</span>
+              </label>
               <label class="compact-field"><span data-i18n="screen.ipNote">Подпись к этому ТВ</span>
                 <input id="screen-ip-note" type="text" data-i18n-placeholder="screen.ipNotePh" placeholder="Место установки экрана (не IP стрима)">
               </label>
@@ -86,6 +90,12 @@
           <details class="settings-advanced editor-group-advanced">
             <summary data-i18n="screen.advanced">Дополнительно</summary>
             <div class="settings-advanced-grid">
+              <div class="settings-row" style="grid-column: 1 / -1">
+                <div class="hint" style="margin: 0 0 6px">
+                  Мобильный режим: выберите, какие виджеты показывать на телефоне (без сетки). Порядок — сверху вниз.
+                </div>
+                <div id="screen-mobile-widgets" class="class-checkboxes"></div>
+              </div>
               <label><span data-i18n="screen.bellTemplate">Шаблон звонков</span>
                 <span class="tip" data-i18n-title="screen.bellTemplateTip" title="Выбор источника расписания звонков для этого ТВ (начало/конец урока).">?</span>
                 <select id="screen-bell-template" class="standard-input"></select>
