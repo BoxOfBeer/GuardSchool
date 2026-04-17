@@ -14,3 +14,7 @@ backups/
 # Облако guarddoc.ru: секреты (каркас см. cloud_guarddoc/)
 cloud_guarddoc/.env
 cloud_guarddoc/*.local
+
+# Локальный SSH: копия ssh-local.example.bat → ssh-local.bat (пароли/хост не в git)
+ssh-local.bat
+cloud_guarddoc/ssh-local.bat

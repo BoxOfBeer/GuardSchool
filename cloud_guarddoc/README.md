@@ -65,6 +65,14 @@ location / {
 
 Если в логе `nginx -t` есть **«conflicting server name … ignored»**, второй конфиг **не работает**: обычно certbot добавил те же имена в **`sites-available/default`**. Удалите или закомментируйте в `default` соответствующие блоки `server { … }` (с пометкой managed by Certbot для портала), чтобы для портала остался только `guarddoc-portal.conf` с `proxy_pass`.
 
+Если после правок появилось **`server_name directive is not allowed here`** — сломана структура фигурных скобок в `default`. Восстановите резервную копию (если делали):  
+`sudo cp /etc/nginx/sites-available/default.bak-certbot /etc/nginx/sites-available/default`  
+затем `sudo nginx -t` и правьте снова, удаляя **целиком** блоки `server { … }`, а не отдельные строки внутри.
+
+### SSH с вашего ПК
+
+Ассистент в Cursor **не подключается** к вашему VPS по SSH. Удобный вход без пароля в файлах репозитория: скопируйте **`ssh-local.example.bat`** → **`ssh-local.bat`** (файл в `.gitignore`), укажите `SSH_TARGET=`, при необходимости настройте **SSH-ключ** на сервере (`~/.ssh/authorized_keys`). Пароли в bat-файлах и в git не храните.
+
 ## Демо заказчику (за час)
 
 1. Поднять процесс с `GUARDSCHOOL_SAAS_MODE=1`, `GUARDSCHOOL_DATA_DIR`, `GUARDSCHOOL_ADMIN_PASSWORD`, `GUARDSCHOOL_TV_BEARER_TOKEN`, HTTPS.
