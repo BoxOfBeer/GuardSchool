@@ -3252,7 +3252,7 @@ def logout(request: Request, response: Response) -> dict[str, str]:
 
 
 @app.get("/api/admin/config")
-def get_admin_config(request: Request) -> dict[str, Any]:
+async def get_admin_config(request: Request) -> dict[str, Any]:
     require_auth(request)
     cfg = load_config()
     # Метаданные, которые нужны UI, но не должны сохраняться в config.json.
@@ -3634,7 +3634,7 @@ def list_bell_sounds(request: Request) -> dict[str, Any]:
 
 
 @app.get("/api/admin/schedule")
-def get_schedule_snapshot(request: Request) -> dict[str, Any]:
+async def get_schedule_snapshot(request: Request) -> dict[str, Any]:
     require_auth(request)
     schedule_rows = load_schedule()
     full_rows = load_full_schedule()
