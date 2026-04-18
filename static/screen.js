@@ -354,7 +354,8 @@ async function resolveGsDeviceHintOnce() {
           parts.push("unknown");
         }
       }
-      return parts.filter(Boolean).join(" / ").slice(0, 160);
+      // Короче строка запроса — реже упираемся в лимиты прокси; для статистики достаточно.
+      return parts.filter(Boolean).join(" / ").slice(0, 80);
     } catch (_) {
       return "unknown";
     }
@@ -1124,8 +1125,14 @@ async function refresh() {
     } catch (e) {
       showCrashBanner(`Ошибка отрисовки: ${(e && e.message) ? e.message : String(e)}`);
     }
-  } catch (_) {
-    /* сеть / таймаут / пустой slug: не копим запросы, один цикл */
+  } catch (e) {
+    try {
+      const msg = (e && e.message) ? String(e.message) : String(e || "poll failed");
+      const sec = Math.max(5, Math.round(nextDelay / 1000));
+      showCrashBanner(
+        `Сервер не отдал экран (${msg}). Часто это 502 при перезапуске или нагрузке — повтор через ${sec} с.`
+      );
+    } catch (_) {}
   }
   scheduleNextRefresh(nextDelay);
 }
