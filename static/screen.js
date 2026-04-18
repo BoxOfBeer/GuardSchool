@@ -3,6 +3,14 @@ function getSlug() {
   return parts.length ? parts[parts.length - 1] : "";
 }
 
+/** Часть ТВ-браузеров без CSS.escape (нужен для мягкого обновления по data-widget-id). */
+function gsCssEscape(ident) {
+  try {
+    if (typeof CSS !== "undefined" && typeof CSS.escape === "function") return CSS.escape(String(ident));
+  } catch (_) {}
+  return String(ident).replace(/[^a-zA-Z0-9_-]/g, "\\$&");
+}
+
 /** Стабильный id клиента для статистики (localStorage). */
 function getGsClientId() {
   try {
@@ -154,7 +162,8 @@ function ensureDeviceSettingsUi() {
       panel.hidden = !show;
     };
     btn.addEventListener("click", () => toggle(panel.hidden));
-    panel.querySelector("#gs-device-settings-close")?.addEventListener("click", () => toggle(false));
+    const closeBtn = panel.querySelector("#gs-device-settings-close");
+    if (closeBtn) closeBtn.addEventListener("click", () => toggle(false));
     document.addEventListener(
       "pointerdown",
       (ev) => {
@@ -604,6 +613,7 @@ function screenPayloadStaticSig(p) {
   if (!p || typeof p !== "object") return "";
   try {
     return JSON.stringify({
+      revision: p.revision,
       screen: p.screen,
       holidays: p.holidays,
       announcements: p.announcements,
@@ -694,16 +704,24 @@ function render(screenPayload) {
   })();
   const mobileMode = (screen && screen.mobile_mode) && (mobileForced || mobileViewport);
 
-  const layoutSig = JSON.stringify((screen.widgets || []).map((w) => ({
-    id: w.id,
-    type: w.type,
-    enabled: w.enabled !== false,
-    x: w.x, y: w.y, w: w.w, h: w.h,
-    // Важные настройки, влияющие на структуру/карусель
-    settings: w.type === "carousel"
-      ? { childWidgetIds: w.settings?.childWidgetIds || [], childSlideSec: w.settings?.childSlideSec || {}, startDelaySec: w.settings?.startDelaySec || 0, animation: w.settings?.animation || "slide" }
-      : null,
-  })));
+  const layoutSig = JSON.stringify((screen.widgets || []).map((w) => {
+    const ws = w.settings || {};
+    return {
+      id: w.id,
+      type: w.type,
+      enabled: w.enabled !== false,
+      x: w.x, y: w.y, w: w.w, h: w.h,
+      // Важные настройки, влияющие на структуру/карусель
+      settings: w.type === "carousel"
+        ? {
+            childWidgetIds: ws.childWidgetIds || [],
+            childSlideSec: ws.childSlideSec || {},
+            startDelaySec: ws.startDelaySec || 0,
+            animation: ws.animation || "slide",
+          }
+        : null,
+    };
+  }));
   const canSoftUpdate = root.dataset && root.dataset.layoutSig === layoutSig && root.querySelector(".screen-grid");
   if (!canSoftUpdate) {
     (GRef.pruneStaleWidgetState || GRef.pruneStaleCarouselState)(screen);
@@ -845,7 +863,7 @@ function render(screenPayload) {
       if (hiddenWidgetIds.has(widget.id) && widget.type !== "carousel") return;
       if (widget.type === "carousel") return;
       if (!shouldSoftRefreshWidget(widget, scheduleChanged, staticChanged)) return;
-      const el = root.querySelector(`.screen-widget[data-widget-id="${CSS.escape(String(widget.id))}"]`);
+      const el = root.querySelector(`.screen-widget[data-widget-id="${gsCssEscape(String(widget.id))}"]`);
       if (!el) return;
       if (widget.type === "text") {
         el.style.background = widget.settings.background;

@@ -33,7 +33,7 @@
 
   /** Удалить состояние каруселей, которых уже нет в конфиге экрана. */
   function pruneStaleCarouselState(screen) {
-    const widgets = screen?.widgets || [];
+    const widgets = (screen && screen.widgets) || [];
     const allowed = new Set(widgets.filter((w) => w.type === "carousel").map((w) => w.id));
     for (const id of [...carouselState.keys()]) {
       if (!allowed.has(id)) carouselState.delete(id);
@@ -41,7 +41,7 @@
   }
 
   function pruneStaleMarqueeState(screen) {
-    const widgets = screen?.widgets || [];
+    const widgets = (screen && screen.widgets) || [];
     const allowed = new Set(widgets.filter((w) => w.type === "marquee").map((w) => w.id));
     for (const id of [...marqueeState.keys()]) {
       if (!allowed.has(id)) marqueeState.delete(id);
@@ -162,7 +162,7 @@
   }
 
   function escapeHtml(s) {
-    return String(s ?? "")
+    return String(s != null ? s : "")
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;")
@@ -170,7 +170,7 @@
   }
 
   function escapeHtmlAttr(s) {
-    return String(s ?? "")
+    return String(s != null ? s : "")
       .replace(/&/g, "&amp;")
       .replace(/"/g, "&quot;")
       .replace(/</g, "&lt;");
@@ -178,7 +178,7 @@
 
   /** Как на сервере: первая буква предмета — заглавная (в т.ч. после BOM/пробелов); дублируем здесь, чтобы ТВ не зависел от перезапуска сервера и кэша. */
   function capitalizeSubjectDisplay(raw) {
-    const s = String(raw ?? "").trim();
+    const s = String(raw != null ? raw : "").trim();
     if (!s) return "";
     const chars = [...s];
     for (let i = 0; i < chars.length; i++) {
@@ -433,7 +433,7 @@
       st.order = order;
       st.pos = 0;
     }
-    const idx = st.order[st.pos] ?? 0;
+    const idx = st.order[st.pos] != null ? st.order[st.pos] : 0;
     st.pos += 1;
     st.lastIdx = idx;
     announcementsState.set(widgetId, st);
@@ -537,14 +537,15 @@
   }
 
   function widgetIdsHiddenByCarousel(screen) {
-    return new Set(screen.widgets
+    const sw = (screen && screen.widgets) || [];
+    return new Set(sw
       .filter((widget) => widget.type === "carousel" && widget.enabled !== false)
       .flatMap((widget) => (widget.settings.childWidgetIds || []).filter((id) => id !== "__blank__")));
   }
 
   /** Порядок в DOM: изображения снизу, остальные, аварийный поверх всех. */
   function sortWidgetsForDom(screen) {
-    const widgets = screen?.widgets || [];
+    const widgets = (screen && screen.widgets) || [];
     const hiddenIds = widgetIdsHiddenByCarousel(screen);
     const list = widgets
       .map((w, i) => ({ w, i }))
@@ -615,7 +616,7 @@
           url: String(it && it.url != null ? it.url : "").trim(),
         }))
         .filter((it) => it.url);
-      const opacityPct = Math.max(0, Math.min(100, Number(s.opacity ?? 85)));
+      const opacityPct = Math.max(0, Math.min(100, Number(s.opacity != null ? s.opacity : 85)));
       const op = opacityPct / 100;
       const fit = s.objectFit === "cover" ? "cover" : "contain";
       if (!slides.length) {
@@ -653,9 +654,10 @@
       return buildBellCountdown(schedule.bell_status, widget.settings);
     }
     if (widget.type === "schedule") {
-      const title = schedule.bell_status?.schedule_title || L.scheduleDefault;
+      const bs = schedule.bell_status || {};
+      const title = bs.schedule_title || L.scheduleDefault;
       const nextDayTitle = `${L.nextSchoolDay} ${formatDateLabel(schedule.next_school_day)}`;
-      const todayBlock = schedule.bell_status?.state === "done"
+      const todayBlock = bs.state === "done"
         ? ""
         : buildScheduleTable(schedule.today_rows, title, widget.settings);
       const showTomorrowBlock = widget.settings.showTomorrow !== false
