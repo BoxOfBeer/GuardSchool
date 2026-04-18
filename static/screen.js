@@ -232,6 +232,36 @@ function getGsTvBearer() {
   }
 }
 
+/**
+ * Плавающая шестерёнка: на сервере включается с mobile_mode, но ТВ/телефон часто без него.
+ * Показываем на сенсоре, узком окне и типичных ТВ UA; на обычном ПК с мышью — только если в конфиге mobile_mode.
+ */
+function gsShowScreenDeviceGear(screen) {
+  if (!screen) return false;
+  try {
+    const q = gsQueryParams(window.location.search || "");
+    if (q.get("gs_gear") === "1") return true;
+  } catch (_) {}
+  if (screen.mobile_mode) return true;
+  try {
+    if (window.matchMedia && window.matchMedia("(max-width: 720px)").matches) return true;
+    if (window.matchMedia && window.matchMedia("(pointer: coarse)").matches) return true;
+    if (Number(navigator.maxTouchPoints) > 0) return true;
+  } catch (_) {}
+  try {
+    if (window.matchMedia && window.matchMedia("(pointer: coarse) and (hover: none)").matches) return true;
+  } catch (_) {}
+  const ua = String(navigator.userAgent || "");
+  if (
+    /SmartTV|SMART-TV|BRAVIA|Apple TV|Tizen|webOS|WebTV|GoogleTV|AFTM|AFTB|AFTT|MiTV|HbbTV|NetCast|VIDAA|Freeview|YouView|TV\s*Browser|CrKey/i.test(
+      ua
+    )
+  ) {
+    return true;
+  }
+  return false;
+}
+
 function ensureDeviceSettingsUi() {
   try {
     if (document.getElementById("gs-device-settings-btn")) return;
@@ -252,8 +282,9 @@ function ensureDeviceSettingsUi() {
         <button type="button" class="gs-device-settings-close" id="gs-device-settings-close">Закрыть</button>
       </div>
       <div class="gs-device-settings-row">
-        <label for="gs-device-classes">Классы (через запятую)</label>
-        <input id="gs-device-classes" class="gs-device-settings-input" placeholder="например: 6, 9, 11" />
+        <div class="gs-device-settings-field-head">Классы расписания на этом устройстве</div>
+        <div class="gs-device-classes-hint">По умолчанию отмечены все — как в веб-настройке экрана. Снимите лишние, чтобы не показывать эти классы здесь.</div>
+        <div id="gs-device-classes-wrap" class="gs-device-settings-checks"></div>
       </div>
       <div class="gs-device-settings-row">
         <label>Режим</label>
@@ -818,10 +849,8 @@ function shouldSoftRefreshWidget(widget, scheduleChanged, staticChanged) {
 
 function render(screenPayload) {
   window.__lastScreenPayload = screenPayload;
-  // Device-настройки (шестерёнка) показываем только для экранов, где включён mobile_mode.
-  // Иначе на обычных ТВ/ПК (tv-1) она путает и даёт ощущение "конфиг не подтянулся".
   const screenForUi = (screenPayload && screenPayload.screen) || {};
-  const deviceUiAllowed = Boolean(screenForUi && screenForUi.mobile_mode);
+  const deviceUiAllowed = gsShowScreenDeviceGear(screenForUi);
   if (deviceUiAllowed) {
     ensureDeviceSettingsUi();
     syncDeviceSettingsFromPayload(screenPayload);
@@ -1065,24 +1094,117 @@ function render(screenPayload) {
   window.__lastStaticSig = staticSig;
 }
 
+function gsDeviceNormClass(s) {
+  return String(s || "")
+    .trim()
+    .toLowerCase();
+}
+
+/** Сопоставить сохранённую строку gs_classes с каноническими именами из pickable; пустой/мусор → «все». */
+function gsDeviceClassCanonFromSaved(slug, existing, pickable) {
+  let raw = "";
+  try {
+    raw = String(existing.classes || localStorage.getItem(`gs_classes_${slug}`) || "").trim();
+  } catch (_) {
+    raw = "";
+  }
+  const parts = raw ? raw.split(",").map((x) => String(x).trim()).filter(Boolean) : [];
+  const normToCanon = new Map();
+  pickable.forEach((p) => {
+    normToCanon.set(gsDeviceNormClass(p), p);
+  });
+  const canon = new Set();
+  for (const part of parts) {
+    const c = normToCanon.get(gsDeviceNormClass(part));
+    if (c) canon.add(c);
+  }
+  if (!parts.length || canon.size === 0) {
+    pickable.forEach((p) => canon.add(p));
+  }
+  return canon;
+}
+
+/** Сбросить gs_classes вроде «0», если такой параллели/классов нет в pickable (иначе расписание пустое до ручного сброса). */
+function gsRepairToxicGsClasses(slug, pickable) {
+  if (!slug || !pickable || !pickable.length) return false;
+  let raw = "";
+  try {
+    raw = (localStorage.getItem(`gs_classes_${slug}`) || "").trim();
+  } catch (_) {
+    return false;
+  }
+  if (!raw) return false;
+  const parts = raw.split(",").map((x) => x.trim()).filter(Boolean);
+  if (parts.length !== 1) return false;
+  const token = parts[0];
+  if (!/^\d+$/.test(token)) return false;
+  const n = parseInt(token, 10);
+  const norm = (s) => gsDeviceNormClass(s);
+  const hasParallel = pickable.some((x) => norm(x) === norm(token));
+  const hasGrade = pickable.some((x) => {
+    const m = norm(x).match(/^(\d+)/);
+    return m && parseInt(m[1], 10) === n;
+  });
+  if (!hasParallel && !hasGrade) {
+    try {
+      localStorage.removeItem(`gs_classes_${slug}`);
+    } catch (_) {}
+    try {
+      const dp = loadDevicePrefs(slug);
+      if (dp && String(dp.classes || "").trim() === raw) {
+        saveDevicePrefs(slug, { ...dp, classes: "" });
+      }
+    } catch (_) {}
+    return true;
+  }
+  return false;
+}
+
 function syncDeviceSettingsFromPayload(screenPayload) {
   try {
     const slug = getSlug();
     const panel = document.getElementById("gs-device-settings-panel");
     if (!panel) return;
-    const inpClasses = panel.querySelector("#gs-device-classes");
+    const wrapClasses = panel.querySelector("#gs-device-classes-wrap");
     const chkMobile = panel.querySelector("#gs-device-mobile");
     const chkPersist = panel.querySelector("#gs-device-persist");
     const wrapWidgets = panel.querySelector("#gs-device-widgets");
     const btnApply = panel.querySelector("#gs-device-apply");
     const btnReset = panel.querySelector("#gs-device-reset");
-    if (!inpClasses || !chkMobile || !chkPersist || !wrapWidgets || !btnApply || !btnReset) return;
+    if (!wrapClasses || !chkMobile || !chkPersist || !wrapWidgets || !btnApply || !btnReset) return;
 
     const existing = loadDevicePrefs(slug) || {};
     const persisted = Boolean(existing.persist);
     chkPersist.checked = persisted;
-    inpClasses.value = String(existing.classes || localStorage.getItem(`gs_classes_${slug}`) || "").trim();
     chkMobile.checked = (existing.mobile === true) || (localStorage.getItem(`gs_mobile_${slug}`) === "1");
+
+    const pickable = Array.isArray(screenPayload && screenPayload.pickable_classes)
+      ? screenPayload.pickable_classes.map((x) => String(x).trim()).filter(Boolean)
+      : [];
+    const canon = gsDeviceClassCanonFromSaved(slug, existing, pickable);
+    wrapClasses.textContent = "";
+    if (!pickable.length) {
+      const hint = document.createElement("div");
+      hint.className = "hint";
+      hint.style.fontSize = "13px";
+      hint.textContent = "Список классов пока недоступен — фильтр не применяется, используется настройка экрана.";
+      wrapClasses.appendChild(hint);
+    } else {
+      pickable.forEach((name, idx) => {
+        const lab = document.createElement("label");
+        lab.className = "opt";
+        const inp = document.createElement("input");
+        inp.type = "checkbox";
+        inp.value = name;
+        inp.id = `gs-device-class-${idx}`;
+        inp.checked = canon.has(name);
+        const span = document.createElement("span");
+        span.textContent = name;
+        lab.appendChild(inp);
+        lab.appendChild(span);
+        wrapClasses.appendChild(lab);
+      });
+    }
 
     const screen = (screenPayload && screenPayload.screen) || {};
     const types = [...new Set(((screen.widgets || [])).map((w) => w && w.type).filter(Boolean))].filter((t) => t !== "emergency");
@@ -1100,7 +1222,17 @@ function syncDeviceSettingsFromPayload(screenPayload) {
       .join("");
 
     btnApply.onclick = () => {
-      const classes = String(inpClasses.value || "").trim();
+      const boxes = [...wrapClasses.querySelectorAll('input[type="checkbox"]')];
+      const checked = [...wrapClasses.querySelectorAll('input[type="checkbox"]:checked')].map((x) => String(x.value));
+      let classes = "";
+      if (boxes.length) {
+        if (!checked.length) {
+          window.alert("Отметьте хотя бы один класс или нажмите «Сбросить».");
+          return;
+        }
+        if (checked.length === boxes.length) classes = "";
+        else classes = checked.join(",");
+      }
       const mobile = chkMobile.checked ? "1" : "";
       const mw = [...wrapWidgets.querySelectorAll('input[type="checkbox"]:checked')].map((x) => String(x.value)).join(",");
       const persist = chkPersist.checked;
@@ -1230,7 +1362,19 @@ async function refresh() {
     if (!response || !response.ok) {
       throw lastErr || new Error("poll failed");
     }
-    const payload = await response.json();
+    let payload = await response.json();
+    if (gsRepairToxicGsClasses(slug, payload.pickable_classes || [])) {
+      for (const b of bases) {
+        const url2 = screenPollUrl(b, slug, cid, lab, dev);
+        try {
+          const r2 = await fetchScreenPayload(url2, hdr, Math.min(45000, timeoutMs + 5000));
+          if (r2.ok) {
+            payload = await r2.json();
+            break;
+          }
+        } catch (_) {}
+      }
+    }
     nextDelay = Math.max(5000, (payload.screen.poll_interval_sec || 10) * 1000);
     window.__lastScreenPollMs = nextDelay;
     try {

@@ -1390,6 +1390,20 @@ def distinct_schedule_class_names_from_sources(
     return out
 
 
+def pickable_classes_for_screen(screen_cfg: dict[str, Any]) -> list[str]:
+    """Классы для фильтра на устройстве (ТВ/телефон): как в настройке экрана или все из импорта."""
+    raw_sel = screen_cfg.get("selected_classes")
+    if isinstance(raw_sel, list):
+        out = list(dict.fromkeys(s for s in (str(x).strip() for x in raw_sel) if s))
+        if out:
+            return out
+    return distinct_schedule_class_names_from_sources(
+        load_schedule(),
+        load_full_schedule(),
+        load_schedule_sample(),
+    )
+
+
 def time_to_minutes(value: str) -> int:
     hours, minutes = value.split(":")
     return int(hours) * 60 + int(minutes)
@@ -3944,6 +3958,7 @@ def get_screen(request: Request, slug: str) -> JSONResponse:
     screen = screen0
     if not screen:
         raise HTTPException(status_code=404, detail="Экран не найден.")
+    pickable = pickable_classes_for_screen(screen0)
     qp = request.query_params
     # Персонализация для устройства: можно передать ?gs_classes=6A,9 и сохранить в localStorage клиента.
     # Это переопределяет selected_classes только для этого запроса (телефона), конфиг в БД/файле не трогаем.
@@ -3967,6 +3982,7 @@ def get_screen(request: Request, slug: str) -> JSONResponse:
     audio = sanitize_audio_stream(config.get("audio_stream"))
     payload = {
         "screen": screen,
+        "pickable_classes": pickable,
         "serverTime": datetime.now().isoformat(),
         "schedule": build_schedule_payload(screen, today, config),
         "holidays": load_holidays(),

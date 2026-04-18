@@ -202,6 +202,25 @@ body.screen-body {
 
 .gs-device-settings-checks input { margin-top: 2px; }
 
+.gs-device-settings-field-head {
+  font-size: 13px;
+  font-weight: 700;
+  color: rgba(226, 232, 240, 0.95);
+}
+
+.gs-device-classes-hint {
+  font-size: 12px;
+  line-height: 1.35;
+  color: rgba(148, 163, 184, 0.95);
+  margin: 0 0 6px;
+}
+
+#gs-device-classes-wrap {
+  max-height: 42vh;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
 /* Слои фона ТВ: плавная смена картинки без мигания всего экрана */
 .gs-tv-bg-layer {
   position: absolute;
