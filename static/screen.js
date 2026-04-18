@@ -289,13 +289,13 @@ function ensureDeviceSettingsUi() {
       <div class="gs-device-settings-row">
         <label>Режим</label>
         <div class="gs-device-settings-checks">
-          <label class="opt"><input type="checkbox" id="gs-device-mobile" /> <span>Мобильный режим (лента со скроллом)</span></label>
+          <label class="opt"><input type="checkbox" id="gs-device-grid" /> <span>Сетка вместо ленты (если в конфиге включён мобильный режим)</span></label>
           <label class="opt"><input type="checkbox" id="gs-device-persist" /> <span>Сохранять настройки на этом устройстве</span></label>
         </div>
       </div>
       <div class="gs-device-settings-row">
         <div class="gs-device-settings-field-head">Виджеты (по типам)</div>
-        <div class="gs-device-classes-hint">Только для узкого экрана / ленты: по умолчанию все типы включены. Если снять «schedule», расписание пропадёт только на телефоне.</div>
+        <div class="gs-device-classes-hint">Фильтр типов виджетов в ленте. Пустой список в хранилище = все типы. Сохранение «на устройстве» не должно сбрасывать отмеченные типы — см. галочку ниже.</div>
         <div id="gs-device-widgets" class="gs-device-settings-checks"></div>
       </div>
       <div class="gs-device-settings-actions">
@@ -355,6 +355,7 @@ function clearDevicePrefs(slug) {
     localStorage.removeItem(`gs_classes_${slug}`);
     localStorage.removeItem(`gs_mobile_${slug}`);
     localStorage.removeItem(`gs_mw_${slug}`);
+    localStorage.removeItem(`gs_grid_${slug}`);
   } catch (_) {}
 }
 
@@ -374,38 +375,30 @@ function getGsMobileWidgetsForPoll(slug) {
 
 function screenPollUrl(base, slug, cid, lab, dev) {
   const classes = getGsClassesForPoll(slug);
-  const mobile = getGsMobileForPoll(slug);
   const mw = getGsMobileWidgetsForPoll(slug);
   const qs = `ts=${Date.now()}&gs_client=${cid}&gs_label=${lab}&gs_device=${dev}`
     + (classes ? `&gs_classes=${encodeURIComponent(classes)}` : "")
-    + (mobile ? `&gs_mobile=1` : "")
     + (mw ? `&gs_mw=${encodeURIComponent(mw)}` : "");
   const path = `/api/screen/${encodeURIComponent(slug)}?${qs}`;
   if (!base) return path;
   return `${String(base).replace(/\/$/, "")}${path}`;
 }
 
-/**
- * Широкий ТВ: без этого при mobile_mode в конфиге оставалась сетка (как на ПК), лента не включалась — «ничего не поменялось».
- * ПК с мышью: обычно false — сетка как раньше.
- */
-function gsMobileLayoutTvLike() {
-  try {
-    if (window.matchMedia && window.matchMedia("(pointer: coarse) and (hover: none)").matches) return true;
-  } catch (_) {}
-  const ua = String(navigator.userAgent || "");
-  return /SmartTV|SMART-TV|Tizen|webOS|GoogleTV|AFTM|AFTB|AFTT|BRAVIA|CrKey|HbbTV|NetCast|VIDAA/i.test(ua);
-}
-
-function getGsMobileForPoll(slug) {
+/** На этом устройстве показать сетку, даже если в веб-конфиге включён mobile_mode (?gs_grid=1 сохраняется в localStorage). */
+function getGsGridForPoll(slug) {
+  if (!slug) return false;
   try {
     const q = gsQueryParams(window.location.search || "");
-    if (q.get("gs_mobile") === "1") {
-      localStorage.setItem(`gs_mobile_${slug}`, "1");
+    const g = (q.get("gs_grid") || "").trim().toLowerCase();
+    if (g === "1" || g === "true" || g === "yes") {
+      localStorage.setItem(`gs_grid_${slug}`, "1");
       return true;
     }
-    const raw = localStorage.getItem(`gs_mobile_${slug}`) || "";
-    return raw === "1";
+    if (g === "0" || g === "off" || g === "false") {
+      localStorage.removeItem(`gs_grid_${slug}`);
+      return false;
+    }
+    return localStorage.getItem(`gs_grid_${slug}`) === "1";
   } catch (_) {
     return false;
   }
@@ -895,18 +888,9 @@ function render(screenPayload) {
   if (!root) return;
   const menuMode = gsQueryParams(window.location.search || "").get("gs_menu") === "1";
   const slug = getSlug();
-  const mobileForced = getGsMobileForPoll(slug);
   const mwRaw = getGsMobileWidgetsForPoll(slug);
   const mwTypes = mwRaw ? new Set(mwRaw.split(",").map((x) => x.trim()).filter(Boolean)) : null;
-  const mobileViewport = (() => {
-    try {
-      return window.matchMedia && window.matchMedia("(max-width: 720px)").matches;
-    } catch (_) {
-      return false;
-    }
-  })();
-  const mobileTvLike = gsMobileLayoutTvLike();
-  const mobileMode = Boolean(screen && screen.mobile_mode) && (mobileForced || mobileViewport || mobileTvLike);
+  const mobileMode = Boolean(screen && screen.mobile_mode) && !getGsGridForPoll(slug);
 
   const layoutSig = JSON.stringify({
     m: mobileMode,
@@ -1204,17 +1188,17 @@ function syncDeviceSettingsFromPayload(screenPayload) {
     const panel = document.getElementById("gs-device-settings-panel");
     if (!panel) return;
     const wrapClasses = panel.querySelector("#gs-device-classes-wrap");
-    const chkMobile = panel.querySelector("#gs-device-mobile");
+    const chkGrid = panel.querySelector("#gs-device-grid");
     const chkPersist = panel.querySelector("#gs-device-persist");
     const wrapWidgets = panel.querySelector("#gs-device-widgets");
     const btnApply = panel.querySelector("#gs-device-apply");
     const btnReset = panel.querySelector("#gs-device-reset");
-    if (!wrapClasses || !chkMobile || !chkPersist || !wrapWidgets || !btnApply || !btnReset) return;
+    if (!wrapClasses || !chkGrid || !chkPersist || !wrapWidgets || !btnApply || !btnReset) return;
 
     const existing = loadDevicePrefs(slug) || {};
     const persisted = Boolean(existing.persist);
     chkPersist.checked = persisted;
-    chkMobile.checked = (existing.mobile === true) || (localStorage.getItem(`gs_mobile_${slug}`) === "1");
+    chkGrid.checked = getGsGridForPoll(slug);
 
     const pickable = Array.isArray(screenPayload && screenPayload.pickable_classes)
       ? screenPayload.pickable_classes.map((x) => String(x).trim()).filter(Boolean)
@@ -1246,7 +1230,7 @@ function syncDeviceSettingsFromPayload(screenPayload) {
 
     const screen = (screenPayload && screenPayload.screen) || {};
     const types = [...new Set(((screen.widgets || [])).map((w) => w && w.type).filter(Boolean))].filter((t) => t !== "emergency");
-    const rawMwSaved = String(existing.widgetTypes || localStorage.getItem(`gs_mw_${slug}`) || "").trim();
+    const rawMwSaved = String(localStorage.getItem(`gs_mw_${slug}`) || "").trim();
     const selectedTypes = new Set(
       rawMwSaved ? rawMwSaved.split(",").map((x) => x.trim()).filter(Boolean) : []
     );
@@ -1272,7 +1256,7 @@ function syncDeviceSettingsFromPayload(screenPayload) {
         if (checked.length === boxes.length) classes = "";
         else classes = checked.join(",");
       }
-      const mobile = chkMobile.checked ? "1" : "";
+      const gridHere = chkGrid.checked;
       const mwBoxes = [...wrapWidgets.querySelectorAll('input[type="checkbox"]')];
       const mwChecked = [...wrapWidgets.querySelectorAll('input[type="checkbox"]:checked')].map((x) => String(x.value));
       let mw = mwChecked.join(",");
@@ -1285,19 +1269,26 @@ function syncDeviceSettingsFromPayload(screenPayload) {
       try {
         if (classes) localStorage.setItem(`gs_classes_${slug}`, classes);
         else localStorage.removeItem(`gs_classes_${slug}`);
-        if (mobile) localStorage.setItem(`gs_mobile_${slug}`, "1");
-        else localStorage.removeItem(`gs_mobile_${slug}`);
+        if (gridHere) localStorage.setItem(`gs_grid_${slug}`, "1");
+        else localStorage.removeItem(`gs_grid_${slug}`);
         if (mw) localStorage.setItem(`gs_mw_${slug}`, mw);
         else localStorage.removeItem(`gs_mw_${slug}`);
       } catch (_) {}
-      if (persist) saveDevicePrefs(slug, { persist: true, classes, mobile: !!mobile, widgetTypes: mw });
-      else saveDevicePrefs(slug, { persist: false });
+      if (persist) {
+        try {
+          saveDevicePrefs(slug, { persist: true });
+        } catch (_) {}
+      } else {
+        try {
+          localStorage.removeItem(devicePrefsKey(slug));
+        } catch (_) {}
+      }
       window.location.reload();
     };
 
     btnReset.onclick = () => {
       const ok = window.confirm(
-        "Сбросить настройки устройства для этого экрана?\n\nБудут очищены: выбранные классы, принудительный мобильный режим и фильтр виджетов. Серверный конфиг экранов не изменится."
+        "Сбросить настройки устройства для этого экрана?\n\nБудут очищены: классы, сетка/лента (gs_grid), фильтр виджетов (gs_mw). Серверный конфиг экранов не изменится."
       );
       if (!ok) return;
       clearDevicePrefs(slug);
