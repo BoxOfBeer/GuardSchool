@@ -3096,10 +3096,12 @@ def brand_logo() -> Response:
 
 
 @app.get("/screen/{slug}", response_class=HTMLResponse)
-def screen_page(slug: str) -> Response:
-    # ТВ часто агрессивно кэширует HTML; без revalidate ссылка на styles.css может устареть при обновлении сборки.
-    return FileResponse(
-        STATIC_DIR / "screen.html",
+def screen_page(slug: str) -> HTMLResponse:
+    # ТВ часто кэширует HTML и JS; подставляем версию в URL статики (плейсхолдер в screen.html).
+    raw = (STATIC_DIR / "screen.html").read_text(encoding="utf-8")
+    html = raw.replace("__GS_ASSETS_VER__", APP_VERSION)
+    return HTMLResponse(
+        content=html,
         headers={"Cache-Control": "no-cache, must-revalidate"},
     )
 

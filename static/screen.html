@@ -52,7 +52,7 @@
         if (!el) return;
         el.rel = "stylesheet";
         var ts = Date.now();
-        el.href = window.__GS_TV_CSS_BASE + "?tvts=" + ts;
+        el.href = window.__GS_TV_CSS_BASE + "?v=__GS_ASSETS_VER__&tvts=" + ts;
       } catch (_) {}
     })();
   </script>
@@ -74,11 +74,11 @@
       try {
         var ts = Date.now();
         var s1 = document.createElement("script");
-        s1.src = "/static/screen_widgets.js?tvts=" + ts;
+        s1.src = "/static/screen_widgets.js?v=__GS_ASSETS_VER__&tvts=" + ts;
         s1.defer = true;
         document.body.appendChild(s1);
         var s2 = document.createElement("script");
-        s2.src = "/static/screen.js?tvts=" + ts;
+        s2.src = "/static/screen.js?v=__GS_ASSETS_VER__&tvts=" + ts;
         s2.defer = true;
         document.body.appendChild(s2);
       } catch (_) {}

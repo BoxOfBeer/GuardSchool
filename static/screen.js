@@ -979,7 +979,8 @@ function render(screenPayload) {
       } catch (_) {}
       filtered = ordered;
     } else {
-      const schedW = ordered.find((w) => w && w.type === "schedule" && w.enabled !== false);
+      // schedule мог быть выкинут из ordered списком mobile_widget_ids — ищем в полном orderedAll.
+      const schedW = orderedAll.find((w) => w && w.type === "schedule" && w.enabled !== false);
       if (schedW && !filtered.some((w) => w && w.type === "schedule")) {
         filtered = [schedW, ...filtered.filter((w) => w && w.id !== schedW.id)];
       }
