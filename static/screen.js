@@ -294,7 +294,8 @@ function ensureDeviceSettingsUi() {
         </div>
       </div>
       <div class="gs-device-settings-row">
-        <label>Виджеты (по типам)</label>
+        <div class="gs-device-settings-field-head">Виджеты (по типам)</div>
+        <div class="gs-device-classes-hint">Только для узкого экрана / ленты: по умолчанию все типы включены. Если снять «schedule», расписание пропадёт только на телефоне.</div>
         <div id="gs-device-widgets" class="gs-device-settings-checks"></div>
       </div>
       <div class="gs-device-settings-actions">
@@ -525,6 +526,10 @@ let emergencyAudioEl = null;
 let emergencyAudioUrl = "";
 
 let lastRenderOkAt = Date.now();
+
+/** Не запускать два poll подряд (ТВ/WebView после рестарта сервера иногда «роняют» вкладку при гонке). */
+let __gsRefreshInFlight = false;
+let __gsRefreshQueued = false;
 
 function showCrashBanner(msg) {
   try {
@@ -963,7 +968,19 @@ function render(screenPayload) {
     const ordered = configured.length
       ? orderedAll.filter((w) => configuredSet.has(String(w.id)))
       : orderedDefault;
-    const filtered = mwTypes ? ordered.filter((w) => mwTypes.has(String(w.type))) : ordered;
+    let filtered = mwTypes ? ordered.filter((w) => mwTypes.has(String(w.type))) : ordered;
+    // gs_mw хранит типы виджетов; если там нет schedule — на телефоне лента без расписания, на ПК сетка цела.
+    if (mwTypes && mwTypes.size && ordered.length && filtered.length === 0) {
+      try {
+        localStorage.removeItem(`gs_mw_${slug}`);
+      } catch (_) {}
+      filtered = ordered;
+    } else {
+      const schedW = ordered.find((w) => w && w.type === "schedule" && w.enabled !== false);
+      if (schedW && !filtered.some((w) => w && w.type === "schedule")) {
+        filtered = [schedW, ...filtered.filter((w) => w && w.id !== schedW.id)];
+      }
+    }
     filtered.forEach((widget) => {
       const item = document.createElement("div");
       item.className = "screen-widget gs-mobile-widget";
@@ -1208,12 +1225,13 @@ function syncDeviceSettingsFromPayload(screenPayload) {
 
     const screen = (screenPayload && screenPayload.screen) || {};
     const types = [...new Set(((screen.widgets || [])).map((w) => w && w.type).filter(Boolean))].filter((t) => t !== "emergency");
+    const rawMwSaved = String(existing.widgetTypes || localStorage.getItem(`gs_mw_${slug}`) || "").trim();
     const selectedTypes = new Set(
-      String(existing.widgetTypes || localStorage.getItem(`gs_mw_${slug}`) || "")
-        .split(",")
-        .map((x) => x.trim())
-        .filter(Boolean)
+      rawMwSaved ? rawMwSaved.split(",").map((x) => x.trim()).filter(Boolean) : []
     );
+    if (!rawMwSaved && types.length) {
+      types.forEach((t) => selectedTypes.add(String(t)));
+    }
     wrapWidgets.innerHTML = types
       .map(
         (t) =>
@@ -1234,7 +1252,14 @@ function syncDeviceSettingsFromPayload(screenPayload) {
         else classes = checked.join(",");
       }
       const mobile = chkMobile.checked ? "1" : "";
-      const mw = [...wrapWidgets.querySelectorAll('input[type="checkbox"]:checked')].map((x) => String(x.value)).join(",");
+      const mwBoxes = [...wrapWidgets.querySelectorAll('input[type="checkbox"]')];
+      const mwChecked = [...wrapWidgets.querySelectorAll('input[type="checkbox"]:checked')].map((x) => String(x.value));
+      let mw = mwChecked.join(",");
+      if (mwBoxes.length && mwChecked.length === mwBoxes.length) mw = "";
+      if (mwBoxes.length && !mwChecked.length) {
+        window.alert("Отметьте хотя бы один тип виджета или нажмите «Сбросить».");
+        return;
+      }
       const persist = chkPersist.checked;
       try {
         if (classes) localStorage.setItem(`gs_classes_${slug}`, classes);
@@ -1319,6 +1344,12 @@ function scheduleNextRefresh(delayMs) {
 async function refresh() {
   const fallbackDelay = Math.max(5000, window.__lastScreenPollMs || 10000);
   let nextDelay = fallbackDelay;
+  if (__gsRefreshInFlight) {
+    __gsRefreshQueued = true;
+    return;
+  }
+  __gsRefreshInFlight = true;
+  __gsRefreshQueued = false;
   try {
     const slug = getSlug();
     if (!slug) throw new Error("empty slug");
@@ -1392,8 +1423,16 @@ async function refresh() {
         `Сервер не отдал экран (${msg}). Часто это 502 при перезапуске или нагрузке — повтор через ${sec} с.`
       );
     } catch (_) {}
+  } finally {
+    __gsRefreshInFlight = false;
+    const doAgain = __gsRefreshQueued;
+    __gsRefreshQueued = false;
+    if (doAgain) {
+      scheduleNextRefresh(Math.min(800, Math.max(250, Math.round(nextDelay / 4))));
+    } else {
+      scheduleNextRefresh(nextDelay);
+    }
   }
-  scheduleNextRefresh(nextDelay);
 }
 
 const rootForClock = () => document.getElementById("screen-root");
