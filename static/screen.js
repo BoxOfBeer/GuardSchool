@@ -3,6 +3,31 @@ function getSlug() {
   return parts.length ? parts[parts.length - 1] : "";
 }
 
+/** Удалить все ключи localStorage, начинающиеся с gs_ (токен ТВ, гибрид, gs_client_id, все экраны). */
+function purgeAllGsLocalStorage() {
+  try {
+    const kill = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.indexOf("gs_") === 0) kill.push(k);
+    }
+    kill.forEach((k) => localStorage.removeItem(k));
+  } catch (_) {}
+}
+
+/** Кэши Fetch API (если есть) — не трогаем HttpOnly-cookies. Возвращает Promise. */
+function purgeGsCachesBestEffort() {
+  try {
+    if (!window.caches || !window.caches.keys) return Promise.resolve();
+    return window.caches
+      .keys()
+      .then((keys) => Promise.all(keys.map((k) => window.caches.delete(k))))
+      .catch(() => {});
+  } catch (_) {
+    return Promise.resolve();
+  }
+}
+
 /** Часть ТВ-браузеров без CSS.escape (нужен для мягкого обновления по data-widget-id). */
 function gsCssEscape(ident) {
   try {
@@ -79,33 +104,49 @@ function initGsHybridFromUrl() {
   } catch (_) {}
 }
 
-initGsHybridFromUrl();
-
-// Быстрый «удалённый» сброс кэша/настроек для конкретного экрана:
-// удобно, когда устройство (телефон) застряло на старых localStorage значениях (gs_mw/gs_mobile/gs_classes или base URL).
-// Использование: добавить в адрес `?gs_reset=1` (параметр удалится сам).
+// Сброс localStorage/caches до чтения URL (?gs_tv_token / гибрид), иначе токен снова запишется.
+// Параметр в адресе: gs_reset=1 — настройки устройства для slug + гибрид + bearer;
+// gs_reset=all — полностью все ключи gs_* (в т.ч. gs_client_id), кэши caches API, без slug тоже работает.
 (function maybeResetDevicePrefsOnce() {
   try {
-    const slug = getSlug();
-    if (!slug) return;
     const q = new URLSearchParams(window.location.search || "");
-    if (q.get("gs_reset") !== "1") return;
+    const raw = (q.get("gs_reset") || "").trim().toLowerCase();
+    if (!raw) return;
+    const full = raw === "all" || raw === "full" || raw === "hard";
+    const slugReset = raw === "1" || raw === "true" || raw === "yes" || raw === "on" || full;
+    if (!slugReset) return;
+    const slug = getSlug();
+    if (full) {
+      purgeAllGsLocalStorage();
+    } else {
+      if (slug) {
+        try {
+          clearDevicePrefs(slug);
+        } catch (_) {}
+      }
+      try {
+        localStorage.removeItem("gs_primary_base");
+        localStorage.removeItem("gs_fallback_base");
+        localStorage.removeItem("gs_tv_bearer");
+      } catch (_) {}
+    }
     try {
-      clearDevicePrefs(slug);
-    } catch (_) {}
-    try {
-      localStorage.removeItem("gs_primary_base");
-      localStorage.removeItem("gs_fallback_base");
-      // bearer тоже может мешать (например, если устарел) — сбрасываем при явном reset
-      localStorage.removeItem("gs_tv_bearer");
+      window.__gsScreenLabelCached = undefined;
     } catch (_) {}
     q.delete("gs_reset");
     const ns = q.toString();
     const url = window.location.pathname + (ns ? `?${ns}` : "") + window.location.hash;
     window.history.replaceState({}, "", url);
-    window.location.reload();
+    const go = () => {
+      try {
+        window.location.reload();
+      } catch (_) {}
+    };
+    Promise.resolve(purgeGsCachesBestEffort()).then(go, go);
   } catch (_) {}
 })();
+
+initGsHybridFromUrl();
 
 function getGsTvBearer() {
   try {

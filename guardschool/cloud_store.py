@@ -61,14 +61,13 @@ def _connect():
     try:
         from .gs_deploy import deployment_mode
         from .tenant_ctx import tenant_slug
-        from .saas_db import schema_name_for_slug
+        from .saas_db import schema_name_for_slug, set_search_path
 
         if deployment_mode() == "saas":
             slug = tenant_slug()
             if slug:
                 schema = schema_name_for_slug(slug)
-                with conn.cursor() as cur:
-                    cur.execute(f'SET search_path TO "{schema}", public')
+                set_search_path(conn, schema)
                 conn.commit()
     except Exception:
         pass

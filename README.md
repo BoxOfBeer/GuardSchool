@@ -80,6 +80,7 @@ In the admin UI: **Export ZIP** / **Import ZIP** — full snapshot of config, sc
 
 | Version | Highlights |
 |---------|------------|
+| **1.02.001** | **1.02.x** line: SaaS / multi-tenant (host → slug), PostgreSQL **public + per-school schemas**, licenses & registration, `GUARDSCHOOL_DEPLOYMENT_MODE`, screen orientation & menu widgets, demo tokens; see **`change_log_seed.json`**. |
 | **1.01.004** | Backend grouped under **`guardschool/`**; TV schedule **current-lesson** highlight uses **school timezone + clock offset**; TV **background layers** fixed after full grid rebuild; admin **modal focus / a11y**; JS split into `static/admin/*`. |
 | **1.01.003** | Release log module, TV background cross-fade, carousel animations. |
 | **1.01.002** | PC audio tab, program settings, widget palette, preview/`screen_widgets` integration. |
@@ -111,6 +112,7 @@ Samples and auto-import from `data/import/` follow the same rules as in previous
 - **Deploy**: Docker / MSI if the customer needs it.
 - **Updates**: changelog, `config.json` migrations when the schema changes.
 - **Security**: HTTPS behind a reverse proxy, IP allowlists, strong admin password. Session cookie uses **`Secure`** when the request is HTTPS or `X-Forwarded-Proto: https` (typical behind TLS reverse proxy).
+- **PostgreSQL (optional)**: `GUARDSCHOOL_DATABASE_URL` is used by **`cloud_store`** (JSON snapshot / `school_snapshot`). For SaaS control-plane tables, prefer **`GUARDSCHOOL_SAAS_DATABASE_URL`**; if it is unset, **`saas_db`** falls back to `GUARDSCHOOL_DATABASE_URL`. One DSN for both is valid; two URLs make roles obvious when debugging.
 - **Screen API**: `GET /api/screen/{slug}` returns schedule and display JSON **without auth** (for TV browsers on the LAN). Treat network access accordingly.
 - **Admin POSTs**: no separate CSRF tokens; browsers rely on **SameSite** session cookies. For high-threat deployments, add tokens or restrict origins.
 - **Process model**: run **one** uvicorn worker if you rely on in-process PC audio state (`local_audio_worker` globals); multiple workers do not share that state.
@@ -169,6 +171,7 @@ uvicorn app:app --host 0.0.0.0 --port 8000 --reload
 
 ### Безопасность и эксплуатация
 
+- **PostgreSQL (опционально):** **`GUARDSCHOOL_DATABASE_URL`** использует модуль **`cloud_store`** (снимок JSON / `school_snapshot`). Для таблиц SaaS удобнее **`GUARDSCHOOL_SAAS_DATABASE_URL`**; если она пуста, **`saas_db`** подставляет тот же **`GUARDSCHOOL_DATABASE_URL`**. Один DSN на оба сценария допустим; два URL проще различать при отладке.
 - **`GET /api/screen/{slug}`** отдаёт JSON экрана **без входа** — рассчитано на ТВ в LAN; ограничивайте доступ к сети при чувствительных данных.
 - Сессия админки: флаг **`Secure`** у cookie включается при HTTPS или заголовке **`X-Forwarded-Proto: https`** у прокси.
 - **Один процесс** uvicorn, если используете звук на ПК через `local_audio_worker` — у нескольких воркеров общее состояние не разделяется.
@@ -201,10 +204,11 @@ build_exe.bat
 - Для пустой/черновой базы записи без `version` приводятся в порядок, а заглушка может заменяться списком из **[`change_log_seed.json`](change_log_seed.json)** в корне репозитория — там же хранится эталонная история для GitHub и свежих установок.
 - **Как оформить релиз:** поднять **`APP_VERSION`**, добавить объект в **`change_log_seed.json`** (и при необходимости вызвать **`append_release_note`** в [`guardschool/gs_change_log.py`](guardschool/gs_change_log.py)).
 
-Кратко по ветке **1.01.x**:
+Кратко по веткам **1.02.x** (текущая линия **`APP_VERSION`**) и **1.01.x**:
 
 | Версия | Что вошло |
 |--------|-----------|
+| **1.02.001** | SaaS и мультитенантность (Host → slug), PostgreSQL public + схемы школ, лицензии/регистрация, режимы **`GUARDSCHOOL_DEPLOYMENT_MODE`**, ориентация экрана и меню виджетов, демо-токены; подробности в **`change_log_seed.json`**. |
 | **1.01.004** | Пакет **`guardschool/`**, корневой **`app.py`** для uvicorn; подсветка «текущий урок» по поясу школы и сдвигу часов; фон ТВ после перерисовки сетки; фокус модалок; разнос **`static/admin/*`**. |
 | **1.01.003** | Модуль журнала релизов, плавная смена фона, новые анимации карусели. |
 | **1.01.002** | «Звук ПК», настройки программы, палитра виджетов, превью. |

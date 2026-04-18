@@ -210,8 +210,10 @@ def schema_name_for_slug(slug: str) -> str:
 
 
 def set_search_path(conn, schema_name: str) -> None:
+    """Сессия PostgreSQL: схема тенанта перед public (как в cloud_store при SaaS)."""
+    safe = (schema_name or "").replace('"', "")
     with conn.cursor() as cur:
-        cur.execute('SET search_path TO "%s", public' % schema_name.replace('"', ""))
+        cur.execute(f'SET search_path TO "{safe}", public')
 
 
 def utcnow() -> datetime:
