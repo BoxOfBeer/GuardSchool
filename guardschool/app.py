@@ -167,6 +167,12 @@ PRE_BELL_FIRE_SEC_WINDOW = 12
 PRE_BELL_MAX_DURATION_SEC = 52
 PRE_BELL_AFADE_IN_SEC = 3.0
 
+TV_PAIR_ATTEMPT_WINDOW_SEC = 5 * 60
+TV_PAIR_ATTEMPT_LIMIT = 8
+TV_PAIR_BLOCK_SEC = 10 * 60
+_TV_PAIR_ATTEMPTS: dict[str, list[float]] = {}
+_TV_PAIR_BLOCK_UNTIL: dict[str, float] = {}
+
 BREAK_ORCH_HEAD_SEC = 60
 BREAK_ORCH_FADE_SEC = 120
 BREAK_ORCH_SILENCE_SEC = 60
@@ -714,6 +720,47 @@ def _require_tv_access_for_screen(request: Request, screen_slug: str) -> None:
                 (th, slug, screen_slug),
             )
         conn.commit()
+
+
+def _tv_pair_client_key(request: Request, code: str) -> str:
+    # X-Forwarded-For нужен за reverse proxy; берём только первый адрес.
+    xff = str(request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
+    ip = xff or (request.client.host if request.client else "") or "unknown"
+    return f"{ip}|{code}"
+
+
+def _tv_pair_prune_attempts(key: str, now_ts: float) -> list[float]:
+    arr = [ts for ts in _TV_PAIR_ATTEMPTS.get(key, []) if now_ts - ts <= TV_PAIR_ATTEMPT_WINDOW_SEC]
+    if arr:
+        _TV_PAIR_ATTEMPTS[key] = arr
+    else:
+        _TV_PAIR_ATTEMPTS.pop(key, None)
+    return arr
+
+
+def _tv_pair_check_rate_limit(key: str, now_ts: float) -> int:
+    blocked_until = _TV_PAIR_BLOCK_UNTIL.get(key, 0.0)
+    if blocked_until > now_ts:
+        return max(1, int(blocked_until - now_ts))
+    _TV_PAIR_BLOCK_UNTIL.pop(key, None)
+    attempts = _tv_pair_prune_attempts(key, now_ts)
+    if len(attempts) >= TV_PAIR_ATTEMPT_LIMIT:
+        _TV_PAIR_BLOCK_UNTIL[key] = now_ts + TV_PAIR_BLOCK_SEC
+        return TV_PAIR_BLOCK_SEC
+    return 0
+
+
+def _tv_pair_record_failure(key: str, now_ts: float) -> None:
+    attempts = _tv_pair_prune_attempts(key, now_ts)
+    attempts.append(now_ts)
+    _TV_PAIR_ATTEMPTS[key] = attempts
+    if len(attempts) >= TV_PAIR_ATTEMPT_LIMIT:
+        _TV_PAIR_BLOCK_UNTIL[key] = now_ts + TV_PAIR_BLOCK_SEC
+
+
+def _tv_pair_record_success(key: str) -> None:
+    _TV_PAIR_ATTEMPTS.pop(key, None)
+    _TV_PAIR_BLOCK_UNTIL.pop(key, None)
 
 
 def _generate_tv_code() -> str:
@@ -3959,24 +4006,43 @@ async def tv_pair(request: Request) -> dict[str, Any]:
     """
     if deployment_mode() != "saas" or not saas_db_enabled():
         raise HTTPException(status_code=404, detail="Not found.")
-    body = await request.json()
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
     code = str(body.get("code") or "").strip().lower()
     pin = str(body.get("pin") or "").strip()
     screen_slug = str(body.get("screen_slug") or "").strip()
     label = str(body.get("label") or "").strip()[:120]
     if not code or not pin or not screen_slug:
         raise HTTPException(status_code=400, detail="code, pin, screen_slug required")
+    if not re.fullmatch(r"[a-z2-9]{4}-[a-z2-9]{4}-[a-z2-9]{4}", code):
+        raise HTTPException(status_code=400, detail="Invalid code format")
+    if not pin.isdigit() or not (4 <= len(pin) <= 12):
+        raise HTTPException(status_code=400, detail="PIN must be 4..12 digits")
+    if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", screen_slug):
+        raise HTTPException(status_code=400, detail="Invalid screen_slug")
+    now_ts = time.time()
+    pair_key = _tv_pair_client_key(request, code)
+    retry_after = _tv_pair_check_rate_limit(pair_key, now_ts)
+    if retry_after > 0:
+        raise HTTPException(status_code=429, detail=f"Too many attempts. Retry after {retry_after}s")
+
     ch = tv_code_hash(code)
     with connect_public() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT tenant_slug, pin_salt, pin_hash FROM tv_access WHERE code_hash=%s", (ch,))
             row = cur.fetchone()
             if not row:
+                _tv_pair_record_failure(pair_key, now_ts)
                 raise HTTPException(status_code=403, detail="Invalid code or PIN")
             tenant_slug, pin_salt, pin_hash_db = row[0], row[1], row[2]
             got = tv_pin_hash(pin, pin_salt)
             if not hmac.compare_digest(got, str(pin_hash_db or "")):
+                _tv_pair_record_failure(pair_key, now_ts)
                 raise HTTPException(status_code=403, detail="Invalid code or PIN")
+
+            _tv_pair_record_success(pair_key)
             token = secrets.token_urlsafe(24)
             th = tv_device_token_hash(token)
             cur.execute(

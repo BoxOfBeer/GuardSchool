@@ -1,3 +1,79 @@
+
+
+/**
+ * URLSearchParams fallback для старых браузеров ТВ.
+ * Поддерживает get/set/delete/toString, достаточно для текущей страницы.
+ */
+function gsQueryParams(search) {
+  const raw = String(search || "");
+  const src = raw && raw.charAt(0) === "?" ? raw.slice(1) : raw;
+  if (typeof URLSearchParams !== "undefined") {
+    try {
+      return new URLSearchParams(src);
+    } catch (_) {}
+  }
+  const pairs = [];
+  const chunks = src ? src.split("&") : [];
+  for (let i = 0; i < chunks.length; i++) {
+    const part = chunks[i];
+    if (!part) continue;
+    const pos = part.indexOf("=");
+    const k0 = pos >= 0 ? part.slice(0, pos) : part;
+    const v0 = pos >= 0 ? part.slice(pos + 1) : "";
+    let k = "";
+    let v = "";
+    try {
+      k = decodeURIComponent(String(k0 || "").replace(/\+/g, "%20"));
+    } catch (_) {
+      k = String(k0 || "");
+    }
+    try {
+      v = decodeURIComponent(String(v0 || "").replace(/\+/g, "%20"));
+    } catch (_) {
+      v = String(v0 || "");
+    }
+    pairs.push([k, v]);
+  }
+  return {
+    get(key) {
+      const k = String(key);
+      for (let i = 0; i < pairs.length; i++) {
+        if (pairs[i][0] === k) return pairs[i][1];
+      }
+      return null;
+    },
+    set(key, value) {
+      const k = String(key);
+      const v = String(value);
+      let done = false;
+      for (let i = pairs.length - 1; i >= 0; i--) {
+        if (pairs[i][0] !== k) continue;
+        if (!done) {
+          pairs[i][1] = v;
+          done = true;
+        } else {
+          pairs.splice(i, 1);
+        }
+      }
+      if (!done) pairs.push([k, v]);
+    },
+    delete(key) {
+      const k = String(key);
+      for (let i = pairs.length - 1; i >= 0; i--) {
+        if (pairs[i][0] === k) pairs.splice(i, 1);
+      }
+    },
+    toString() {
+      const out = [];
+      for (let i = 0; i < pairs.length; i++) {
+        const kv = pairs[i];
+        out.push(`${encodeURIComponent(kv[0])}=${encodeURIComponent(kv[1])}`);
+      }
+      return out.join("&");
+    },
+  };
+}
+
 function getSlug() {
   const parts = window.location.pathname.split("/").filter(Boolean);
   return parts.length ? parts[parts.length - 1] : "";
@@ -56,7 +132,7 @@ function getGsClientId() {
 function getGsLabelForPoll() {
   try {
     if (window.__gsScreenLabelCached !== undefined) return window.__gsScreenLabelCached;
-    const q = new URLSearchParams(window.location.search).get("gs_label");
+    const q = gsQueryParams(window.location.search).get("gs_label");
     window.__gsScreenLabelCached = q ? q.trim().slice(0, 120) : "";
     return window.__gsScreenLabelCached;
   } catch (_) {
@@ -67,7 +143,7 @@ function getGsLabelForPoll() {
 /** Параметры гибрида: primary/fallback API и токен ТВ (из URL один раз → localStorage). */
 function initGsHybridFromUrl() {
   try {
-    const q = new URLSearchParams(window.location.search);
+    const q = gsQueryParams(window.location.search);
     const p = q.get("gs_primary_base");
     const f = q.get("gs_fallback_base");
     const to = q.get("gs_poll_timeout_sec");
@@ -109,7 +185,7 @@ function initGsHybridFromUrl() {
 // gs_reset=all — полностью все ключи gs_* (в т.ч. gs_client_id), кэши caches API, без slug тоже работает.
 (function maybeResetDevicePrefsOnce() {
   try {
-    const q = new URLSearchParams(window.location.search || "");
+    const q = gsQueryParams(window.location.search || "");
     const raw = (q.get("gs_reset") || "").trim().toLowerCase();
     if (!raw) return;
     const full = raw === "all" || raw === "full" || raw === "hard";
@@ -252,7 +328,7 @@ function clearDevicePrefs(slug) {
 
 function getGsMobileWidgetsForPoll(slug) {
   try {
-    const q = new URLSearchParams(window.location.search || "");
+    const q = gsQueryParams(window.location.search || "");
     const v = (q.get("gs_mw") || "").trim();
     if (v) {
       localStorage.setItem(`gs_mw_${slug}`, v);
@@ -279,7 +355,7 @@ function screenPollUrl(base, slug, cid, lab, dev) {
 
 function getGsMobileForPoll(slug) {
   try {
-    const q = new URLSearchParams(window.location.search || "");
+    const q = gsQueryParams(window.location.search || "");
     if (q.get("gs_mobile") === "1") {
       localStorage.setItem(`gs_mobile_${slug}`, "1");
       return true;
@@ -293,7 +369,7 @@ function getGsMobileForPoll(slug) {
 
 function getGsClassesForPoll(slug) {
   try {
-    const q = new URLSearchParams(window.location.search || "");
+    const q = gsQueryParams(window.location.search || "");
     const v = (q.get("gs_classes") || "").trim();
     if (v) {
       localStorage.setItem(`gs_classes_${slug}`, v);
@@ -306,17 +382,56 @@ function getGsClassesForPoll(slug) {
 }
 
 async function fetchScreenPayload(url, headers, timeoutMs) {
-  const ac = new AbortController();
-  const to = window.setTimeout(() => ac.abort(), timeoutMs);
-  try {
-    return await fetch(url, {
-      cache: "no-store",
-      signal: ac.signal,
-      headers,
-    });
-  } finally {
-    window.clearTimeout(to);
+  if (typeof fetch === "function") {
+    const canAbort = typeof AbortController !== "undefined";
+    const ac = canAbort ? new AbortController() : null;
+    const to = window.setTimeout(() => {
+      if (ac) ac.abort();
+    }, timeoutMs);
+    try {
+      return await fetch(url, {
+        cache: "no-store",
+        signal: ac ? ac.signal : undefined,
+        headers,
+      });
+    } finally {
+      window.clearTimeout(to);
+    }
   }
+  return await new Promise((resolve, reject) => {
+    try {
+      const xhr = new XMLHttpRequest();
+      xhr.open("GET", url, true);
+      xhr.timeout = timeoutMs;
+      if (headers) {
+        Object.keys(headers).forEach((k) => {
+          try {
+            xhr.setRequestHeader(k, headers[k]);
+          } catch (_) {}
+        });
+      }
+      xhr.onreadystatechange = function onReady() {
+        if (xhr.readyState !== 4) return;
+        const status = Number(xhr.status) || 0;
+        const body = xhr.responseText || "";
+        resolve({
+          ok: status >= 200 && status < 300,
+          status,
+          json: async () => JSON.parse(body || "{}"),
+          text: async () => String(body || ""),
+        });
+      };
+      xhr.ontimeout = function onTimeout() {
+        reject(new Error("timeout"));
+      };
+      xhr.onerror = function onErr() {
+        reject(new Error("network error"));
+      };
+      xhr.send(null);
+    } catch (e) {
+      reject(e);
+    }
+  });
 }
 
 /**
@@ -732,7 +847,7 @@ function render(screenPayload) {
   const { screen, schedule, holidays, announcements, marquee } = screenPayload;
   const root = document.getElementById("screen-root");
   if (!root) return;
-  const menuMode = new URLSearchParams(window.location.search || "").get("gs_menu") === "1";
+  const menuMode = gsQueryParams(window.location.search || "").get("gs_menu") === "1";
   const slug = getSlug();
   const mobileForced = getGsMobileForPoll(slug);
   const mwRaw = getGsMobileWidgetsForPoll(slug);
