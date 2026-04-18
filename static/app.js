@@ -292,9 +292,12 @@ function bindProgramSettingsModalOnce() {
     try {
       const r = await api("/api/admin/tv-access/rotate-code", { method: "POST" });
       const code = String(r.code || "").trim();
+      const ip = String(r.initial_pin || "").trim();
       _tvLastCode = code;
       if (elements.tvCodeOut) {
-        elements.tvCodeOut.textContent = `КОД ШКОЛЫ:\n${code}\n\nСохраните его. После обновления страницы код скрывается.`;
+        const pinLine = ip ? `\n\nPIN ТВ (показан один раз):\n${ip}\n` : "";
+        const hint = r.pin_hint ? `\n${String(r.pin_hint)}` : "";
+        elements.tvCodeOut.textContent = `КОД ШКОЛЫ:\n${code}\n\nСохраните код. После обновления страницы код скрывается.${pinLine}${hint}`;
       }
       renderTvLinks(code);
     } catch (e) {

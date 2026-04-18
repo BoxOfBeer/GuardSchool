@@ -4093,17 +4093,19 @@ async def admin_tv_access_rotate_code(request: Request) -> dict[str, Any]:
     slug = current_tenant()
     if not slug:
         raise HTTPException(status_code=400, detail="Tenant is not resolved.")
-    # PIN можно не трогать: если записи нет — создадим дефолтный PIN=0000 (админ поменяет сразу).
-    now = utcnow()
+    # При первой записи задаём случайный PIN (не 0000) и возвращаем его один раз в ответе.
     code = _generate_tv_code()
     ch = tv_code_hash(code)
+    initial_pin: str | None = None
+    pin_hint = "PIN не изменён."
     with connect_public() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT pin_salt, pin_hash FROM tv_access WHERE tenant_slug=%s", (slug,))
             row = cur.fetchone()
             if not row:
                 pin_salt = secrets.token_hex(8)
-                pin_hash_db = tv_pin_hash("0000", pin_salt)
+                initial_pin = f"{secrets.randbelow(900_000) + 100_000:06d}"
+                pin_hash_db = tv_pin_hash(initial_pin, pin_salt)
                 cur.execute(
                     """
                     INSERT INTO tv_access (tenant_slug, code_plaintext, code_hash, pin_salt, pin_hash, created_at, updated_at)
@@ -4111,6 +4113,7 @@ async def admin_tv_access_rotate_code(request: Request) -> dict[str, Any]:
                     """,
                     (slug, code, ch, pin_salt, pin_hash_db),
                 )
+                pin_hint = "Сохраните PIN — он показан один раз. При необходимости смените в настройках."
             else:
                 pin_salt, pin_hash_db = row[0], row[1]
                 cur.execute(
@@ -4118,7 +4121,15 @@ async def admin_tv_access_rotate_code(request: Request) -> dict[str, Any]:
                     (code, ch, slug),
                 )
         conn.commit()
-    return {"status": "ok", "tenant_slug": slug, "code": code, "pin_hint": "PIN не изменён (если запись новая — PIN=0000)"}
+    out: dict[str, Any] = {
+        "status": "ok",
+        "tenant_slug": slug,
+        "code": code,
+        "pin_hint": pin_hint,
+    }
+    if initial_pin is not None:
+        out["initial_pin"] = initial_pin
+    return out
 
 
 @app.post("/api/admin/tv-access/set-pin")
