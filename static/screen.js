@@ -385,6 +385,18 @@ function screenPollUrl(base, slug, cid, lab, dev) {
   return `${String(base).replace(/\/$/, "")}${path}`;
 }
 
+/**
+ * Широкий ТВ: без этого при mobile_mode в конфиге оставалась сетка (как на ПК), лента не включалась — «ничего не поменялось».
+ * ПК с мышью: обычно false — сетка как раньше.
+ */
+function gsMobileLayoutTvLike() {
+  try {
+    if (window.matchMedia && window.matchMedia("(pointer: coarse) and (hover: none)").matches) return true;
+  } catch (_) {}
+  const ua = String(navigator.userAgent || "");
+  return /SmartTV|SMART-TV|Tizen|webOS|GoogleTV|AFTM|AFTB|AFTT|BRAVIA|CrKey|HbbTV|NetCast|VIDAA/i.test(ua);
+}
+
 function getGsMobileForPoll(slug) {
   try {
     const q = gsQueryParams(window.location.search || "");
@@ -893,27 +905,32 @@ function render(screenPayload) {
       return false;
     }
   })();
-  const mobileMode = (screen && screen.mobile_mode) && (mobileForced || mobileViewport);
+  const mobileTvLike = gsMobileLayoutTvLike();
+  const mobileMode = Boolean(screen && screen.mobile_mode) && (mobileForced || mobileViewport || mobileTvLike);
 
-  const layoutSig = JSON.stringify((screen.widgets || []).map((w) => {
-    const ws = w.settings || {};
-    return {
-      id: w.id,
-      type: w.type,
-      enabled: w.enabled !== false,
-      x: w.x, y: w.y, w: w.w, h: w.h,
-      // Важные настройки, влияющие на структуру/карусель
-      settings: w.type === "carousel"
-        ? {
-            childWidgetIds: ws.childWidgetIds || [],
-            childSlideSec: ws.childSlideSec || {},
-            startDelaySec: ws.startDelaySec || 0,
-            animation: ws.animation || "slide",
-          }
-        : null,
-    };
-  }));
-  const canSoftUpdate = root.dataset && root.dataset.layoutSig === layoutSig && root.querySelector(".screen-grid");
+  const layoutSig = JSON.stringify({
+    m: mobileMode,
+    w: (screen.widgets || []).map((w) => {
+      const ws = w.settings || {};
+      return {
+        id: w.id,
+        type: w.type,
+        enabled: w.enabled !== false,
+        x: w.x, y: w.y, w: w.w, h: w.h,
+        settings: w.type === "carousel"
+          ? {
+              childWidgetIds: ws.childWidgetIds || [],
+              childSlideSec: ws.childSlideSec || {},
+              startDelaySec: ws.startDelaySec || 0,
+              animation: ws.animation || "slide",
+            }
+          : null,
+      };
+    }),
+  });
+  const softGrid = !mobileMode && root.querySelector(".screen-grid");
+  const softMobile = mobileMode && root.querySelector(".gs-mobile-list");
+  const canSoftUpdate = root.dataset && root.dataset.layoutSig === layoutSig && Boolean(softGrid || softMobile);
   if (!canSoftUpdate) {
     (GRef.pruneStaleWidgetState || GRef.pruneStaleCarouselState)(screen);
     GRef.clearAllTimers();
