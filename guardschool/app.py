@@ -3049,8 +3049,10 @@ def screen_menu(slug: str) -> Response:
 
 
 @app.get("/screens", response_class=HTMLResponse)
-def screens_index_page() -> Response:
-    """Публичная страница выбора экрана (без админской сессии)."""
+def screens_index_page(request: Request) -> Response:
+    """Страница выбора экрана. В SaaS с БД — только после входа (иначе утечка списка slug)."""
+    if deployment_mode() == "saas" and saas_db_enabled() and not is_authenticated(request):
+        return RedirectResponse(url="/login", status_code=302)
     return FileResponse(
         STATIC_DIR / "screens.html",
         headers={"Cache-Control": "no-cache, must-revalidate"},
@@ -3865,8 +3867,10 @@ def post_preview_payload(request: Request, payload: dict[str, Any] = Body(...)) 
 
 
 @app.get("/api/screens-index")
-def get_screens_index() -> dict[str, Any]:
-    """Краткий список экранов для публичной страницы /screens (без авторизации)."""
+def get_screens_index(request: Request) -> dict[str, Any]:
+    """Список экранов для /screens. В SaaS с БД — только для авторизованной сессии."""
+    if deployment_mode() == "saas" and saas_db_enabled():
+        require_auth(request)
     config = load_config()
     items = []
     for item in config.get("screens") or []:

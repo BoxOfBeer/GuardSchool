@@ -257,6 +257,18 @@ body.screen-body {
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
   padding: 0;
+  /* Иначе общий overflow:hidden у .screen-widget обрезает второй блок («следующий учебный день»)
+     по высоте ячейки — на ТВ/мобильном WebKit заметнее, чем в десктопном Chrome. */
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Мобильная лента: тот же виджет вне сетки. */
+.gs-mobile-widget.screen-widget[data-widget-type="schedule"] {
+  overflow-x: hidden;
+  overflow-y: visible;
+  max-height: none;
 }
 
 .tv-screen .screen-widget[data-widget-type="schedule"] .screen-section-title,
@@ -426,7 +438,9 @@ body.screen-body {
   flex: 1 1 auto;
   justify-content: flex-start;
   min-height: 0;
-  overflow: hidden;
+  /* Не клипать «завтра» — прокрутка на уровне карточки расписания (см. .screen-widget[schedule]). */
+  overflow-x: hidden;
+  overflow-y: visible;
 }
 
 .schedule-section {
@@ -436,16 +450,16 @@ body.screen-body {
   gap: 6px;
   min-height: 0;
   margin: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .schedule-table-wrap {
   flex: 0 0 auto;
   min-height: 0;
+  /* Не задавать overflow: hidden после overflow-y — иначе скролл таблицы отключается. */
   overflow-x: hidden;
   overflow-y: auto;
   border-radius: 10px;
-  overflow: hidden; /* скругление углов таблицы */
   background: var(--gs-sched-bg, rgba(248, 244, 232, 0.92));
 }
 

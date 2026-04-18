@@ -657,9 +657,13 @@
       const bs = schedule.bell_status || {};
       const title = bs.schedule_title || L.scheduleDefault;
       const nextDayTitle = `${L.nextSchoolDay} ${formatDateLabel(schedule.next_school_day)}`;
-      const todayBlock = bs.state === "done"
-        ? ""
-        : buildScheduleTable(schedule.today_rows, title, widget.settings);
+      // Раньше при state "done" таблица на сегодня скрывалась целиком — на ТВ вечером/в выходной
+      // оставался пустой блок, если «завтра» ещё не построено. Показываем сетку, если строки есть.
+      const todayRows = Array.isArray(schedule.today_rows) ? schedule.today_rows : [];
+      const todayBlock =
+        bs.state === "done" && !todayRows.length
+          ? ""
+          : buildScheduleTable(todayRows, title, widget.settings);
       const showTomorrowBlock = widget.settings.showTomorrow !== false
         && schedule.tomorrow_schedule_visible !== false;
       const tomorrowBlock = showTomorrowBlock
@@ -776,6 +780,47 @@
     };
     st.timerId = window.setTimeout(advance, Math.max(0, st.nextSwitchAt - now));
     carouselState.set(widget.id, st);
+  }
+
+  /**
+   * Мягкое обновление сетки не трогает карусель — слайды с расписанием/звонками иначе замирают
+   * на старом HTML, пока карусель не переключится (на ТВ «завтра» есть на ПК после опроса, на ТВ нет).
+   */
+  function updateCarouselSlidesForScheduleData(
+    block,
+    widget,
+    childWidgets,
+    schedule,
+    screen,
+    holidays,
+    announcements,
+    marquee
+  ) {
+    if (!block || !widget || !Array.isArray(childWidgets) || !childWidgets.length) return;
+    const slides = block.querySelectorAll(".carousel-slide");
+    if (!slides.length || slides.length !== childWidgets.length) return;
+    const needsPoll = childWidgets.some(
+      (c) => c && (c.type === "schedule" || c.type === "bell_status" || c.type === "bell_countdown")
+    );
+    if (!needsPoll) return;
+    childWidgets.forEach((childWidget, index) => {
+      if (!childWidget) return;
+      if (childWidget.type !== "schedule" && childWidget.type !== "bell_status" && childWidget.type !== "bell_countdown") {
+        return;
+      }
+      const slide = slides[index];
+      if (!slide) return;
+      const wasActive = slide.classList.contains("active");
+      slide.innerHTML = renderWidgetHtml(
+        childWidget,
+        schedule,
+        screen,
+        holidays,
+        announcements || [],
+        marquee || [],
+        { mode: wasActive ? "carousel_show" : "carousel_init" }
+      );
+    });
   }
 
   function updateAllClocks(root) {
@@ -979,6 +1024,7 @@
     orderedCarouselChildWidgets,
     applyWidgetBackdropClass,
     startCarousel,
+    updateCarouselSlidesForScheduleData,
     updateAllClocks,
     resolveBackgroundImageUrl,
     applyTvScreenBackground,
