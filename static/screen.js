@@ -949,7 +949,7 @@ function render(screenPayload) {
     });
     root.appendChild(list);
   } else if (mobileMode) {
-    // Мобильный режим: вертикальная лента, без сетки, со скроллом.
+    // Мобильный режим: вертикальная лента; порядок = порядок в конфиге, координаты сетки не используются.
     (GRef.pruneStaleWidgetState || GRef.pruneStaleCarouselState)(screen);
     GRef.clearAllTimers();
     root.innerHTML = "";
@@ -960,8 +960,11 @@ function render(screenPayload) {
     const hiddenWidgetIds = GRef.widgetIdsHiddenByCarousel(screen);
     const configured = Array.isArray(screen.mobile_widget_ids) ? screen.mobile_widget_ids.map(String) : [];
     const configuredSet = new Set(configured);
-    const orderedAll = (GRef.sortWidgetsForDom ? GRef.sortWidgetsForDom(screen) : (screen.widgets || []))
-      .filter((w) => w && w.menu_only !== true && w.type !== "emergency" && !(hiddenWidgetIds.has(w.id) && w.type !== "carousel"));
+    const orderedAll = (GRef.sortWidgetsForMobileStack
+      ? GRef.sortWidgetsForMobileStack(screen)
+      : (screen.widgets || []).filter(
+          (w) => w && w.menu_only !== true && w.type !== "emergency" && !(hiddenWidgetIds.has(w.id) && w.type !== "carousel")
+        ));
     const orderedDefault = orderedAll.filter((w) => w.enabled !== false);
     // Если список mobile_widget_ids задан — это явный выбор пользователя, показываем выбранные,
     // даже если виджет был выключен в сетке (иначе выбор "не работает").

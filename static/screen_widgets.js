@@ -559,6 +559,23 @@
     return list.map((x) => x.w);
   }
 
+  /**
+   * Мобильная лента: порядок как в конфиге экрана (индекс в массиве widgets), без перестановки по типу/сетке.
+   * x,y,w,h не учитываются — только столбец «сверху вниз».
+   */
+  function sortWidgetsForMobileStack(screen) {
+    const widgets = (screen && screen.widgets) || [];
+    const hiddenIds = widgetIdsHiddenByCarousel(screen);
+    const out = [];
+    for (let i = 0; i < widgets.length; i++) {
+      const w = widgets[i];
+      if (!w || w.menu_only === true || w.type === "emergency") continue;
+      if (hiddenIds.has(w.id) && w.type !== "carousel") continue;
+      out.push(w);
+    }
+    return out;
+  }
+
   /** Дочерние виджеты карусели в порядке из `childWidgetIds`. */
   function orderedCarouselChildWidgets(screen, widget) {
     const ids = widget.settings.childWidgetIds || [];
@@ -1021,6 +1038,7 @@
     renderWidgetHtml,
     widgetIdsHiddenByCarousel,
     sortWidgetsForDom,
+    sortWidgetsForMobileStack,
     orderedCarouselChildWidgets,
     applyWidgetBackdropClass,
     startCarousel,
