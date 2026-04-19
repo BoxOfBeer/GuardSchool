@@ -1308,6 +1308,17 @@ function scheduleNextRefresh(delayMs) {
   window.__screenRefreshTimer = window.setTimeout(refresh, delayMs);
 }
 
+/** Сколько строк в сетке расписания (сегодня+завтра); 0 — «пусто» с точки зрения данных. */
+function schedulePayloadRowScore(payload) {
+  try {
+    const s = payload && payload.schedule;
+    if (!s) return 0;
+    return (s.today_rows || []).length + (s.tomorrow_rows || []).length;
+  } catch (_) {
+    return 0;
+  }
+}
+
 async function refresh() {
   const fallbackDelay = Math.max(5000, window.__lastScreenPollMs || 10000);
   let nextDelay = fallbackDelay;
@@ -1342,41 +1353,55 @@ async function refresh() {
     bases.push("");
     if (fallbackBase && !bases.includes(fallbackBase)) bases.push(fallbackBase);
 
-    let response = null;
     let lastErr = null;
     const mobilePoll = Boolean(
       window.__lastScreenPayload &&
       window.__lastScreenPayload.screen &&
       window.__lastScreenPayload.screen.mobile_mode,
     );
+    /** Не останавливаться на первом 200 с пустым расписанием (LAN без данных, облако полное). */
+    let payload = null;
+    let lastOkPayload = null;
     for (const b of bases) {
       const url = screenPollUrl(b, slug, cid, lab, dev, mobilePoll);
       try {
         const r = await fetchScreenPayload(url, hdr, Math.min(45000, timeoutMs + 5000));
         if (r.ok) {
-          response = r;
-          break;
+          const p = await r.json();
+          lastOkPayload = p;
+          if (schedulePayloadRowScore(p) > 0) {
+            payload = p;
+            break;
+          }
+        } else {
+          lastErr = new Error(`HTTP ${r.status}`);
         }
-        lastErr = new Error(`HTTP ${r.status}`);
       } catch (e) {
         lastErr = e;
       }
     }
-    if (!response || !response.ok) {
-      throw lastErr || new Error("poll failed");
+    if (!payload) {
+      if (lastOkPayload) payload = lastOkPayload;
+      else throw lastErr || new Error("poll failed");
     }
-    let payload = await response.json();
     if (gsRepairToxicGsClasses(slug, payload.pickable_classes || [])) {
+      let bestRepair = null;
+      let bestScoreR = -1;
       for (const b of bases) {
         const url2 = screenPollUrl(b, slug, cid, lab, dev, mobilePoll);
         try {
           const r2 = await fetchScreenPayload(url2, hdr, Math.min(45000, timeoutMs + 5000));
           if (r2.ok) {
-            payload = await r2.json();
-            break;
+            const p2 = await r2.json();
+            const sc = schedulePayloadRowScore(p2);
+            if (sc > bestScoreR) {
+              bestScoreR = sc;
+              bestRepair = p2;
+            }
           }
         } catch (_) {}
       }
+      if (bestRepair) payload = bestRepair;
     }
     nextDelay = Math.max(5000, (payload.screen.poll_interval_sec || 10) * 1000);
     window.__lastScreenPollMs = nextDelay;

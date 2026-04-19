@@ -4092,6 +4092,7 @@ def get_screen(request: Request, slug: str) -> JSONResponse:
             "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
             "Pragma": "no-cache",
             "Expires": "0",
+            "X-Guardschool-App-Version": APP_VERSION,
         },
     )
 
