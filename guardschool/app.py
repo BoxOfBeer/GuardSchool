@@ -1302,6 +1302,31 @@ def load_overrides() -> list[dict[str, Any]]:
     return read_json(OVERRIDES_PATH, [])
 
 
+def schedule_date_iso(raw: Any) -> str:
+    """Поле date в schedule.json / override → YYYY-MM-DD для сравнения (Excel dd.mm.yyyy, datetime-строки)."""
+    if raw is None:
+        return ""
+    if isinstance(raw, datetime):
+        return raw.date().isoformat()
+    if isinstance(raw, date):
+        return raw.isoformat()
+    s = str(raw).strip()
+    if not s:
+        return ""
+    if "T" in s:
+        s = s.split("T", 1)[0].strip()
+    if len(s) >= 10 and s[4] == "-" and s[7] == "-":
+        head = s[:10]
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", head):
+            return head
+    if re.fullmatch(r"\d{1,2}\.\d{1,2}\.\d{4}", s):
+        try:
+            return datetime.strptime(s, "%d.%m.%Y").date().isoformat()
+        except ValueError:
+            return ""
+    return ""
+
+
 def _norm_hex_color(value: Any) -> str | None:
     """Нормализация цвета (#RRGGBB) для ручной замены; None если невалидно/пусто."""
     if value is None:
@@ -1801,7 +1826,7 @@ def collect_enriched_schedule_rows(
     dated_by_key = {
         normalize_class(str(item["class_key"])): item
         for item in schedule_data
-        if item["date"] == day_iso and class_in_selected(item["class_key"], selectors)
+        if schedule_date_iso(item.get("date")) == day_iso and class_in_selected(item["class_key"], selectors)
     }
     keys_seen: set[str] = set(dated_by_key.keys())
     for item in full_data:
@@ -1868,7 +1893,7 @@ def collect_enriched_schedule_rows(
                 (
                     o
                     for o in overrides
-                    if o["date"] == day_iso
+                    if schedule_date_iso(o.get("date")) == day_iso
                     and normalize_class(str(o.get("class_key") or "")) == class_key
                     and int(o["lesson_index"]) == lesson_index
                 ),
@@ -1969,21 +1994,36 @@ def build_schedule_payload(
     classes = screen.get("selected_classes", [])
     selectors = [normalize_class(item) for item in classes if normalize_class(item)]
 
-    next_school_date_iso = None
-    future_dates = sorted(
+    future_iso = sorted(
         {
-            item["date"]
+            d_iso
             for item in schedule_data
-            if class_in_selected(item["class_key"], selectors) and item["date"] > target_date.isoformat()
+            if (d_iso := schedule_date_iso(item.get("date")))
+            and len(d_iso) >= 10
+            and d_iso > target_date.isoformat()
+            and class_in_selected(item["class_key"], selectors)
         }
     )
-    if future_dates:
-        next_school_date_iso = future_dates[0]
-    next_school_date = (
-        date.fromisoformat(next_school_date_iso)
-        if next_school_date_iso
-        else date.fromordinal(target_date.toordinal() + 1)
-    )
+    next_day_candidates: list[date] = []
+    seen_iso: set[str] = set()
+    for iso in future_iso:
+        if len(iso) < 10:
+            continue
+        try:
+            d0 = date.fromisoformat(iso[:10])
+        except ValueError:
+            continue
+        k0 = d0.isoformat()
+        if k0 not in seen_iso:
+            seen_iso.add(k0)
+            next_day_candidates.append(d0)
+    for k in range(1, 15):
+        d1 = date.fromordinal(target_date.toordinal() + k)
+        k1 = d1.isoformat()
+        if k1 not in seen_iso:
+            seen_iso.add(k1)
+            next_day_candidates.append(d1)
+
     show_next_day = tomorrow_schedule_visible(bell_status)
 
     today_rows = collect_enriched_schedule_rows(
@@ -1996,16 +2036,25 @@ def build_schedule_payload(
         selectors=selectors,
         bell_status=bell_status,
     )
-    tomorrow_rows = collect_enriched_schedule_rows(
-        day=next_school_date,
-        marker_reference_date=target_date,
-        schedule_data=schedule_data,
-        full_data=full_data,
-        sample_data=sample_data,
-        overrides=overrides,
-        selectors=selectors,
-        bell_status=bell_status,
+    tomorrow_rows: list[dict[str, Any]] = []
+    next_school_date = (
+        next_day_candidates[0] if next_day_candidates else date.fromordinal(target_date.toordinal() + 1)
     )
+    for d_try in next_day_candidates:
+        tr = collect_enriched_schedule_rows(
+            day=d_try,
+            marker_reference_date=target_date,
+            schedule_data=schedule_data,
+            full_data=full_data,
+            sample_data=sample_data,
+            overrides=overrides,
+            selectors=selectors,
+            bell_status=bell_status,
+        )
+        if tr:
+            tomorrow_rows = tr
+            next_school_date = d_try
+            break
     max_lesson_index_today = max_lesson_index_from_enriched_rows(today_rows)
 
     return {
@@ -3798,10 +3847,11 @@ async def save_overrides(request: Request) -> dict[str, str]:
             class_key = normalize_class(item.get("class_key") or class_name)
             lesson_index = as_lesson_number(item.get("lesson_index"))
             subject = str(item.get("subject") or "").strip()
-            if not (date_s and class_name and class_key and lesson_index and subject):
+            date_norm = schedule_date_iso(date_s) or date_s
+            if not (date_norm and class_name and class_key and lesson_index and subject):
                 continue
             out = {
-                "date": date_s,
+                "date": date_norm,
                 "class_name": class_name,
                 "class_key": class_key,
                 "lesson_index": lesson_index,
