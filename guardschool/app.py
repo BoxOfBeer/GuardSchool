@@ -1346,6 +1346,7 @@ def load_bell_schedules() -> dict[str, Any]:
 
 
 def class_matches_selector(class_key: str, selector: str) -> bool:
+    class_key = normalize_class(class_key)
     normalized_selector = normalize_class(selector)
     if not normalized_selector:
         return False
@@ -1354,10 +1355,17 @@ def class_matches_selector(class_key: str, selector: str) -> bool:
     grade_match = re.match(r"^(\d+)$", normalized_selector)
     if grade_match:
         n = grade_match.group(1)
-        # «Только параллель» (7): подходит «7», «7а», «7 математика» из колонки «Класс».
-        # Не подходит «10» для селектора «1» (следующий символ — цифра).
-        # Старый шаблон ^N\s*[a-zа-я]+$ ломался на «7 русский яз» (пробел внутри «названия класса»).
-        return re.match(rf"^{re.escape(n)}(\D|$)", class_key) is not None
+        # «Только параллель» 7: «7а», «7 математика»; не «10» для «1»; не «7*» (звёздочный класс — только «7*»).
+        if not class_key.startswith(n):
+            return False
+        rest = class_key[len(n) :]
+        if not rest:
+            return True
+        if rest[0].isdigit():
+            return False
+        if rest.lstrip().startswith("*"):
+            return False
+        return True
     return False
 
 
@@ -1748,12 +1756,13 @@ def _subject_at_lesson(row: dict[str, Any] | None, lesson_index: int) -> str:
 
 def _row_by_weekday_class(rows: list[dict[str, Any]], weekday: int, class_key: str) -> dict[str, Any] | None:
     hit: dict[str, Any] | None = None
+    want = normalize_class(class_key)
     for item in rows:
         try:
             wd = int(item.get("weekday"))
         except (TypeError, ValueError):
             continue
-        if wd == weekday and item.get("class_key") == class_key:
+        if wd == weekday and normalize_class(str(item.get("class_key") or "")) == want:
             hit = item
     return hit
 
@@ -1790,7 +1799,7 @@ def collect_enriched_schedule_rows(
     wd = day.weekday()
     day_iso = day.isoformat()
     dated_by_key = {
-        item["class_key"]: item
+        normalize_class(str(item["class_key"])): item
         for item in schedule_data
         if item["date"] == day_iso and class_in_selected(item["class_key"], selectors)
     }
@@ -1802,7 +1811,7 @@ def collect_enriched_schedule_rows(
         except (TypeError, ValueError):
             continue
         if class_in_selected(item["class_key"], selectors):
-            keys_seen.add(item["class_key"])
+            keys_seen.add(normalize_class(str(item["class_key"])))
     for item in sample_data:
         try:
             if int(item.get("weekday")) != wd:
@@ -1810,7 +1819,7 @@ def collect_enriched_schedule_rows(
         except (TypeError, ValueError):
             continue
         if class_in_selected(item["class_key"], selectors):
-            keys_seen.add(item["class_key"])
+            keys_seen.add(normalize_class(str(item["class_key"])))
 
     display_names: dict[str, str] = {}
     for ck in keys_seen:
@@ -1860,7 +1869,7 @@ def collect_enriched_schedule_rows(
                     o
                     for o in overrides
                     if o["date"] == day_iso
-                    and o["class_key"] == class_key
+                    and normalize_class(str(o.get("class_key") or "")) == class_key
                     and int(o["lesson_index"]) == lesson_index
                 ),
                 None,
