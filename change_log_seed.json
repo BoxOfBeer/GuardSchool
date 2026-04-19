@@ -1,5 +1,10 @@
 [
   {
+    "version": "1.02.032",
+    "timestamp": "2026-04-20T08:25:00",
+    "message": "gs_change_log: путь к change_log_seed.json — корень репозитория (раньше искался несуществующий guardschool/change_log_seed.json, сид не подхватывался при пустом data/change_log.json)."
+  },
+  {
     "version": "1.02.031",
     "timestamp": "2026-04-20T08:20:00",
     "message": "Журнал выпусков: добавлены записи 1.02.002–1.02.030 по истории ветки saas-hybrid (git) в change_log_seed.json и data/change_log.json; уточнено в 1.02.024, что номера 1.02.014–1.02.023 в репозитории не использовались."

@@ -10,7 +10,8 @@ from .gs_jsonio import read_json, write_json
 from .gs_paths import APP_VERSION, CHANGE_LOG_PATH
 
 _MAX_ENTRIES = 200
-_SEED_PATH = Path(__file__).resolve().parent / "change_log_seed.json"
+# Файл в корне репозитория (рядом с каталогом пакета guardschool/), см. README / ru.json про журнал.
+_SEED_PATH = Path(__file__).resolve().parent.parent / "change_log_seed.json"
 
 
 def _load_seed_entries() -> list[dict[str, Any]]:
