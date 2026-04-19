@@ -145,54 +145,6 @@ function syncProgramSettingsFieldsFromState() {
   }
 }
 
-function emergencyWidget() {
-  const screen = selectedScreen();
-  const w = screen?.widgets?.find((x) => x.type === "emergency");
-  return w || null;
-}
-
-function syncEmergencyModeCheckbox() {
-  const el = document.getElementById("admin-emergency-mode");
-  if (!el) return;
-  const w = emergencyWidget();
-  if (!w) {
-    el.disabled = true;
-    el.checked = false;
-    return;
-  }
-  el.disabled = false;
-  el.checked = !!w.enabled;
-}
-
-function bindEmergencyModeOnce() {
-  if (bindEmergencyModeOnce._done) return;
-  bindEmergencyModeOnce._done = true;
-  const el = document.getElementById("admin-emergency-mode");
-  if (!el) return;
-  el.addEventListener("change", () => {
-    const w = emergencyWidget();
-    if (!w) return;
-    w.enabled = !!el.checked;
-    render();
-  });
-}
-
-function setProgramSettingsTab(tab) {
-  const root = elements.programSettingsPanel;
-  if (!root) return;
-  const allowed = new Set(["general", "tv", "changelog"]);
-  const t = allowed.has(tab) ? tab : "general";
-  root.querySelectorAll("[data-ps-tab]").forEach((btn) => {
-    const on = btn.getAttribute("data-ps-tab") === t;
-    btn.classList.toggle("active", on);
-    btn.setAttribute("aria-selected", on ? "true" : "false");
-  });
-  root.querySelectorAll("[data-ps-pane]").forEach((pane) => {
-    pane.hidden = pane.getAttribute("data-ps-pane") !== t;
-  });
-  if (t === "changelog") renderHistory();
-}
-
 function renderProgramPaletteCheckboxes() {
   const wrap = elements.programSettingsPaletteWrap;
   if (!wrap || !state.config) return;
@@ -270,17 +222,11 @@ async function refreshTvAccessUi() {
   const head = elements.tvAccessHead;
   const wrap = elements.tvAccessWrap;
   if (!head || !wrap) return;
-  const fallback = document.querySelector(".program-settings-tv-fallback");
-  const saasBox = document.querySelector(".program-settings-tv-saas");
   if (state.meta?.deployment_mode !== "saas") {
     head.hidden = true;
     wrap.hidden = true;
-    if (fallback) fallback.hidden = false;
-    if (saasBox) saasBox.hidden = true;
     return;
   }
-  if (fallback) fallback.hidden = true;
-  if (saasBox) saasBox.hidden = false;
   head.hidden = false;
   wrap.hidden = false;
   if (elements.tvCodeOut) elements.tvCodeOut.textContent = "";
@@ -337,9 +283,9 @@ async function refreshProgramHistoryFromApi() {
 }
 
 function syncProgramSettingsTvTabVisibility() {
-  const panel = elements.programSettingsPanel;
-  if (!panel) return;
-  const tabBtn = panel.querySelector("[data-ps-tab=\"tv\"]");
+  const modal = elements.programSettingsModal;
+  if (!modal) return;
+  const tabBtn = modal.querySelector("[data-ps-tab=\"tv\"]");
   const saas = state.meta?.deployment_mode === "saas";
   if (tabBtn) tabBtn.hidden = !saas;
   if (!saas && getStoredProgramSettingsTab() === "tv") {
@@ -350,19 +296,19 @@ function syncProgramSettingsTvTabVisibility() {
 }
 
 function setProgramSettingsTab(tab) {
-  const panel = elements.programSettingsPanel;
-  if (!panel) return;
+  const modal = elements.programSettingsModal;
+  if (!modal) return;
   if (tab === "tv" && state.meta?.deployment_mode !== "saas") tab = "general";
   try {
     sessionStorage.setItem(GS_ADMIN_PROGRAM_SETTINGS_TAB, tab);
   } catch (_) {}
-  panel.querySelectorAll("[data-ps-tab]").forEach((btn) => {
+  modal.querySelectorAll("[data-ps-tab]").forEach((btn) => {
     const id = btn.getAttribute("data-ps-tab");
     const on = id === tab;
     btn.classList.toggle("active", on);
     btn.setAttribute("aria-selected", on ? "true" : "false");
   });
-  panel.querySelectorAll("[data-ps-pane]").forEach((pane) => {
+  modal.querySelectorAll("[data-ps-pane]").forEach((pane) => {
     pane.hidden = pane.getAttribute("data-ps-pane") !== tab;
   });
   if (tab === "changelog") refreshProgramHistoryFromApi();
@@ -371,9 +317,9 @@ function setProgramSettingsTab(tab) {
 function initProgramSettingsTabListenersOnce() {
   if (initProgramSettingsTabListenersOnce._done) return;
   initProgramSettingsTabListenersOnce._done = true;
-  elements.programSettingsPanel?.addEventListener("click", (e) => {
+  elements.programSettingsModal?.addEventListener("click", (e) => {
     const b = e.target.closest("[data-ps-tab]");
-    if (!b || !elements.programSettingsPanel?.contains(b)) return;
+    if (!b || !elements.programSettingsModal?.contains(b)) return;
     e.preventDefault();
     const t = b.getAttribute("data-ps-tab");
     if (t) setProgramSettingsTab(t);
@@ -381,12 +327,8 @@ function initProgramSettingsTabListenersOnce() {
 }
 
 function openProgramSettingsModal() {
-  if (!elements.programSettingsPanel) return;
+  if (!elements.programSettingsModal) return;
   closeWidgetModal();
-  state.programSettingsPanelActive = true;
-  state.audioStreamPanelActive = false;
-  state.statsPanelActive = false;
-  leaveStatsPanel();
   initProgramSettingsTabListenersOnce();
   syncProgramSettingsTvTabVisibility();
   setProgramSettingsTab(getStoredProgramSettingsTab());
@@ -395,14 +337,24 @@ function openProgramSettingsModal() {
   refreshSyncStatusLine().catch(() => {});
   refreshTvAccessUi().catch(() => {});
   try {
-    GuardSchoolI18n.applyDom(elements.programSettingsPanel);
+    GuardSchoolI18n.applyDom(elements.programSettingsModal);
   } catch (_) {}
-  render();
+  elements.programSettingsModal.hidden = false;
+  elements.programSettingsModal.setAttribute("aria-hidden", "false");
+  document.body.classList.add("program-settings-page-open");
 }
 
 function closeProgramSettingsModal() {
-  state.programSettingsPanelActive = false;
-  render();
+  const m = elements.programSettingsModal;
+  if (!m) return;
+  document.body.classList.remove("program-settings-page-open");
+  const ae = document.activeElement;
+  if (ae && m.contains(ae)) {
+    if (elements.programSettingsOpenBtn) elements.programSettingsOpenBtn.focus();
+    else ae.blur();
+  }
+  m.hidden = true;
+  m.setAttribute("aria-hidden", "true");
 }
 
 function bindProgramSettingsModalOnce() {
@@ -410,8 +362,7 @@ function bindProgramSettingsModalOnce() {
   bindProgramSettingsModalOnce._done = true;
   elements.programSettingsOpenBtn?.addEventListener("click", (e) => {
     e.preventDefault();
-    if (state.programSettingsPanelActive) closeProgramSettingsModal();
-    else openProgramSettingsModal();
+    openProgramSettingsModal();
   });
   document.addEventListener("click", (e) => {
     if (e.target.closest("[data-close-program-settings]")) {
@@ -848,19 +799,12 @@ function restoreAdminUiFromSession() {
     if (top === "audio") {
       state.audioStreamPanelActive = true;
       state.statsPanelActive = false;
-      state.programSettingsPanelActive = false;
-    } else if (top === "program") {
-      state.programSettingsPanelActive = true;
-      state.audioStreamPanelActive = false;
-      state.statsPanelActive = false;
     } else if (top === "stats" && !state.meta?.demo_session) {
       state.statsPanelActive = true;
       state.audioStreamPanelActive = false;
-      state.programSettingsPanelActive = false;
     } else {
       state.audioStreamPanelActive = false;
       state.statsPanelActive = false;
-      state.programSettingsPanelActive = false;
       if (sid && state.config.screens.some((s) => s.id === sid)) {
         state.selectedScreenId = sid;
       }
@@ -878,7 +822,6 @@ function persistAdminUiToSession() {
   try {
     let top = "screen";
     if (state.audioStreamPanelActive) top = "audio";
-    else if (state.programSettingsPanelActive) top = "program";
     else if (state.statsPanelActive) top = "stats";
     sessionStorage.setItem(GS_ADMIN_SESSION_TOP, top);
     sessionStorage.setItem(GS_ADMIN_SESSION_SCREEN, state.selectedScreenId || "");
@@ -972,7 +915,6 @@ function renderTabs() {
   audioBtn.textContent = t("tabs.pcAudio");
   audioBtn.onclick = () => {
     closeWidgetModal();
-    state.programSettingsPanelActive = false;
     state.audioStreamPanelActive = true;
     state.statsPanelActive = false;
     render();
@@ -988,7 +930,6 @@ function renderTabs() {
       closeWidgetModal();
       state.statsPanelActive = true;
       state.audioStreamPanelActive = false;
-      state.programSettingsPanelActive = false;
       render();
     };
     elements.tabs.appendChild(statsBtn);
@@ -996,12 +937,11 @@ function renderTabs() {
 
   state.config.screens.forEach((screen) => {
     const button = document.createElement("button");
-    button.className = `top-nav-btn ${!state.audioStreamPanelActive && !state.statsPanelActive && !state.programSettingsPanelActive && screen.id === state.selectedScreenId ? "active" : ""}`;
+    button.className = `top-nav-btn ${!state.audioStreamPanelActive && !state.statsPanelActive && screen.id === state.selectedScreenId ? "active" : ""}`;
     button.textContent = screen.name;
     button.onclick = () => {
       state.audioStreamPanelActive = false;
       state.statsPanelActive = false;
-      state.programSettingsPanelActive = false;
       closeWidgetModal();
       state.selectedScreenId = screen.id;
       render();
@@ -1045,294 +985,6 @@ function renderSectionVisibility() {
   document.querySelectorAll("[data-section]").forEach((block) => {
     block.hidden = block.dataset.section !== state.activeSection;
   });
-}
-
-function settingInputs(widget, index) {
-  const parts = [];
-  parts.push(widgetToggle(t("w.enabled"), widget.enabled, `widget:${index}:enabled`));
-  parts.push(widgetToggle(t("w.backdrop"), widget.settings.backdrop !== false, `widget:${index}:settings.backdrop`));
-  if (["date", "time", "text", "bell_status", "holidays", "announcements", "marquee", "emergency"].includes(widget.type)) {
-    parts.push(widgetInput(t("w.fontSize"), widget.settings.fontSize, `widget:${index}:settings.fontSize`, "number", "standard-input"));
-    parts.push(widgetInput(t("w.color"), widget.settings.color, `widget:${index}:settings.color`, "color", "standard-input"));
-    parts.push(widgetToggle(t("w.bold"), widget.settings.bold, `widget:${index}:settings.bold`));
-  }
-  if (["text", "bell_status", "bell_countdown", "holidays", "announcements", "marquee", "emergency"].includes(widget.type)) {
-    parts.push(widgetInput(t("w.blockBg"), widget.settings.background, `widget:${index}:settings.background`, "text", "wide-input"));
-  }
-  if (widget.type === "text") {
-    parts.push(widgetInput(t("w.text"), widget.settings.text, `widget:${index}:settings.text`, "text", "wide-input"));
-  }
-  if (widget.type === "emergency") {
-    parts.push(widgetTextarea(t("w.textLines"), widget.settings.text, `widget:${index}:settings.text`, "wide-input"));
-    parts.push(`<p class="hint">${t("w.emergencyHint")}</p>`);
-  }
-  if (widget.type === "image") {
-    coerceWidgetImageSlots(widget);
-    const imgs = widget.settings.images;
-    parts.push(widgetInput(t("w.opacity"), widget.settings.opacity, `widget:${index}:settings.opacity`, "number", "standard-input"));
-    parts.push(
-      widgetInput(
-        t("w.imageRotate"),
-        widget.settings.imagesRotateSec,
-        `widget:${index}:settings.imagesRotateSec`,
-        "number",
-        "standard-input"
-      )
-    );
-    const fit = widget.settings.objectFit === "cover" ? "cover" : "contain";
-    parts.push(`<label>${t("w.imageFit")}<select class="standard-input" data-key="widget:${index}:settings.objectFit"><option value="contain" ${fit === "contain" ? "selected" : ""}>${t("w.contain")}</option><option value="cover" ${fit === "cover" ? "selected" : ""}>${t("w.cover")}</option></select></label>`);
-    const slotRows = imgs
-      .map((row, i) => {
-        const nm = escapeHtmlAttr(String(row.name ?? ""));
-        const ur = escapeHtmlAttr(String(row.url ?? ""));
-        return `<div class="widget-image-slot" data-image-slot-row="${i}">
-          <div class="widget-image-slot-head"><span class="widget-image-slot-label">${tf("w.imageSlot", { n: i + 1 })}</span>
-            <button type="button" class="secondary-btn compact-btn" data-remove-image-slot="${index}:${i}" title="${escapeHtmlAttr(t("w.removeSlot"))}">${t("w.removeSlot")}</button>
-          </div>
-          <label>${t("w.imageName")}<input class="wide-input" data-key="widget:${index}:settings.images.${i}.name" type="text" value="${nm}"></label>
-          <label>${t("w.url")}<input class="wide-input" data-key="widget:${index}:settings.images.${i}.url" type="text" value="${ur}" placeholder="/uploads/widget_images/…"></label>
-          <div class="compact-form-row widget-image-upload-row">
-            <label class="bell-file-upload"><span class="bell-file-upload-main">${t("w.browse")}</span><span class="bell-file-upload-sub">${t("w.browseSub")}</span>
-              <input type="file" accept="image/*" data-widget-image-upload="${index}" data-widget-image-slot="${i}" hidden>
-            </label>
-          </div>
-        </div>`;
-      })
-      .join("");
-    parts.push(`<div class="widget-image-slots">${slotRows}</div>`);
-    parts.push(`<button type="button" class="secondary-btn compact-btn" data-add-image-slot="${index}">${t("w.addImage")}</button>`);
-    parts.push(`<p class="hint">${t("w.imageHint")}</p>`);
-  }
-  if (widget.type === "bell_status" || widget.type === "bell_countdown") {
-    parts.push(widgetInput(t("w.titleFont"), widget.settings.titleFontSize, `widget:${index}:settings.titleFontSize`, "number", "standard-input"));
-  }
-  if (widget.type === "holidays" || widget.type === "announcements") {
-    parts.push(widgetInput(t("w.titleFont"), widget.settings.titleFontSize, `widget:${index}:settings.titleFontSize`, "number", "standard-input"));
-  }
-  if (widget.type === "bell_countdown") {
-    parts.push(widgetInput(t("w.bodyFont"), widget.settings.fontSize, `widget:${index}:settings.fontSize`, "number", "standard-input"));
-    parts.push(widgetInput(t("w.color"), widget.settings.color, `widget:${index}:settings.color`, "color", "standard-input"));
-  }
-  if (widget.type === "schedule") {
-    parts.push(widgetInput(t("w.tableFont"), widget.settings.fontSize, `widget:${index}:settings.fontSize`, "number", "standard-input"));
-    parts.push(widgetInput(t("w.titleFont"), widget.settings.titleFontSize, `widget:${index}:settings.titleFontSize`, "number", "standard-input"));
-    parts.push(widgetInput(t("w.highlight"), widget.settings.highlightColor, `widget:${index}:settings.highlightColor`, "color", "standard-input"));
-    parts.push(widgetInput(t("w.sampleDiff"), widget.settings.sampleDiffColor, `widget:${index}:settings.sampleDiffColor`, "color", "standard-input"));
-    parts.push(widgetInput(t("w.headerColor"), widget.settings.headerColor, `widget:${index}:settings.headerColor`, "color", "standard-input"));
-    parts.push(widgetToggle(t("w.bold"), widget.settings.bold, `widget:${index}:settings.bold`));
-  }
-  if (widget.type === "carousel") {
-    const selectedIds = new Set(widget.settings.childWidgetIds || []);
-    const childOptions = availableCarouselChildren(widget).map((item) => `
-      <label class="toggle-label carousel-child-option">
-        <input data-key="widget:${index}:settings.childWidgetIds" data-value="${item.id}" type="checkbox" ${selectedIds.has(item.id) ? "checked" : ""}>
-        ${item.title}
-      </label>
-    `).join("");
-    const animationOptions = getCarouselAnimations()
-      .map((item) => `<option value="${item.id}" ${widget.settings.animation === item.id ? "selected" : ""}>${item.label}</option>`)
-      .join("");
-    const childMeta = Object.fromEntries(availableCarouselChildren(widget).map((item) => [item.id, item]));
-    const slideDurRows = (widget.settings.childWidgetIds || [])
-      .map((cid) => {
-        const meta = childMeta[cid] || { title: cid };
-        const val = (widget.settings.childSlideSec || {})[cid];
-        const shown = val != null && val !== "" ? val : "";
-        return widgetInput(tf("carousel.slideSec", { title: meta.title }), shown, `widget:${index}:settings.childSlideSec.${cid}`, "number", "standard-input");
-      })
-      .join("");
-    parts.push(widgetInput(t("carousel.delay"), widget.settings.startDelaySec, `widget:${index}:settings.startDelaySec`, "number", "standard-input"));
-    parts.push(`<div class="carousel-animation-row"><label>${t("carousel.animation")}<select class="standard-input" data-key="widget:${index}:settings.animation">${animationOptions}</select></label><button type="button" class="secondary-btn compact-btn" data-random-animation="${index}">${t("carousel.randomBtn")}</button></div>`);
-    parts.push(`<div class="carousel-children-box">${childOptions || `<div class="hint">${t("carousel.noChildren")}</div>`}</div>`);
-    if (slideDurRows) parts.push(`<div class="carousel-slide-durations hint">${t("carousel.slideDurHint")}</div>${slideDurRows}`);
-  }
-  if (widget.type === "holidays") {
-    parts.push(widgetInput(t("w.count"), widget.settings.count, `widget:${index}:settings.count`, "number", "standard-input"));
-  }
-  if (widget.type === "announcements") {
-    parts.push(widgetTextarea(t("w.linesManual"), widget.settings.items, `widget:${index}:settings.items`, "wide-input"));
-    parts.push(widgetToggle(t("w.useManual"), widget.settings.useManual, `widget:${index}:settings.useManual`));
-    parts.push(widgetInput(t("w.rotateExcel"), widget.settings.rotateSec, `widget:${index}:settings.rotateSec`, "number", "standard-input"));
-    parts.push(widgetToggle(t("w.advanceCarousel"), widget.settings.advanceOnShow, `widget:${index}:settings.advanceOnShow`));
-    parts.push(widgetToggle(t("w.randomOrder"), widget.settings.randomize !== false, `widget:${index}:settings.randomize`));
-  }
-  if (widget.type === "marquee") {
-    parts.push(widgetTextarea(t("w.linesManual"), widget.settings.items, `widget:${index}:settings.items`, "wide-input"));
-    parts.push(widgetToggle(t("w.useManual"), widget.settings.useManual, `widget:${index}:settings.useManual`));
-    parts.push(widgetInput(t("w.speedSec"), widget.settings.speedSec, `widget:${index}:settings.speedSec`, "number", "standard-input"));
-  }
-  return parts.join("");
-}
-
-function widgetEditorInnerHtml(widget, index) {
-  return `
-      <div class="inline-grid">
-        ${widgetInput("x", widget.x, `widget:${index}:x`, "number", "standard-input")}
-        ${widgetInput("y", widget.y, `widget:${index}:y`, "number", "standard-input")}
-        ${widgetInput("w", widget.w, `widget:${index}:w`, "number", "standard-input")}
-        ${widgetInput("h", widget.h, `widget:${index}:h`, "number", "standard-input")}
-      </div>
-      <div class="settings-grid">${settingInputs(widget, index)}</div>
-  `;
-}
-
-async function uploadWidgetImage(file, widgetIndex, slotIndex) {
-  const formData = new FormData();
-  formData.append("file", file);
-  const payload = await api("/api/admin/upload-widget-image", { method: "POST", body: formData });
-  const w = selectedScreen().widgets[widgetIndex];
-  if (!w || w.type !== "image") return;
-  coerceWidgetImageSlots(w);
-  const slot = Number(slotIndex);
-  const i = Number.isFinite(slot) && slot >= 0 ? slot : 0;
-  while (w.settings.images.length <= i) {
-    w.settings.images.push({ name: tf("w.imageDefaultName", { n: w.settings.images.length + 1 }), url: "" });
-  }
-  w.settings.images[i].url = payload.path;
-  render();
-  if (state.widgetModalWidgetId === w.id) syncWidgetModal();
-  renderPreview();
-}
-
-function bindWidgetEditorEvents(root, index) {
-  const screen = selectedScreen();
-  const widget = screen.widgets[index];
-  if (!widget || !root) return;
-  root.querySelectorAll("input").forEach((input) => {
-    input.addEventListener("change", (event) => {
-      if (event.target.dataset.widgetImageUpload != null) {
-        const f = event.target.files && event.target.files[0];
-        if (f) {
-          uploadWidgetImage(
-            f,
-            Number(event.target.dataset.widgetImageUpload),
-            Number(event.target.dataset.widgetImageSlot || 0)
-          );
-          event.target.value = "";
-        }
-        return;
-      }
-      let value = event.target.type === "checkbox" ? event.target.checked : event.target.value;
-      if (event.target.dataset.value) value = { checked: event.target.checked, value: event.target.dataset.value };
-      updateWidgetField(event.target.dataset.key, value);
-    });
-  });
-  root.querySelectorAll("select").forEach((select) => {
-    select.addEventListener("change", (event) => updateWidgetField(event.target.dataset.key, event.target.value));
-  });
-  root.querySelectorAll("textarea").forEach((textarea) => {
-    textarea.addEventListener("change", (event) => updateWidgetField(event.target.dataset.key, event.target.value));
-  });
-  root.querySelectorAll("[data-add-carousel]").forEach((button) => {
-    button.onclick = () => addCarousel(Number(button.dataset.addCarousel));
-  });
-  root.querySelectorAll("[data-remove-carousel]").forEach((button) => {
-    button.onclick = () => removeCarousel(Number(button.dataset.removeCarousel));
-  });
-  root.querySelectorAll("[data-random-animation]").forEach((button) => {
-    button.onclick = () => {
-      const w = selectedScreen().widgets[index];
-      if (w) w.settings.animation = "random";
-      render();
-      renderPreview();
-    };
-  });
-  root.querySelectorAll("[data-add-image-slot]").forEach((button) => {
-    button.onclick = () => addWidgetImageSlot(Number(button.dataset.addImageSlot));
-  });
-  root.querySelectorAll("[data-remove-image-slot]").forEach((button) => {
-    button.onclick = () => {
-      const raw = String(button.dataset.removeImageSlot || "");
-      const [wi, si] = raw.split(":");
-      removeWidgetImageSlot(Number(wi), Number(si));
-    };
-  });
-}
-
-function closeWidgetModal() {
-  state.widgetModalWidgetId = null;
-  const modal = elements.widgetEditorModal;
-  if (modal) {
-    modal.hidden = true;
-    modal.setAttribute("aria-hidden", "true");
-  }
-}
-
-function syncWidgetModal() {
-  const id = state.widgetModalWidgetId;
-  const modal = elements.widgetEditorModal;
-  const body = elements.widgetEditorModalBody;
-  const titleEl = elements.widgetEditorModalTitle;
-  if (!modal || !body || !titleEl) return;
-  if (!id) {
-    modal.hidden = true;
-    modal.setAttribute("aria-hidden", "true");
-    return;
-  }
-  const screen = selectedScreen();
-  const index = screen.widgets.findIndex((w) => w.id === id);
-  if (index < 0) {
-    closeWidgetModal();
-    return;
-  }
-  const widget = screen.widgets[index];
-  titleEl.textContent = `${widgetDisplayTitle(widget)} · ${widget.type}`;
-  body.innerHTML = widgetEditorInnerHtml(widget, index);
-  bindWidgetEditorEvents(body, index);
-  modal.hidden = false;
-  modal.setAttribute("aria-hidden", "false");
-}
-
-function openWidgetModal(widgetId) {
-  state.widgetModalWidgetId = widgetId;
-  syncWidgetModal();
-}
-
-function bindWidgetModalOnce() {
-  if (bindWidgetModalOnce._done) return;
-  bindWidgetModalOnce._done = true;
-  document.addEventListener("click", (e) => {
-    const openEl = e.target.closest("[data-open-widget-editor]");
-    if (openEl) {
-      e.preventDefault();
-      const id = openEl.getAttribute("data-open-widget-editor");
-      if (id) openWidgetModal(id);
-    }
-    if (e.target.closest("[data-close-widget-modal]")) {
-      e.preventDefault();
-      closeWidgetModal();
-    }
-  });
-  document.addEventListener("keydown", (e) => {
-    if (e.key !== "Escape") return;
-    if (state.widgetModalWidgetId) closeWidgetModal();
-    else if (state.programSettingsPanelActive) closeProgramSettingsModal();
-  });
-}
-
-function renderWidgets() {
-  const screen = selectedScreen();
-  elements.widgetList.innerHTML = "";
-  screen.widgets
-    .filter((widget) => !isWidgetTypeHiddenInAdminPalette(widget.type))
-    .forEach((widget) => {
-      const div = document.createElement("div");
-      div.className = "widget-item widget-item-compact";
-      const wid = escapeHtmlAttr(String(widget.id));
-      const w = Number(widget.w);
-      const h = Number(widget.h);
-      const wh = `${Number.isFinite(w) ? w : "?"}×${Number.isFinite(h) ? h : "?"}`;
-      div.innerHTML = `
-      <div class="widget-title-row">
-        <h3>${escapeHtmlAttr(widgetDisplayTitle(widget))}</h3>
-        <div class="widget-actions">
-          <button type="button" class="primary-btn compact-btn" data-open-widget-editor="${wid}">${t("widget.configure")}</button>
-        </div>
-      </div>
-      <div class="widget-item-meta"><span class="widget-item-type">${escapeHtmlAttr(String(widget.type))}</span> · ${tf("widget.gridMeta", { wh: escapeHtmlAttr(wh) })}</div>
-    `;
-      elements.widgetList.appendChild(div);
-    });
 }
 
 function renderForm() {
@@ -1464,416 +1116,6 @@ async function renderBackgroundGallery() {
   return payload;
 }
 
-function renderWeekdayBellGrid() {
-  const screen = selectedScreen();
-  const mapping = screen.weekday_bell_templates || {};
-  const templateOptions = state.bells.templates
-    .map((item) => `<option value="${escapeHtmlAttr(String(item.id))}">${escapeHtml(String(item.name || ""))}</option>`)
-    .join("");
-  elements.bellWeekdayGrid.innerHTML = getWeekdayOptions().map((day) => `
-    <label title="${day.title || day.label}">
-      ${day.label}
-      <select class="standard-input" data-weekday="${day.id}">
-        <option value="">${t("weekday.defaultTemplate")}</option>
-        ${templateOptions}
-      </select>
-    </label>
-  `).join("");
-  elements.bellWeekdayGrid.querySelectorAll("[data-weekday]").forEach((select) => {
-    select.value = mapping[select.dataset.weekday] || "";
-    select.onchange = (event) => {
-      const weekday = event.target.dataset.weekday;
-      const value = event.target.value;
-      if (!screen.weekday_bell_templates) screen.weekday_bell_templates = {};
-      if (value) screen.weekday_bell_templates[weekday] = value;
-      else delete screen.weekday_bell_templates[weekday];
-    };
-  });
-}
-
-function renderHistory() {
-  if (!elements.historyList) return;
-  const loc = window.GuardSchoolI18n?.getLang?.() === "en" ? "en-US" : "ru-RU";
-  const verHint = state.appVersion
-    ? `<p class="hint history-app-ver">${t("history.currentVersion")} <strong>${escapeHtmlAttr(state.appVersion)}</strong></p>`
-    : "";
-  if (!state.history.length) {
-    elements.historyList.innerHTML = `${verHint}<div class="hint">${t("history.empty")}</div>`;
-    return;
-  }
-  elements.historyList.innerHTML =
-    verHint +
-    state.history
-      .map((item) => {
-        const rawTs = item.timestamp;
-        let ts = "—";
-        if (rawTs) {
-          const d = new Date(rawTs);
-          ts = Number.isNaN(d.getTime()) ? String(rawTs) : d.toLocaleString(loc);
-        }
-        const ver = item.version ? String(item.version).trim() : "";
-        const verBlock = ver
-          ? `<span class="history-ver" title="${escapeHtmlAttr(t("history.versionLabel"))}">${escapeHtmlAttr(ver)}</span>`
-          : `<span class="history-ver history-ver-na">${escapeHtmlAttr(t("history.noVersion"))}</span>`;
-        return `
-    <div class="history-item">
-      <div class="history-meta">${verBlock}<span class="history-time">${escapeHtmlAttr(ts)}</span></div>
-      <div class="history-msg">${escapeHtmlAttr(String(item.message || ""))}</div>
-    </div>`;
-      })
-      .join("");
-}
-
-function addCarousel(sourceIndex) {
-  const screen = selectedScreen();
-  const source = screen.widgets[sourceIndex];
-  const copy = JSON.parse(JSON.stringify(source));
-  copy.id = createWidgetId("carousel");
-  copy.title = tf("carousel.nameN", { n: screen.widgets.filter((item) => item.type === "carousel").length + 1 });
-  copy.x = Math.min(copy.x + 1, GRID.cols - copy.w);
-  copy.y = Math.min(copy.y + 1, GRID.rows - copy.h);
-  copy.settings.startDelaySec = Number(copy.settings.startDelaySec || 0) + 15;
-  screen.widgets.splice(sourceIndex + 1, 0, copy);
-  render();
-}
-
-function removeCarousel(sourceIndex) {
-  const screen = selectedScreen();
-  const carouselCount = screen.widgets.filter((item) => item.type === "carousel").length;
-  if (carouselCount <= 1) {
-    alert(t("alert.oneCarousel"));
-    return;
-  }
-  screen.widgets.splice(sourceIndex, 1);
-  render();
-}
-
-function bellSoundSelectOptions(selectedVal) {
-  const sel = selectedVal || "";
-  let html = `<option value="">${escapeHtmlAttr(t("weekday.defaultTemplate"))}</option><option value="-">${escapeHtmlAttr(t("bells.soundNone"))}</option>`;
-  (state.bellSoundFiles || []).forEach((f) => {
-    html += `<option value="${f.filename}"${f.filename === sel ? " selected" : ""}>${f.filename}</option>`;
-  });
-  return html;
-}
-
-function ensureBellSoundPanel() {
-  let panel = document.getElementById("bell-sound-panel");
-  if (panel) return panel;
-  const bellsCard = document.getElementById("bell-rows")?.closest(".card");
-  panel = document.createElement("div");
-  panel.id = "bell-sound-panel";
-  panel.className = "card-subsection";
-  const hint = bellsCard?.querySelector(".hint");
-  const rows = document.getElementById("bell-rows");
-  if (hint) {
-    hint.after(panel);
-  } else if (rows && bellsCard) {
-    bellsCard.insertBefore(panel, rows);
-  } else if (bellsCard) {
-    bellsCard.appendChild(panel);
-  }
-  return panel;
-}
-
-function renderBellSoundPanel() {
-  const panel = ensureBellSoundPanel();
-  if (!panel || !state.bells) return;
-  state.bells.sound_defaults = state.bells.sound_defaults || { start: null, end: null };
-  const sd = state.bells.sound_defaults;
-  const s0 = sd.start || "";
-  const s1 = sd.end || "";
-  panel.innerHTML = `
-    <h3>${t("bells.soundsTitle")}</h3>
-    <p class="hint bell-sound-intro">${t("bells.soundsIntro")}</p>
-    <div class="bell-upload-row">
-      <label class="bell-file-upload">
-        <span class="bell-file-upload-main">${t("bells.uploadBell")}</span>
-        <span class="bell-file-upload-sub">${t("bells.uploadFormats")}</span>
-        <input type="file" id="bell-sound-upload" accept=".mp3,.wav,.ogg,.m4a,.aac,audio/*" hidden>
-      </label>
-    </div>
-    <div class="compact-form-row bell-sound-defaults">
-      <label>${t("bells.defIntervalStart")}<select id="bell-def-start" class="standard-input">${bellSoundSelectOptions(s0)}</select></label>
-      <label>${t("bells.defIntervalEnd")}<select id="bell-def-end" class="standard-input">${bellSoundSelectOptions(s1)}</select></label>
-      <button type="button" class="secondary-btn" id="bell-apply-starts">${t("bells.applyAllStarts")}</button>
-      <button type="button" class="secondary-btn" id="bell-apply-ends">${t("bells.applyAllEnds")}</button>
-    </div>`;
-  panel.querySelector("#bell-def-start").value = s0;
-  panel.querySelector("#bell-def-end").value = s1;
-  panel.querySelector("#bell-def-start").onchange = (e) => {
-    state.bells.sound_defaults.start = e.target.value || null;
-  };
-  panel.querySelector("#bell-def-end").onchange = (e) => {
-    state.bells.sound_defaults.end = e.target.value || null;
-  };
-  panel.querySelector("#bell-apply-starts").onclick = () => {
-    const v = panel.querySelector("#bell-def-start").value;
-    selectedBellTemplate().entries.forEach((e) => {
-      if (v === "") delete e.sound_start;
-      else e.sound_start = v;
-    });
-    renderBellEditor();
-  };
-  panel.querySelector("#bell-apply-ends").onclick = () => {
-    const v = panel.querySelector("#bell-def-end").value;
-    selectedBellTemplate().entries.forEach((e) => {
-      if (v === "") delete e.sound_end;
-      else e.sound_end = v;
-    });
-    renderBellEditor();
-  };
-  panel.querySelector("#bell-sound-upload").onchange = async (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    const fd = new FormData();
-    fd.append("file", file);
-    const response = await fetch("/api/admin/upload-bell-sound", mergeFetchOptions({ method: "POST", body: fd }));
-    if (!response.ok) {
-      alert((await response.json().catch(() => ({}))).detail || t("bells.uploadError"));
-      return;
-    }
-    state.bellSoundFiles = (await api("/api/admin/bell-sounds")).files || [];
-    renderBellEditor();
-    event.target.value = "";
-  };
-}
-
-function buildBellRows(entries = []) {
-  elements.bellRows.innerHTML = "";
-  entries.forEach((entry, index) => {
-    const row = document.createElement("div");
-    row.className = "bell-row";
-    const lessonVal = escapeHtmlAttr(String(entry.lesson ?? ""));
-    const ss = entry.sound_start || "";
-    const se = entry.sound_end || "";
-    const startVal = escapeHtmlAttr(String(entry.start ?? ""));
-    const endVal = escapeHtmlAttr(String(entry.end ?? ""));
-    row.innerHTML = `
-      <label class="bell-field-lesson">${t("bells.lessonField")}<input class="standard-input bell-lesson-input" data-bell-index="${index}" data-key="lesson" type="text" autocomplete="off" value="${lessonVal}" placeholder="${escapeHtmlAttr(t("bells.lessonPlaceholder"))}"></label>
-      <label>${t("bells.soundStart")}<select data-bell-index="${index}" data-key="sound_start" class="standard-input bell-sound-select">${bellSoundSelectOptions(ss)}</select></label>
-      <label>${t("bells.soundEnd")}<select data-bell-index="${index}" data-key="sound_end" class="standard-input bell-sound-select">${bellSoundSelectOptions(se)}</select></label>
-      <label>${t("bells.timeStart")}<input class="standard-input" data-bell-index="${index}" data-key="start" type="time" value="${startVal}"></label>
-      <label>${t("bells.timeEnd")}<input class="standard-input" data-bell-index="${index}" data-key="end" type="time" value="${endVal}"></label>
-      <button type="button" class="secondary-btn" data-remove-bell="${index}">${t("bells.removeRow")}</button>
-    `;
-    elements.bellRows.appendChild(row);
-    row.querySelector('[data-key="sound_start"]').value = ss;
-    row.querySelector('[data-key="sound_end"]').value = se;
-  });
-  const syncBellField = (event) => {
-    const template = selectedBellTemplate();
-    const idx = Number(event.target.dataset.bellIndex);
-    const key = event.target.dataset.key;
-    template.entries[idx][key] = event.target.value;
-  };
-  elements.bellRows.querySelectorAll("input").forEach((input) => {
-    input.addEventListener("input", syncBellField);
-    input.addEventListener("change", syncBellField);
-  });
-  elements.bellRows.querySelectorAll("select").forEach((sel) => {
-    sel.onchange = (event) => {
-      const template = selectedBellTemplate();
-      const idx = Number(event.target.dataset.bellIndex);
-      const key = event.target.dataset.key;
-      const v = event.target.value;
-      if (v === "") delete template.entries[idx][key];
-      else template.entries[idx][key] = v;
-    };
-  });
-  elements.bellRows.querySelectorAll("[data-remove-bell]").forEach((button) => {
-    button.onclick = () => {
-      selectedBellTemplate().entries.splice(Number(button.dataset.removeBell), 1);
-      renderBellEditor();
-    };
-  });
-}
-
-function renderBellEditor() {
-  const template = selectedBellTemplate();
-  elements.bellTemplateName.value = template?.name || "";
-  if (elements.bellLastLesson) {
-    const ll = template?.last_lesson;
-    elements.bellLastLesson.value = ll != null && ll !== "" ? String(ll) : "";
-  }
-  elements.bellDateOverride.value = "";
-  renderWeekdayBellGrid();
-  renderBellSoundPanel();
-  buildBellRows(template.entries || []);
-  renderBellTemplateList();
-}
-
-function renderBellTemplateList() {
-  elements.bellTemplateList.innerHTML = "";
-  state.bells.templates.forEach((item) => {
-    const div = document.createElement("div");
-    div.className = "override-item";
-    div.innerHTML = `<span>${tf("bells.templateEntries", { name: escapeHtmlAttr(item.name), n: item.entries.length })}</span>`;
-    const button = document.createElement("button");
-    button.textContent = t("bells.pickTemplate");
-    button.className = "secondary-btn";
-    button.onclick = () => {
-      selectedScreen().bell_schedule_template = item.id;
-      render();
-    };
-    div.appendChild(button);
-    elements.bellTemplateList.appendChild(div);
-  });
-}
-
-function addBellTemplate() {
-  const template = {
-    id: createTemplateId(),
-    name: tf("bell.templateN", { n: state.bells.templates.length + 1 }),
-    entries: [
-      { lesson: "1", start: "08:30", end: "09:15" },
-      { lesson: "2", start: "09:25", end: "10:10" },
-    ],
-  };
-  state.bells.templates.push(template);
-  selectedScreen().bell_schedule_template = template.id;
-  render();
-}
-
-function deleteBellTemplate() {
-  if (state.bells.templates.length <= 1) {
-    alert(t("alert.oneBellTemplate"));
-    return;
-  }
-  const currentId = selectedBellTemplate().id;
-  state.bells.templates = state.bells.templates.filter((item) => item.id !== currentId);
-  Object.keys(state.bells.weekday_overrides).forEach((key) => {
-    if (state.bells.weekday_overrides[key] === currentId) delete state.bells.weekday_overrides[key];
-  });
-  state.bells.date_overrides = state.bells.date_overrides.filter((item) => item.template_id !== currentId);
-  const nextId = state.bells.templates[0].id;
-  state.config.screens.forEach((screen) => {
-    if (screen.bell_schedule_template === currentId) {
-      screen.bell_schedule_template = nextId;
-    }
-    Object.keys(screen.weekday_bell_templates || {}).forEach((key) => {
-      if (screen.weekday_bell_templates[key] === currentId) delete screen.weekday_bell_templates[key];
-    });
-  });
-  render();
-}
-
-async function fetchPreviewPayloadOnce() {
-  const screen = selectedScreen();
-  if (!screen || !window.GuardSchoolScreen) return;
-  try {
-    const res = await api("/api/admin/preview-payload", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ screen }),
-    });
-    state.previewCache = {
-      schedule: res.schedule,
-      holidays: res.holidays,
-      background_gallery: res.background_gallery || [],
-      announcements: res.announcements || [],
-      marquee: res.marquee || [],
-      pc_audio_preview: res.pc_audio_preview || null,
-      display: res.display || null,
-    };
-    state.previewCacheScreenId = screen.id;
-    if (state.activeSection === "preview") {
-      renderPreview();
-    }
-  } catch (e) {
-    state.previewCache = null;
-    if (state.activeSection === "preview") {
-      elements.preview.innerHTML = `<p class="hint">${tf("preview.errorDetail", { base: t("preview.error"), msg: escapeHtmlAttr(String(e.message || e)) })}</p>`;
-    }
-  }
-}
-
-function pointerToGrid(event, rect) {
-  return {
-    col: Math.max(0, Math.min(GRID.cols - 1, Math.floor(((event.clientX - rect.left) / rect.width) * GRID.cols))),
-    row: Math.max(0, Math.min(GRID.rows - 1, Math.floor(((event.clientY - rect.top) / rect.height) * GRID.rows))),
-  };
-}
-
-function startDrag(event, widgetIndex) {
-  const widget = selectedScreen().widgets[widgetIndex];
-  if (widget && widget.type === "emergency") return;
-  const rect = elements.preview.getBoundingClientRect();
-  const start = pointerToGrid(event, rect);
-  state.drag = {
-    widgetIndex,
-    mode: event.shiftKey ? "resize" : "move",
-    startCol: start.col,
-    startRow: start.row,
-    origin: { x: widget.x, y: widget.y, w: widget.w, h: widget.h },
-  };
-}
-
-function handlePointerMove(event) {
-  if (!state.drag) return;
-  const rect = elements.preview.getBoundingClientRect();
-  const point = pointerToGrid(event, rect);
-  const widget = selectedScreen().widgets[state.drag.widgetIndex];
-  if (state.drag.mode === "move") {
-    widget.x = state.drag.origin.x + (point.col - state.drag.startCol);
-    widget.y = state.drag.origin.y + (point.row - state.drag.startRow);
-  } else {
-    widget.w = state.drag.origin.w + (point.col - state.drag.startCol);
-    widget.h = state.drag.origin.h + (point.row - state.drag.startRow);
-  }
-  clampWidget(widget);
-  render();
-}
-
-function stopDrag() {
-  state.drag = null;
-  renderPreview();
-}
-
-function renderGridHighlight(preview) {
-  if (!state.drag) return;
-  const widget = selectedScreen().widgets[state.drag.widgetIndex];
-  const highlight = document.createElement("div");
-  highlight.className = "grid-highlight";
-  highlight.style.gridColumn = `${widget.x + 1} / span ${widget.w}`;
-  highlight.style.gridRow = `${widget.y + 1} / span ${widget.h}`;
-  preview.appendChild(highlight);
-}
-
-/** Сборка строк предпросмотра звука: i18n-события с бэкенда или fallback на legacy lines. */
-function formatPreviewPcAudioLines(soundDiag) {
-  if (!soundDiag) return [];
-  if (Array.isArray(soundDiag.events) && soundDiag.events.length) {
-    return soundDiag.events
-      .map((e) => {
-        if (!e || !e.key) return "";
-        const raw = e.params && typeof e.params === "object" ? { ...e.params } : {};
-        if (raw.enabled === true) raw.enabledLabel = t("common.on");
-        if (raw.enabled === false) raw.enabledLabel = t("common.off");
-        delete raw.enabled;
-        if ("useSchedule" in raw) {
-          raw.useScheduleLabel = raw.useSchedule ? t("common.yes") : t("common.no");
-          delete raw.useSchedule;
-        }
-        if ("useFiles" in raw) {
-          raw.useFilesLabel = raw.useFiles ? t("common.yes") : t("common.no");
-          delete raw.useFiles;
-        }
-        if ("breakMusic" in raw) {
-          raw.breakMusicLabel = raw.breakMusic ? t("common.yes") : t("common.no");
-          delete raw.breakMusic;
-        }
-        if (raw.bellKind === "start") raw.bellKindLabel = t("preview.pcAudio.bellStart");
-        if (raw.bellKind === "end") raw.bellKindLabel = t("preview.pcAudio.bellEnd");
-        delete raw.bellKind;
-        return tf(e.key, raw);
-      })
-      .filter(Boolean);
-  }
-  if (Array.isArray(soundDiag.lines) && soundDiag.lines.length) return soundDiag.lines;
-  return [];
-}
-
 function nextUniqueScreenSlug() {
   const n0 = state.config.screens.length + 1;
   for (let n = n0; n < n0 + 500; n += 1) {
@@ -1921,7 +1163,6 @@ function duplicateCurrentScreen() {
   ns.widgets = widgets;
   state.config.screens.splice(idx + 1, 0, ns);
   state.selectedScreenId = ns.id;
-  state.programSettingsPanelActive = false;
   render();
 }
 
@@ -1967,41 +1208,8 @@ function render() {
   const screenWrap = document.getElementById("screen-editor-wrap");
   const audioPanel = document.getElementById("audio-stream-panel");
   const statsPanel = document.getElementById("stats-panel");
-  const programPanel = elements.programSettingsPanel;
 
   renderTabs();
-
-  if (state.programSettingsPanelActive) {
-    state.audioStreamPanelActive = false;
-    state.statsPanelActive = false;
-    leaveStatsPanel();
-    clearInterval(window.__streamStatusInterval);
-    if (elements.deleteScreenBtn) {
-      elements.deleteScreenBtn.hidden = true;
-      elements.deleteScreenBtn.disabled = true;
-    }
-    if (elements.duplicateScreenBtn) elements.duplicateScreenBtn.hidden = true;
-    if (tabPanel) tabPanel.style.display = "none";
-    if (screenWrap) screenWrap.hidden = true;
-    if (audioPanel) audioPanel.hidden = true;
-    if (statsPanel) statsPanel.hidden = true;
-    if (programPanel) {
-      programPanel.hidden = false;
-      programPanel.setAttribute("aria-hidden", "false");
-    }
-    syncEmergencyModeCheckbox();
-    renderHistory();
-    elements.programSettingsOpenBtn?.classList.add("active");
-    window.GuardSchoolScreen?.clearAllTimers();
-    finishTopBarSessionWidgets();
-    return;
-  }
-
-  if (programPanel) {
-    programPanel.hidden = true;
-    programPanel.setAttribute("aria-hidden", "true");
-  }
-  elements.programSettingsOpenBtn?.classList.remove("active");
 
   if (state.statsPanelActive) {
     leaveStatsPanel();
@@ -2020,7 +1228,6 @@ function render() {
     finishTopBarSessionWidgets();
     return;
   }
-
   leaveStatsPanel();
 
   if (state.audioStreamPanelActive) {
@@ -2075,61 +1282,6 @@ function render() {
   }
   if (elements.duplicateScreenBtn) elements.duplicateScreenBtn.hidden = false;
   finishTopBarSessionWidgets();
-}
-
-function updateWidgetField(path, value) {
-  const [, indexRaw, fieldRaw] = path.match(/^widget:(\d+):(.+)$/);
-  const widget = selectedScreen().widgets[Number(indexRaw)];
-  if (fieldRaw.startsWith("settings.")) {
-    const key = fieldRaw.replace("settings.", "");
-    if (key === "childWidgetIds") {
-      const current = new Set(widget.settings.childWidgetIds || []);
-      if (value.checked) current.add(value.value);
-      else current.delete(value.value);
-      widget.settings.childWidgetIds = [...current];
-      const map = { ...(widget.settings.childSlideSec || {}) };
-      for (const id of Object.keys(map)) {
-        if (!current.has(id)) delete map[id];
-      }
-      widget.settings.childSlideSec = map;
-    } else if (key.startsWith("childSlideSec.")) {
-      const childId = key.slice("childSlideSec.".length);
-      if (!widget.settings.childSlideSec) widget.settings.childSlideSec = {};
-      const num = Number(value);
-      if (value === "" || value == null || !Number.isFinite(num)) {
-        delete widget.settings.childSlideSec[childId];
-      } else {
-        widget.settings.childSlideSec[childId] = num;
-      }
-    } else if (/^images\.\d+\.(name|url)$/.test(key)) {
-      const m = key.match(/^images\.(\d+)\.(name|url)$/);
-      const idx = Number(m[1]);
-      const sub = m[2];
-      if (!Array.isArray(widget.settings.images)) widget.settings.images = [];
-      while (widget.settings.images.length <= idx) {
-        widget.settings.images.push({ name: "", url: "" });
-      }
-      if (!widget.settings.images[idx] || typeof widget.settings.images[idx] !== "object") {
-        widget.settings.images[idx] = { name: "", url: "" };
-      }
-      widget.settings.images[idx][sub] = value;
-    } else if (["fontSize", "titleFontSize", "startDelaySec", "count", "speedSec", "rotateSec", "opacity", "imagesRotateSec"].includes(key)) {
-      const num = Number(value);
-      if (key === "opacity") {
-        widget.settings[key] = value === "" || !Number.isFinite(num) ? 85 : Math.max(0, Math.min(100, num));
-      } else if (key === "imagesRotateSec") {
-        widget.settings[key] = value === "" || !Number.isFinite(num) ? 0 : Math.max(0, Math.min(600, Math.round(num)));
-      } else {
-        widget.settings[key] = num;
-      }
-    }
-    else if (key === "backdrop" || key === "useManual" || key === "advanceOnShow" || key === "randomize") widget.settings[key] = Boolean(value);
-    else widget.settings[key] = value;
-  } else {
-    widget[fieldRaw] = fieldRaw === "enabled" ? Boolean(value) : Number(value);
-  }
-  clampWidget(widget);
-  render();
 }
 
 function bindForm() {
@@ -2323,7 +1475,6 @@ function addScreen() {
   state.config.screens.push(screen);
   state.audioStreamPanelActive = false;
   state.statsPanelActive = false;
-  state.programSettingsPanelActive = false;
   closeWidgetModal();
   state.selectedScreenId = screen.id;
   render();
@@ -2357,9 +1508,6 @@ function deleteScreen() {
     return;
   }
   closeWidgetModal();
-  state.programSettingsPanelActive = false;
-  state.statsPanelActive = false;
-  leaveStatsPanel();
   state.config.screens = state.config.screens.filter((item) => item.id !== state.selectedScreenId);
   state.selectedScreenId = state.config.screens[0].id;
   render();
@@ -2434,7 +1582,6 @@ async function init() {
   bindPcPlayerOnce();
   bindSettingsSoundTestsOnce();
   bindWidgetModalOnce();
-  bindEmergencyModeOnce();
   bindProgramSettingsModalOnce();
   render();
   setInterval(() => {
@@ -2543,7 +1690,6 @@ async function adminLogoutThenNavigate(href) {
   if (state.meta) state.meta.demo_session = false;
   state.statsPanelActive = false;
   state.audioStreamPanelActive = false;
-  state.programSettingsPanelActive = false;
   window.location.href = href;
 }
 

@@ -4,7 +4,6 @@ export const state = {
   selectedScreenId: null,
   audioStreamPanelActive: false,
   statsPanelActive: false,
-  programSettingsPanelActive: false,
   activeSection: "main",
   schedule: [],
   /** Имена классов для галочек «Расписание»: объединение по датам + неделя + образец (с сервера). */
@@ -111,7 +110,7 @@ export const elements = {
   pcPlayerNext: document.getElementById("pc-player-next"),
   pcPlayerFileList: document.getElementById("pc-player-file-list"),
   pcPlayerVolDisplay: document.getElementById("pc-player-vol-display"),
-  programSettingsPanel: document.getElementById("program-settings-panel"),
+  programSettingsModal: document.getElementById("program-settings-modal"),
   programSettingsOpenBtn: document.getElementById("program-settings-open-btn"),
   programSettingsPaletteWrap: document.getElementById("program-settings-palette-checkboxes"),
   adminLocaleSelect: document.getElementById("admin-locale-select"),
