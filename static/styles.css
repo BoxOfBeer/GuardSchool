@@ -745,8 +745,27 @@ button {
 
 .lesson-uploads-grid {
   display: grid;
-  gap: 10px 12px;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr));
+  gap: 12px 14px;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr));
+}
+
+@media (min-width: 900px) {
+  .lesson-uploads-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.lesson-upload-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.lesson-sample-btn {
+  width: fit-content;
+  max-width: 100%;
+  align-self: flex-start;
 }
 
 .lesson-file-field {
@@ -1254,40 +1273,46 @@ button {
   line-height: 1.45;
 }
 
-/* Панель «Звук ПК» — 3 колонки: форма (2) + плеер (1) */
+/* Панель «Звук ПК»: сводка на всю ширину, затем три колонки по группам */
 .audio-stream-body {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 12px;
-  grid-template-columns: 2fr 1fr;
-  align-items: start;
+  align-items: stretch;
 }
 
 .audio-stream-meta {
-  grid-column: 1 / -1;
   display: grid;
   gap: 8px;
 }
 
-.audio-stream-form-area {
-  grid-column: 1 / 2;
-  min-width: 0;
-}
-
-.audio-stream-aside {
-  grid-column: 2 / 3;
-  min-width: 0;
-}
-
-/* Форма настроек стрима */
-.audio-stream-form-grid {
+.audio-stream-three-cols {
   display: grid;
-  gap: 10px 12px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  align-items: end;
+  gap: 14px 16px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: start;
 }
 
-.audio-stream-span-2 {
-  grid-column: 1 / -1;
+@media (max-width: 1050px) {
+  .audio-stream-three-cols {
+    grid-template-columns: 1fr;
+  }
+}
+
+.audio-stream-group-title {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.audio-stream-col-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
 }
 
 .audio-stream-field-stack {
@@ -1295,10 +1320,9 @@ button {
   gap: 4px;
 }
 
-@media (min-width: 1100px) {
-  .audio-stream-form-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
+.audio-stream-col .break-music-player {
+  margin-top: 4px;
+  padding-top: 10px;
 }
 
 /* В aside плеер без искусственного max-width */
@@ -1325,8 +1349,8 @@ button {
   gap: 4px;
 }
 
-#audio-stream-panel .audio-stream-form-grid {
-  gap: 6px 10px;
+#audio-stream-panel .audio-stream-three-cols {
+  gap: 10px 12px;
 }
 
 #stats-panel .stats-intro-short {
@@ -1611,7 +1635,8 @@ button {
   border-top: 1px solid rgba(148, 163, 184, 0.2);
 }
 
-.break-music-player .card-subtitle {
+.break-music-player .card-subtitle,
+.break-music-player .audio-break-queue-title {
   font-size: 1rem;
   font-weight: 600;
   margin: 0 0 6px;

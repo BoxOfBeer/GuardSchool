@@ -35,6 +35,7 @@ import {
   exportWeeklyScheduleZip,
   importWeeklyScheduleZip,
   downloadWeeklyScheduleTemplateXlsx,
+  downloadImportExcelSample,
   importBundle,
 } from "./admin/data-import.js";
 import {
@@ -1715,6 +1716,16 @@ if (elements.weeklyScheduleTemplateBtn) {
   elements.weeklyScheduleTemplateBtn.onclick = () =>
     downloadWeeklyScheduleTemplateXlsx().catch((e) => alert(e.message || String(e)));
 }
+
+document.body.addEventListener("click", (ev) => {
+  const btn = ev.target && ev.target.closest && ev.target.closest("[data-import-excel-sample]");
+  if (!btn) return;
+  const kind = btn.getAttribute("data-import-excel-sample");
+  if (!kind) return;
+  ev.preventDefault();
+  downloadImportExcelSample(kind).catch((e) => alert(e.message || String(e)));
+});
+
 async function adminLogoutThenNavigate(href) {
   await api("/api/logout", { method: "POST" });
   try {

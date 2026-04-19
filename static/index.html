@@ -29,7 +29,6 @@
       </div>
       <div class="top-bar-actions">
         <button type="button" id="save-config-top-btn" class="primary-btn compact-btn" data-i18n="top.save">Сохранить</button>
-        <button type="button" id="logout-top-btn" class="secondary-btn compact-btn" data-i18n="top.logout">Выйти</button>
       </div>
       <div class="top-bar-nav-wrap">
         <div id="tabs" class="top-nav-tabs"></div>
@@ -185,12 +184,30 @@
             <h3 id="schedule-import-title" class="admin-subpanel-title" data-i18n="schedule.importTitle">Импорт из Excel</h3>
             <p class="hint admin-subpanel-lead" data-i18n-html="schedule.importLead">Файлы в <code>data/import</code> подхватываются автоматически; здесь — ручная загрузка.</p>
             <div class="lesson-uploads-grid">
-              <label class="compact-field lesson-file-field"><span data-i18n="schedule.fileDated">Расписание по датам</span><input id="schedule-input-dated" type="file" accept=".xlsx,.xlsm,.xltx,.xltm"></label>
-              <label class="compact-field lesson-file-field"><span data-i18n="schedule.fileFull">Полное (неделя)</span><input id="full-schedule-input" type="file" accept=".xlsx,.xlsm,.xltx,.xltm"></label>
-              <label class="compact-field lesson-file-field"><span data-i18n="schedule.fileSample">Образец изменений</span><input id="schedule-sample-input" type="file" accept=".xlsx,.xlsm,.xltx,.xltm"></label>
-              <label class="compact-field lesson-file-field"><span data-i18n="schedule.fileHolidays">События (праздники)</span><input id="holidays-input" type="file" accept=".xlsx,.xlsm,.xltx,.xltm"></label>
-              <label class="compact-field lesson-file-field"><span data-i18n="schedule.fileAnnounce">Объявления</span><input id="announcements-input" type="file" accept=".xlsx,.xlsm,.xltx,.xltm"></label>
-              <label class="compact-field lesson-file-field"><span data-i18n="schedule.fileMarquee">Бегущая строка</span><input id="marquee-input" type="file" accept=".xlsx,.xlsm,.xltx,.xltm"></label>
+              <div class="lesson-upload-cell">
+                <label class="compact-field lesson-file-field"><span data-i18n="schedule.fileDated">Расписание по датам</span><input id="schedule-input-dated" type="file" accept=".xlsx,.xlsm,.xltx,.xltm"></label>
+                <button type="button" class="secondary-btn compact-btn lesson-sample-btn" data-import-excel-sample="dated" data-i18n="schedule.downloadSample">Скачать образец</button>
+              </div>
+              <div class="lesson-upload-cell">
+                <label class="compact-field lesson-file-field"><span data-i18n="schedule.fileFull">Полное (неделя)</span><input id="full-schedule-input" type="file" accept=".xlsx,.xlsm,.xltx,.xltm"></label>
+                <button type="button" class="secondary-btn compact-btn lesson-sample-btn" data-import-excel-sample="full" data-i18n="schedule.downloadSample">Скачать образец</button>
+              </div>
+              <div class="lesson-upload-cell">
+                <label class="compact-field lesson-file-field"><span data-i18n="schedule.fileSample">Образец изменений</span><input id="schedule-sample-input" type="file" accept=".xlsx,.xlsm,.xltx,.xltm"></label>
+                <button type="button" class="secondary-btn compact-btn lesson-sample-btn" data-import-excel-sample="sample" data-i18n="schedule.downloadSample">Скачать образец</button>
+              </div>
+              <div class="lesson-upload-cell">
+                <label class="compact-field lesson-file-field"><span data-i18n="schedule.fileHolidays">События (праздники)</span><input id="holidays-input" type="file" accept=".xlsx,.xlsm,.xltx,.xltm"></label>
+                <button type="button" class="secondary-btn compact-btn lesson-sample-btn" data-import-excel-sample="holidays" data-i18n="schedule.downloadSample">Скачать образец</button>
+              </div>
+              <div class="lesson-upload-cell">
+                <label class="compact-field lesson-file-field"><span data-i18n="schedule.fileAnnounce">Объявления</span><input id="announcements-input" type="file" accept=".xlsx,.xlsm,.xltx,.xltm"></label>
+                <button type="button" class="secondary-btn compact-btn lesson-sample-btn" data-import-excel-sample="announcements" data-i18n="schedule.downloadSample">Скачать образец</button>
+              </div>
+              <div class="lesson-upload-cell">
+                <label class="compact-field lesson-file-field"><span data-i18n="schedule.fileMarquee">Бегущая строка</span><input id="marquee-input" type="file" accept=".xlsx,.xlsm,.xltx,.xltm"></label>
+                <button type="button" class="secondary-btn compact-btn lesson-sample-btn" data-import-excel-sample="marquee" data-i18n="schedule.downloadSample">Скачать образец</button>
+              </div>
             </div>
           </section>
 
@@ -367,6 +384,10 @@
                   <button id="import-data-btn" type="button" class="secondary-btn compact-btn" data-i18n="top.import">Импорт ZIP</button>
                   <input id="import-data-input" type="file" accept=".zip" hidden>
                 </div>
+                <h4 class="settings-popover-subhead" data-i18n="programSettings.accountTitle">Аккаунт</h4>
+                <div class="settings-row settings-btn-row program-settings-footer-actions">
+                  <button type="button" id="logout-btn" class="secondary-btn compact-btn" data-i18n="top.logout">Выйти</button>
+                </div>
                 <div class="settings-row settings-test-row">
                   <span class="settings-inline-label" data-i18n="top.sound">Звук</span>
                   <button id="settings-test-rupor-btn" type="button" class="secondary-btn" data-i18n="top.soundRupor">Рупор</button>
@@ -430,73 +451,84 @@
               <div id="audio-stream-status-bar" class="stream-status-bar" aria-live="polite" data-i18n="audio.statusLoading">Статус загружается…</div>
             </div>
 
-            <div class="audio-stream-form-area">
-              <div class="audio-stream-form-grid">
-                <label class="toggle-label audio-stream-span-2">
-                  <input id="audio-stream-enabled" type="checkbox"> <span data-i18n="audio.enable">Включить автоматические звонки и (опционально) музыку на переменах</span>
-                </label>
-                <p class="hint audio-stream-span-2 audio-stream-hint-inline" data-i18n-html="audio.hint3"><strong>Без галочки</strong> фоновые звонки на ПК не идут.</p>
-                <label class="audio-stream-span-2 audio-stream-field-ffmpeg"><span data-i18n="audio.ffmpeg">Путь к ffmpeg.exe (необязательно)</span>
-                  <input id="audio-stream-ffmpeg-path" class="standard-input wide-input" type="text" data-i18n-placeholder="audio.ffmpegPh" placeholder="Пусто: PATH, Scoop, Program Files\ffmpeg\bin…">
-                </label>
-                <label class="toggle-label">
-                  <input id="audio-stream-use-bell-schedule" type="checkbox"> <span data-i18n="audio.useSchedule">Опираться на расписание звонков выбранного экрана</span>
-                </label>
-                <label class="toggle-label">
-                  <input id="audio-stream-use-bell-files" type="checkbox"> <span data-i18n="audio.useBellFiles">Использовать файлы звонков из админки (начало/конец урока)</span>
-                </label>
-                <label><span data-i18n="audio.bellVol">Громкость звонков по расписанию, %</span>
-                  <input id="audio-stream-volume" class="standard-input" type="number" min="0" max="100" placeholder="80">
-                </label>
-                <label class="toggle-label">
-                  <input id="audio-stream-break-music" type="checkbox"> <span data-i18n-html="audio.breakMusic">Фон на переменах — файлы из <code>data/break_music</code></span>
-                </label>
-                <p class="hint audio-stream-span-2 audio-stream-hint-inline" data-i18n="audio.hintVol">Громкость музыки перемен — ползунок в плеере справа; громкость звонков — поле слева в таблице настроек.</p>
-                <div class="audio-stream-field-stack">
-                  <label><span data-i18n="audio.sourceScreen">Экран-источник расписания</span>
-                    <select id="audio-stream-source-screen" class="standard-input wide-input"></select>
+            <div class="audio-stream-three-cols">
+              <div class="audio-stream-col">
+                <h3 class="audio-stream-group-title" data-i18n="audio.groupPc">ПК и ffmpeg</h3>
+                <div class="audio-stream-col-stack">
+                  <label class="toggle-label">
+                    <input id="audio-stream-enabled" type="checkbox"> <span data-i18n="audio.enable">Включить автоматические звонки и (опционально) музыку на переменах</span>
                   </label>
-                  <p class="hint audio-stream-hint-inline" data-i18n="audio.sourceEmpty">Пустой пункт — первый экран в списке.</p>
-                </div>
-                <div class="audio-stream-field-stack">
-                  <label><span data-i18n="audio.bellWindow">Окно срабатывания звонка (сек, 5–55)</span>
-                    <input id="audio-stream-bell-window" class="standard-input" type="number" min="5" max="55" placeholder="25">
+                  <p class="hint audio-stream-hint-inline" data-i18n-html="audio.hint3"><strong>Без галочки</strong> фоновые звонки на ПК не идут.</p>
+                  <label class="audio-stream-field-ffmpeg"><span data-i18n="audio.ffmpeg">Путь к ffmpeg.exe (необязательно)</span>
+                    <input id="audio-stream-ffmpeg-path" class="standard-input wide-input" type="text" data-i18n-placeholder="audio.ffmpegPh" placeholder="Пусто: PATH, Scoop, Program Files\ffmpeg\bin…">
                   </label>
-                  <p class="hint audio-stream-hint-inline" data-i18n-html="audio.bellWindowHint">Как <code>bell_audio.trigger_sec_window</code> для ТВ. Быстрый тест — <strong>Настройки → Рупор / ТВ</strong>.</p>
                 </div>
               </div>
 
-              <div id="break-music-player" class="break-music-player break-music-player--in-audio">
-                <h3 class="card-subtitle" data-i18n="audio.breakQueue">Очередь перемен на ПК</h3>
-                <p class="hint audio-stream-hint-inline" data-i18n="audio.breakQueueHint">Состояние планировщика; обновляется со строкой статуса.</p>
-                <div id="break-music-player-list" class="break-music-player-list"></div>
+              <div class="audio-stream-col">
+                <h3 class="audio-stream-group-title" data-i18n="audio.groupBells">Звонки по расписанию</h3>
+                <div class="audio-stream-col-stack">
+                  <label class="toggle-label">
+                    <input id="audio-stream-use-bell-schedule" type="checkbox"> <span data-i18n="audio.useSchedule">Опираться на расписание звонков выбранного экрана</span>
+                  </label>
+                  <label class="toggle-label">
+                    <input id="audio-stream-use-bell-files" type="checkbox"> <span data-i18n="audio.useBellFiles">Использовать файлы звонков из админки (начало/конец урока)</span>
+                  </label>
+                  <label><span data-i18n="audio.bellVol">Громкость звонков по расписанию, %</span>
+                    <input id="audio-stream-volume" class="standard-input" type="number" min="0" max="100" placeholder="80">
+                  </label>
+                  <p class="hint audio-stream-hint-inline" data-i18n="audio.hintVol">Громкость музыки перемен — ползунок в плеере справа; громкость звонков — поле слева в таблице настроек.</p>
+                  <div class="audio-stream-field-stack">
+                    <label><span data-i18n="audio.sourceScreen">Экран-источник расписания</span>
+                      <select id="audio-stream-source-screen" class="standard-input wide-input"></select>
+                    </label>
+                    <p class="hint audio-stream-hint-inline" data-i18n="audio.sourceEmpty">Пустой пункт — первый экран в списке.</p>
+                  </div>
+                  <div class="audio-stream-field-stack">
+                    <label><span data-i18n="audio.bellWindow">Окно срабатывания звонка (сек, 5–55)</span>
+                      <input id="audio-stream-bell-window" class="standard-input" type="number" min="5" max="55" placeholder="25">
+                    </label>
+                    <p class="hint audio-stream-hint-inline" data-i18n-html="audio.bellWindowHint">Как <code>bell_audio.trigger_sec_window</code> для ТВ. Быстрый тест — <strong>Настройки → Рупор / ТВ</strong>.</p>
+                  </div>
+                </div>
+              </div>
+
+              <div class="audio-stream-col">
+                <h3 class="audio-stream-group-title" data-i18n="audio.groupBreak">Перемены и плеер</h3>
+                <div class="audio-stream-col-stack">
+                  <label class="toggle-label">
+                    <input id="audio-stream-break-music" type="checkbox"> <span data-i18n-html="audio.breakMusic">Фон на переменах — файлы из <code>data/break_music</code></span>
+                  </label>
+                  <div id="break-music-player" class="break-music-player break-music-player--in-audio">
+                    <h4 class="card-subtitle audio-break-queue-title" data-i18n="audio.breakQueue">Очередь перемен на ПК</h4>
+                    <p class="hint audio-stream-hint-inline" data-i18n="audio.breakQueueHint">Состояние планировщика; обновляется со строкой статуса.</p>
+                    <div id="break-music-player-list" class="break-music-player-list"></div>
+                  </div>
+                  <div class="pc-audio-player pc-audio-player--aside">
+                    <div class="pc-audio-player-head">
+                      <div class="pc-audio-player-title" data-i18n="audio.playerTitle">Плеер (тест на этом ПК)</div>
+                    </div>
+                    <div class="pc-audio-player-toolbar">
+                      <div class="pc-transport-row">
+                        <button type="button" id="pc-player-prev" class="pc-transport-btn" data-i18n-title="audio.prev" title="Предыдущий трек">⏮</button>
+                        <button type="button" id="pc-player-play" class="pc-transport-btn pc-transport-play" data-i18n-title="audio.play" title="Воспроизвести">▶</button>
+                        <button type="button" id="audio-stream-stop-btn" class="pc-transport-btn" data-i18n-title="audio.stop" title="Стоп">⏹</button>
+                        <button type="button" id="pc-player-next" class="pc-transport-btn" data-i18n-title="audio.next" title="Следующий трек">⏭</button>
+                      </div>
+                      <div class="pc-audio-vol pc-audio-vol--block">
+                        <span class="pc-audio-vol-label" data-i18n="audio.volBreak">Громкость музыки (перемена)</span>
+                        <div class="pc-audio-vol-controls">
+                          <input id="audio-stream-break-music-vol" type="range" class="pc-vol-range" min="0" max="100" value="40">
+                          <span id="pc-player-vol-display" class="pc-vol-num">40</span>
+                        </div>
+                      </div>
+                    </div>
+                    <p class="hint pc-player-hint hint-tight" data-i18n-html="audio.playerHint">Только файлы из <code>data/break_music</code> — предпрослушивание фона перемен. Звонки по расписанию настраиваются в «Уроки и звонки» и играют автоматически на ПК.</p>
+                    <div id="pc-player-file-list" class="pc-player-file-list"></div>
+                  </div>
+                </div>
               </div>
             </div>
-
-            <aside class="audio-stream-aside">
-              <div class="pc-audio-player pc-audio-player--aside">
-                <div class="pc-audio-player-head">
-                  <div class="pc-audio-player-title" data-i18n="audio.playerTitle">Плеер (тест на этом ПК)</div>
-                </div>
-                <div class="pc-audio-player-toolbar">
-                  <div class="pc-transport-row">
-                    <button type="button" id="pc-player-prev" class="pc-transport-btn" data-i18n-title="audio.prev" title="Предыдущий трек">⏮</button>
-                    <button type="button" id="pc-player-play" class="pc-transport-btn pc-transport-play" data-i18n-title="audio.play" title="Воспроизвести">▶</button>
-                    <button type="button" id="audio-stream-stop-btn" class="pc-transport-btn" data-i18n-title="audio.stop" title="Стоп">⏹</button>
-                    <button type="button" id="pc-player-next" class="pc-transport-btn" data-i18n-title="audio.next" title="Следующий трек">⏭</button>
-                  </div>
-                  <div class="pc-audio-vol pc-audio-vol--block">
-                    <span class="pc-audio-vol-label" data-i18n="audio.volBreak">Громкость музыки (перемена)</span>
-                    <div class="pc-audio-vol-controls">
-                      <input id="audio-stream-break-music-vol" type="range" class="pc-vol-range" min="0" max="100" value="40">
-                      <span id="pc-player-vol-display" class="pc-vol-num">40</span>
-                    </div>
-                  </div>
-                </div>
-                <p class="hint pc-player-hint hint-tight" data-i18n-html="audio.playerHint">Только файлы из <code>data/break_music</code> — предпрослушивание фона перемен. Звонки по расписанию настраиваются в «Уроки и звонки» и играют автоматически на ПК.</p>
-                <div id="pc-player-file-list" class="pc-player-file-list"></div>
-              </div>
-            </aside>
           </div>
         </div>
       </section>

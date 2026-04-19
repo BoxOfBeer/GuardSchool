@@ -933,6 +933,7 @@ function render(screenPayload) {
 
   const layoutSig = JSON.stringify({
     m: mobileMode,
+    mw: mwRaw || "",
     w: (screen.widgets || []).map((w) => {
       const ws = w.settings || {};
       return {
@@ -1012,36 +1013,42 @@ function render(screenPayload) {
       ? orderedAll.filter((w) => configuredSet.has(String(w.id)))
       : orderedDefault;
     let filtered = mwTypes ? ordered.filter((w) => mwTypes.has(String(w.type))) : ordered;
-    // gs_mw хранит типы виджетов; если там нет schedule — на телефоне лента без расписания, на ПК сетка цела.
+    // Раньше при пустом пересечении gs_mw с лентой мы удаляли gs_mw и показывали все виджеты — для
+    // пользователя это выглядело как «сломанный шаблон». Не трогаем localStorage.
     if (mwTypes && mwTypes.size && ordered.length && filtered.length === 0) {
-      try {
-        localStorage.removeItem(`gs_mw_${slug}`);
-      } catch (_) {}
-      filtered = ordered;
+      const empty = document.createElement("div");
+      empty.className = "gs-mobile-empty-hint";
+      empty.style.cssText =
+        "padding:16px 18px;font-size:15px;line-height:1.45;color:rgba(255,255,255,0.88);text-align:center;max-width:28rem;margin:12px auto;";
+      empty.textContent =
+        "Для выбранных типов виджетов сейчас нечего показать (нет такого виджета в ленте экрана или он отключён). Откройте ⚙ и снимите лишние типы либо включите нужный виджет в админке (мобильная лента / сетка).";
+      list.appendChild(empty);
     } else {
-      // schedule мог быть выкинут из ordered списком mobile_widget_ids — ищем в полном orderedAll.
-      const schedW = orderedAll.find((w) => w && w.type === "schedule" && w.enabled !== false);
-      if (schedW && !filtered.some((w) => w && w.type === "schedule")) {
-        filtered = [schedW, ...filtered.filter((w) => w && w.id !== schedW.id)];
+      // Добавляем расписание из полного списка только без фильтра gs_mw — иначе «только время» превращалось в «время + расписание».
+      if (!mwTypes) {
+        const schedW = orderedAll.find((w) => w && w.type === "schedule" && w.enabled !== false);
+        if (schedW && !filtered.some((w) => w && w.type === "schedule")) {
+          filtered = [schedW, ...filtered.filter((w) => w && w.id !== schedW.id)];
+        }
       }
+      filtered.forEach((widget) => {
+        const item = document.createElement("div");
+        item.className = "screen-widget gs-mobile-widget";
+        item.dataset.widgetId = String(widget.id);
+        item.dataset.widgetType = String(widget.type);
+        if (widget.type === "carousel") {
+          item.classList.add("carousel-widget");
+          const childWidgets = GRef.orderedCarouselChildWidgets
+            ? GRef.orderedCarouselChildWidgets(screen, widget)
+            : (screen.widgets || []).filter((it) => (widget.settings.childWidgetIds || []).includes(it.id));
+          GRef.startCarousel(item, widget, childWidgets, schedule, screen, holidays, announcements || [], marquee || []);
+        } else {
+          item.innerHTML = GRef.renderWidgetHtml(widget, schedule, screen, holidays, announcements || [], marquee || []);
+        }
+        if (GRef.applyWidgetBackdropClass) GRef.applyWidgetBackdropClass(item, widget);
+        list.appendChild(item);
+      });
     }
-    filtered.forEach((widget) => {
-      const item = document.createElement("div");
-      item.className = "screen-widget gs-mobile-widget";
-      item.dataset.widgetId = String(widget.id);
-      item.dataset.widgetType = String(widget.type);
-      if (widget.type === "carousel") {
-        item.classList.add("carousel-widget");
-        const childWidgets = GRef.orderedCarouselChildWidgets
-          ? GRef.orderedCarouselChildWidgets(screen, widget)
-          : (screen.widgets || []).filter((it) => (widget.settings.childWidgetIds || []).includes(it.id));
-        GRef.startCarousel(item, widget, childWidgets, schedule, screen, holidays, announcements || [], marquee || []);
-      } else {
-        item.innerHTML = GRef.renderWidgetHtml(widget, schedule, screen, holidays, announcements || [], marquee || []);
-      }
-      if (GRef.applyWidgetBackdropClass) GRef.applyWidgetBackdropClass(item, widget);
-      list.appendChild(item);
-    });
     root.appendChild(list);
   } else if (!canSoftUpdate) {
     const grid = document.createElement("div");

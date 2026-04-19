@@ -114,6 +114,7 @@ from .gs_paths import (
     WIDGET_IMAGES_SUBDIR,
     resolve_brand_logo_path,
 )
+from .gs_import_sample_xlsx import import_excel_sample_bytes
 from .gs_weekly_template import ensure_weekly_schedule_template_file
 from .gs_screen_watch import record_screen_poll, screen_watch_snapshot
 from .saas_db import cleanup_expired_demo_sessions, ensure_public_schema, saas_db_enabled
@@ -4198,6 +4199,19 @@ def download_weekly_schedule_template_xlsx(request: Request) -> FileResponse:
         FULL_SCHEDULE_SAMPLE_XLSX,
         filename="full_schedule_sample.xlsx",
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+@app.get("/api/admin/import-excel-sample.xlsx")
+def download_import_excel_sample(request: Request, kind: str = Query(...)) -> Response:
+    """Образцы Excel для блока «Импорт из Excel» (kind=dated|full|sample|holidays|announcements|marquee)."""
+    require_auth(request)
+    lang = admin_ui_lang(request)
+    body, filename = import_excel_sample_bytes(kind=kind, lang=lang)
+    return Response(
+        content=body,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 

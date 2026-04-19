@@ -34,7 +34,7 @@ export const elements = {
   exportDataBtn: document.getElementById("export-data-btn"),
   importDataBtn: document.getElementById("import-data-btn"),
   importDataInput: document.getElementById("import-data-input"),
-  logoutBtn: document.getElementById("logout-top-btn"),
+  logoutBtn: document.getElementById("logout-btn"),
   backgroundInput: document.getElementById("background-input"),
   uiFontSizeInput: document.getElementById("ui-font-size-input"),
   settingsTestRuporBtn: document.getElementById("settings-test-rupor-btn"),

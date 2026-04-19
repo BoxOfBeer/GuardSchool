@@ -122,6 +122,21 @@ export async function downloadWeeklyScheduleTemplateXlsx() {
   await downloadBinaryFile("/api/admin/weekly-schedule-template.xlsx", "full_schedule_sample.xlsx");
 }
 
+/** kind: dated | full | sample | holidays | announcements | marquee */
+export async function downloadImportExcelSample(kind) {
+  const q = encodeURIComponent(kind);
+  const fallback = {
+    dated: "schedule_dated_sample.xlsx",
+    full: "full_schedule_sample.xlsx",
+    sample: "schedule_sample_example.xlsx",
+    holidays: "holidays_sample.xlsx",
+    announcements: "announcements_sample.xlsx",
+    marquee: "marquee_sample.xlsx",
+  };
+  const name = fallback[kind] || `import_sample_${kind}.xlsx`;
+  await downloadBinaryFile(`/api/admin/import-excel-sample.xlsx?kind=${q}`, name);
+}
+
 export async function importBundle(file) {
   const formData = new FormData();
   formData.append("file", file);
