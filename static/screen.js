@@ -929,10 +929,12 @@ function render(screenPayload) {
   const slug = getSlug();
   const mwRaw = getGsMobileWidgetsForPoll(slug);
   const mwTypes = mwRaw ? new Set(mwRaw.split(",").map((x) => x.trim()).filter(Boolean)) : null;
+  const deviceGridOverride = Boolean(screen && screen.mobile_mode) && getGsGridForPoll(slug);
   const mobileMode = Boolean(screen && screen.mobile_mode) && !getGsGridForPoll(slug);
 
   const layoutSig = JSON.stringify({
     m: mobileMode,
+    dg: deviceGridOverride,
     mw: mwRaw || "",
     w: (screen.widgets || []).map((w) => {
       const ws = w.settings || {};
@@ -1013,9 +1015,27 @@ function render(screenPayload) {
       ? orderedAll.filter((w) => configuredSet.has(String(w.id)))
       : orderedDefault;
     let filtered = mwTypes ? ordered.filter((w) => mwTypes.has(String(w.type))) : ordered;
+    // Тип отмечен в gs_mw, но виджета нет в mobile_widget_ids — всё равно показываем из полного стека (иначе «только schedule» → пусто).
+    if (mwTypes && mwTypes.size) {
+      for (const t of mwTypes) {
+        if (filtered.some((w) => w && String(w.type) === t)) continue;
+        const cand = orderedAll.find(
+          (w) =>
+            w &&
+            String(w.type) === t &&
+            w.enabled !== false &&
+            w.menu_only !== true &&
+            w.type !== "emergency" &&
+            !(hiddenWidgetIds.has(w.id) && w.type !== "carousel")
+        );
+        if (cand && !filtered.some((w) => String(w.id) === String(cand.id))) filtered.push(cand);
+      }
+      const rank = new Map(orderedAll.map((w, i) => [String(w.id), i]));
+      filtered.sort((a, b) => (rank.get(String(a.id)) ?? 1e9) - (rank.get(String(b.id)) ?? 1e9));
+    }
     // Раньше при пустом пересечении gs_mw с лентой мы удаляли gs_mw и показывали все виджеты — для
     // пользователя это выглядело как «сломанный шаблон». Не трогаем localStorage.
-    if (mwTypes && mwTypes.size && ordered.length && filtered.length === 0) {
+    if (mwTypes && mwTypes.size && filtered.length === 0) {
       const empty = document.createElement("div");
       empty.className = "gs-mobile-empty-hint";
       empty.style.cssText =
@@ -1061,12 +1081,20 @@ function render(screenPayload) {
     // Портрет: правим aspect-ratio контейнера.
     if (root && root.style) root.style.aspectRatio = isPortrait ? "9 / 16" : "16 / 9";
     const hiddenWidgetIds = GRef.widgetIdsHiddenByCarousel(screen);
-    const ordered = GRef.sortWidgetsForDom ? GRef.sortWidgetsForDom(screen) : (screen.widgets || []).filter((w) => {
+    let ordered = GRef.sortWidgetsForDom ? GRef.sortWidgetsForDom(screen) : (screen.widgets || []).filter((w) => {
       if (w.enabled === false) return false;
       if (hiddenWidgetIds.has(w.id) && w.type !== "carousel") return false;
       if (w.menu_only === true) return false;
       return true;
     });
+    // На экране с mobile_mode «сетка на устройстве» — та же логика фильтра типов, что и в ленте (иначе gs_mw игнорируется).
+    if (deviceGridOverride && mwTypes && mwTypes.size) {
+      ordered = ordered.filter((w) => {
+        if (!w) return false;
+        if (w.type === "emergency") return true;
+        return mwTypes.has(String(w.type));
+      });
+    }
 
     ordered.forEach((widget) => {
       if (widget.enabled === false) return;
