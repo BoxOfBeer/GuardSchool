@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 import calendar
 import hashlib
 import hmac
+import html
 import io
 import ipaddress
 import json
@@ -13,6 +14,7 @@ import re
 import secrets
 import shutil
 import time
+import unicodedata
 import base64
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -22,9 +24,9 @@ try:
     from zoneinfo import ZoneInfo
 except ImportError:  # Python < 3.9 (например shared-хостинг 3.8)
     from backports.zoneinfo import ZoneInfo
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
-from fastapi import Body, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
+from fastapi import Body, FastAPI, File, Form, HTTPException, Query, Request, Response, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from .gs_admin_http import admin_msg, admin_ui_lang, session_cookie_secure
@@ -169,9 +171,39 @@ PRE_BELL_AFADE_IN_SEC = 3.0
 
 TV_PAIR_ATTEMPT_WINDOW_SEC = 5 * 60
 TV_PAIR_ATTEMPT_LIMIT = 8
-TV_PAIR_BLOCK_SEC = 10 * 60
+TV_PAIR_BLOCK_SEC = 10
 _TV_PAIR_ATTEMPTS: dict[str, list[float]] = {}
 _TV_PAIR_BLOCK_UNTIL: dict[str, float] = {}
+
+
+def _tv_pair_pin_bypass_env() -> bool:
+    """Опционально в env (для срочного override): GUARDSCHOOL_TV_PAIR_BYPASS_PIN=1|true|yes|on."""
+    v = (os.environ.get("GUARDSCHOOL_TV_PAIR_BYPASS_PIN") or "").strip().lower()
+    return v in ("1", "true", "yes", "on")
+
+
+def _tv_pair_pin_bypass_from_tenant_config(tenant_slug: str) -> bool:
+    """Флаг в config.json тенанта: tv_pair_pin_bypass (настраивается в админке)."""
+    ts = (tenant_slug or "").strip()
+    if not ts:
+        return False
+    from .tenant_ctx import set_tenant_slug
+
+    set_tenant_slug(ts)
+    try:
+        return bool(load_config().get("tv_pair_pin_bypass"))
+    finally:
+        set_tenant_slug(None)
+
+
+def _tv_pair_pin_bypass_effective(tenant_slug: str, pin_bypass_db: bool = False) -> bool:
+    """Обход PIN: env ИЛИ колонка tv_access.pin_bypass (надёжно для ТВ) ИЛИ tv_pair_pin_bypass в config.json."""
+    if _tv_pair_pin_bypass_env():
+        return True
+    if pin_bypass_db:
+        return True
+    return _tv_pair_pin_bypass_from_tenant_config(tenant_slug)
+
 
 BREAK_ORCH_HEAD_SEC = 60
 BREAK_ORCH_FADE_SEC = 120
@@ -565,6 +597,8 @@ def default_config() -> dict[str, Any]:
         "screen_fallback_base_url": "",
         "screen_fallback_enabled": False,
         "screen_poll_timeout_sec": 5,
+        # SaaS: при true — PIN не проверяется; GET /t/код/экран сразу редиректит на экран с токеном в query.
+        "tv_pair_pin_bypass": False,
     }
 
 
@@ -678,6 +712,9 @@ def _require_tv_access_for_screen(request: Request, screen_slug: str) -> None:
     TV auth в SaaS:
     - если задан GUARDSCHOOL_TV_BEARER_TOKEN: принимаем либо его, либо device-token (по code+pin pairing)
     - если не задан: по-старому без авторизации
+
+    Device-token: тенант берём из строки tv_devices (token_hash глобально уникален), а не из cookie.
+    Иначе на общем school.* без gs_saas_tenant ТВ после пары всегда получает 403, хотя браузер с cookie — нет.
     """
     expected = (os.environ.get("GUARDSCHOOL_TV_BEARER_TOKEN") or "").strip()
     auth = (request.headers.get("authorization") or "").strip()
@@ -688,38 +725,84 @@ def _require_tv_access_for_screen(request: Request, screen_slug: str) -> None:
     got = auth[7:].strip()
     if hmac.compare_digest(got, expected):
         return
-    # device-token: только в SaaS и только в контексте тенанта
+    # device-token: только в SaaS
     if deployment_mode() != "saas" or not saas_db_enabled():
         raise HTTPException(status_code=403, detail="Неверный токен ТВ.")
-    from .tenant_ctx import tenant_slug as current_tenant
+    from .tenant_ctx import set_tenant_slug
 
-    slug = current_tenant()
-    if not slug:
-        raise HTTPException(status_code=403, detail="Неверный токен ТВ.")
     th = tv_device_token_hash(got)
     now = utcnow()
     with connect_public() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT status, expires_at FROM tv_devices
-                WHERE token_hash=%s AND tenant_slug=%s AND screen_slug=%s
+                SELECT tenant_slug, status, expires_at FROM tv_devices
+                WHERE token_hash=%s AND lower(trim(screen_slug)) = %s
                 """,
-                (th, slug, screen_slug),
+                (th, screen_slug),
             )
             row = cur.fetchone()
             if not row:
                 raise HTTPException(status_code=403, detail="Неверный токен ТВ.")
-            status, expires_at = row[0], row[1]
+            tenant_from_device, status, expires_at = row[0], row[1], row[2]
             if status != "active":
                 raise HTTPException(status_code=403, detail="Токен ТВ отключён.")
             if expires_at is not None and expires_at <= now:
                 raise HTTPException(status_code=403, detail="Токен ТВ истёк.")
             cur.execute(
-                "UPDATE tv_devices SET last_seen_at=now() WHERE token_hash=%s AND tenant_slug=%s AND screen_slug=%s",
-                (th, slug, screen_slug),
+                "UPDATE tv_devices SET last_seen_at=now() WHERE token_hash=%s AND lower(trim(screen_slug)) = %s",
+                (th, screen_slug),
             )
         conn.commit()
+    slug = str(tenant_from_device or "").strip()
+    if not slug:
+        raise HTTPException(status_code=403, detail="Неверный токен ТВ.")
+    set_tenant_slug(slug)
+    try:
+        from .saas_db import ensure_tenant_schema, schema_name_for_slug
+
+        ensure_tenant_schema(schema_name_for_slug(slug))
+    except Exception:
+        pass
+
+
+_TV_PAIR_ZW_RE = re.compile(r"[\u200b-\u200d\ufeff]")
+
+
+def _normalize_tv_pair_text(s: str) -> str:
+    """NFKC + убрать ZWSP/BOM: на ТВ часто приходят полноширинные цифры и невидимые символы."""
+    t = unicodedata.normalize("NFKC", str(s or ""))
+    t = _TV_PAIR_ZW_RE.sub("", t).strip()
+    for bad, good in (("\u2013", "-"), ("\u2014", "-"), ("\u2212", "-"), ("\uff0d", "-")):
+        t = t.replace(bad, good)
+    return t
+
+
+def _pin_digits_to_ascii(s: str) -> str:
+    """Только цифры 0–9: ASCII и любые десятичные цифры Unicode (после NFKC — дозапас)."""
+    out: list[str] = []
+    for ch in s:
+        if "0" <= ch <= "9":
+            out.append(ch)
+            continue
+        if ch.isspace():
+            continue
+        try:
+            d = unicodedata.decimal(ch)
+        except (TypeError, ValueError):
+            continue
+        if 0 <= d <= 9:
+            out.append(str(int(d)))
+    return "".join(out)
+
+
+def _normalize_tv_pair_pin(raw: str) -> str:
+    return _pin_digits_to_ascii(_normalize_tv_pair_text(str(raw or "")))
+
+
+def _normalize_screen_slug_for_api(slug: str) -> str:
+    """Slug экрана в URL/API: NFKC-нормализация + нижний регистр (ТВ и конфиг часто расходятся по case)."""
+    return _normalize_tv_pair_text(str(slug or "")).strip().lower()
 
 
 def _tv_pair_client_key(request: Request, code: str) -> str:
@@ -1264,6 +1347,7 @@ def sanitize_config(config: dict[str, Any]) -> dict[str, Any]:
         config[key] = str(config.get(key) or "").strip()[:500]
     config["cloud_sync_enabled"] = bool(config.get("cloud_sync_enabled", True))
     config["screen_fallback_enabled"] = bool(config.get("screen_fallback_enabled", False))
+    config["tv_pair_pin_bypass"] = bool(config.get("tv_pair_pin_bypass", False))
     return config
 
 
@@ -1708,6 +1792,10 @@ def build_bell_status(
 
     if not entries:
         status["message"] = "Расписание звонков не задано"
+        # Не "done": иначе виджет расписания на ТВ скрывает таблицу на сегодня (как после последнего звонка).
+        status["state"] = "no_bells"
+        status["countdown_text"] = "Звонки не настроены"
+        status["schedule_title"] = "Расписание уроков"
         return status
 
     first_start = time_to_minutes(entries[0]["start"])
@@ -2850,25 +2938,177 @@ async def provider_patch_license(key_hash: str, request: Request) -> dict[str, s
     return {"status": "ok"}
 
 
+def _provider_purge_license_db_and_disk(key_hash: str) -> dict[str, Any]:
+    """
+    Удалить лицензию вместе с пользователем SaaS, строкой tenants, схемой тенанта в PostgreSQL,
+    tv_* / demo_sessions по slug и каталогом tenants/<slug>/data на диске.
+    """
+    import psycopg2.sql as sql
+
+    slugs: list[str] = []
+    schemas: list[str] = []
+    user_ids: list[str] = []
+    with connect_public() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1 FROM licenses WHERE key_hash=%s LIMIT 1", (key_hash,))
+            if not cur.fetchone():
+                raise HTTPException(status_code=404, detail="Not found")
+            cur.execute(
+                "SELECT u.id, t.slug, t.schema_name FROM users u "
+                "LEFT JOIN tenants t ON t.owner_user_id = u.id "
+                "WHERE u.license_key_hash=%s",
+                (key_hash,),
+            )
+            for row in cur.fetchall() or []:
+                uid, slug, schema = row[0], row[1], row[2]
+                if uid and str(uid) not in user_ids:
+                    user_ids.append(str(uid))
+                if slug:
+                    s = str(slug).strip()
+                    if s and s not in slugs:
+                        slugs.append(s)
+                if schema and str(schema) not in schemas:
+                    schemas.append(str(schema))
+            for sch in schemas:
+                cur.execute(sql.SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(sql.Identifier(sch)))
+            if slugs:
+                cur.execute(
+                    "DELETE FROM tv_devices WHERE tenant_slug = ANY(%s)",
+                    (slugs,),
+                )
+                cur.execute(
+                    "DELETE FROM tv_access WHERE tenant_slug = ANY(%s)",
+                    (slugs,),
+                )
+                cur.execute(
+                    "DELETE FROM demo_sessions WHERE tenant_slug = ANY(%s)",
+                    (slugs,),
+                )
+            if user_ids:
+                cur.execute(
+                    "DELETE FROM sessions WHERE user_id = ANY(%s)",
+                    (user_ids,),
+                )
+                cur.execute(
+                    "DELETE FROM tenants WHERE owner_user_id = ANY(%s)",
+                    (user_ids,),
+                )
+                cur.execute(
+                    "DELETE FROM users WHERE license_key_hash=%s",
+                    (key_hash,),
+                )
+            cur.execute("DELETE FROM licenses WHERE key_hash=%s", (key_hash,))
+            if cur.rowcount <= 0:
+                raise HTTPException(status_code=404, detail="Not found")
+        conn.commit()
+    if deployment_mode() == "saas":
+        try:
+            from .tenant_ctx import tenant_data_dir
+
+            for slug in slugs:
+                root = tenant_data_dir(slug)
+                if root.is_dir():
+                    shutil.rmtree(root, ignore_errors=True)
+        except Exception:
+            pass
+    return {"status": "ok", "purged": True, "tenant_slugs": slugs, "schemas_dropped": schemas}
+
+
 @app.delete("/api/provider/licenses/{key_hash}")
-def provider_delete_license(key_hash: str, request: Request) -> dict[str, str]:
-    """Удалить только неиспользованную лицензию (нет пользователя с этим key_hash)."""
+def provider_delete_license(
+    key_hash: str,
+    request: Request,
+    purge: bool = Query(
+        False,
+        description="Полное удаление: пользователь, тенант, схема PostgreSQL, tv_* и каталог tenants/<slug>.",
+    ),
+) -> dict[str, Any]:
+    """Без purge — только неиспользованная лицензия. С purge=1 — снять тестовую/лишнюю школу вместе с данными."""
     _require_provider_admin(request)
     if not saas_db_enabled():
         raise HTTPException(status_code=500, detail="SaaS database is not configured.")
+    if purge:
+        return _provider_purge_license_db_and_disk(key_hash)
     with connect_public() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT 1 FROM users WHERE license_key_hash=%s LIMIT 1", (key_hash,))
             if cur.fetchone():
                 raise HTTPException(
                     status_code=409,
-                    detail="License already used for registration; revoke or disable instead of delete.",
+                    detail="License already used for registration; use DELETE with purge=1 to remove tenant and license, or revoke/disable.",
                 )
             cur.execute("DELETE FROM licenses WHERE key_hash=%s", (key_hash,))
             if cur.rowcount <= 0:
                 raise HTTPException(status_code=404, detail="Not found")
         conn.commit()
     return {"status": "ok"}
+
+
+def _provider_tenant_slug_param_safe(slug: str) -> str:
+    s = (slug or "").strip()
+    if not s or len(s) > 64 or "/" in s or "\\" in s or ".." in s:
+        raise HTTPException(status_code=400, detail="Invalid tenant slug.")
+    return s
+
+
+def _provider_purge_tenant_by_slug(slug: str) -> dict[str, Any]:
+    """
+    Удалить одну школу по slug: схема PostgreSQL (Identifier), tv_*, сессии, tenants, users, licenses, каталог tenants/<slug>.
+    Для «осиротевших» каталогов без строки в tenants — только rm на сервере.
+    """
+    import psycopg2.sql as sql
+
+    slug_n = _provider_tenant_slug_param_safe(slug)
+    schema_dropped: str | None = None
+    with connect_public() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT t.schema_name, t.owner_user_id, u.license_key_hash FROM tenants t "
+                "INNER JOIN users u ON u.id = t.owner_user_id WHERE t.slug = %s",
+                (slug_n,),
+            )
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="Tenant not found.")
+            schema_name, owner_id, lic_hash = str(row[0]), str(row[1]), str(row[2])
+            schema_dropped = schema_name
+            cur.execute(sql.SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(sql.Identifier(schema_name)))
+            cur.execute("DELETE FROM tv_devices WHERE tenant_slug=%s", (slug_n,))
+            cur.execute("DELETE FROM tv_access WHERE tenant_slug=%s", (slug_n,))
+            cur.execute("DELETE FROM demo_sessions WHERE tenant_slug=%s", (slug_n,))
+            cur.execute("DELETE FROM sessions WHERE user_id=%s", (owner_id,))
+            cur.execute("DELETE FROM tenants WHERE slug=%s", (slug_n,))
+            cur.execute("DELETE FROM users WHERE id=%s", (owner_id,))
+            cur.execute("DELETE FROM licenses WHERE key_hash=%s", (lic_hash,))
+        conn.commit()
+    if deployment_mode() == "saas":
+        try:
+            from .tenant_ctx import tenant_data_dir
+
+            root = tenant_data_dir(slug_n)
+            if root.is_dir():
+                shutil.rmtree(root, ignore_errors=True)
+        except Exception:
+            pass
+    return {"status": "ok", "purged": True, "slug": slug_n, "schema_dropped": schema_dropped}
+
+
+@app.delete("/api/provider/tenants/{slug}")
+def provider_delete_tenant(
+    slug: str,
+    request: Request,
+    confirm: bool = Query(False, description="Подтверждение: confirm=1"),
+) -> dict[str, Any]:
+    """Полное удаление школы по slug (вместе с лицензией владельца). Нужен confirm=1."""
+    _require_provider_admin(request)
+    if not saas_db_enabled():
+        raise HTTPException(status_code=500, detail="SaaS database is not configured.")
+    if not confirm:
+        raise HTTPException(
+            status_code=400,
+            detail="Refusing to delete tenant without confirm=1 (deletes license, DB schema, and tenant data directory).",
+        )
+    return _provider_purge_tenant_by_slug(slug)
 
 
 @app.post("/api/provider/demo")
@@ -4037,9 +4277,19 @@ def get_screens_index(request: Request) -> dict[str, Any]:
 
 @app.get("/api/screen/{slug}")
 def get_screen(request: Request, slug: str) -> JSONResponse:
-    _require_tv_access_for_screen(request, slug)
+    slug_key = _normalize_screen_slug_for_api(slug)
+    if not slug_key:
+        raise HTTPException(status_code=404, detail="Экран не найден.")
+    _require_tv_access_for_screen(request, slug_key)
     config = load_config()
-    screen0 = next((item for item in config["screens"] if item["slug"] == slug and item.get("is_active", True)), None)
+    screen0 = next(
+        (
+            item
+            for item in (config.get("screens") or [])
+            if _normalize_screen_slug_for_api(str(item.get("slug") or "")) == slug_key and item.get("is_active", True)
+        ),
+        None,
+    )
     screen = screen0
     if not screen:
         raise HTTPException(status_code=404, detail="Экран не найден.")
@@ -4060,19 +4310,21 @@ def get_screen(request: Request, slug: str) -> JSONResponse:
             screen["selected_classes"] = parts
     record_screen_poll(
         request,
-        slug,
+        str(screen0.get("slug") or slug_key),
         str(qp.get("gs_client") or "").strip(),
         str(qp.get("gs_label") or "").strip(),
         str(qp.get("gs_device") or "").strip(),
-        str(screen.get("name") or slug).strip(),
+        str(screen.get("name") or slug_key).strip(),
     )
     today = calendar_today_for_config(config)
     audio = sanitize_audio_stream(config.get("audio_stream"))
+    sched_body = build_schedule_payload(screen, today, config)
+    tr = len((sched_body.get("today_rows") or [])) if isinstance(sched_body, dict) else 0
     payload = {
         "screen": screen,
         "pickable_classes": pickable,
         "serverTime": datetime.now().isoformat(),
-        "schedule": build_schedule_payload(screen, today, config),
+        "schedule": sched_body,
         "holidays": load_holidays(),
         "announcements": load_announcements(),
         "marquee": load_marquee_items(),
@@ -4093,14 +4345,94 @@ def get_screen(request: Request, slug: str) -> JSONResponse:
             "Pragma": "no-cache",
             "Expires": "0",
             "X-Guardschool-App-Version": APP_VERSION,
+            "X-GS-Schedule-Today-Rows": str(tr),
+            "X-GS-Schedule-Cal-Day": today.isoformat(),
+        },
+    )
+
+
+def _tv_pair_pin_entry_file_response() -> FileResponse:
+    """Страница ввода PIN без кеша (иначе после включения обхода браузер долго держит старый HTML)."""
+    return FileResponse(
+        STATIC_DIR / "tv_pair.html",
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
         },
     )
 
 
 @app.get("/t/{code}/{screen_slug}", response_class=HTMLResponse)
-def tv_pair_page(code: str, screen_slug: str) -> Response:
-    # Страница ввода PIN для привязки ТВ (сохраняет device-token в localStorage).
-    return FileResponse(STATIC_DIR / "tv_pair.html")
+def tv_pair_page(request: Request, code: str, screen_slug: str) -> Response:
+    """
+    Страница ввода PIN; если для школы включён tv_pair_pin_bypass (или env) —
+    сразу редирект на /screen/…?gs_tv_token=… (как initGsHybridFromUrl в screen.js).
+    """
+    if deployment_mode() != "saas" or not saas_db_enabled():
+        return _tv_pair_pin_entry_file_response()
+    code_n = _normalize_tv_pair_text(str(code or "")).lower()
+    slug_n = _normalize_screen_slug_for_api(str(screen_slug or ""))
+    if not re.fullmatch(r"[a-z2-9]{4}-[a-z2-9]{4}-[a-z2-9]{4}", code_n):
+        return _tv_pair_pin_entry_file_response()
+    if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", slug_n):
+        return _tv_pair_pin_entry_file_response()
+    now_ts = time.time()
+    pair_key = _tv_pair_client_key(request, code_n)
+    retry_after = _tv_pair_check_rate_limit(pair_key, now_ts)
+    if retry_after > 0:
+        return HTMLResponse(
+            "<!doctype html><html lang='ru'><head><meta charset='utf-8' /><title>GuardSchool</title></head>"
+            f"<body style='font-family:system-ui;padding:24px'>Слишком много попыток. Подождите {retry_after} с.</body></html>",
+            status_code=429,
+            headers={"Cache-Control": "no-store"},
+        )
+    ch = tv_code_hash(code_n)
+    with connect_public() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT tenant_slug, pin_salt, pin_hash, COALESCE(pin_bypass, false) FROM tv_access WHERE code_hash=%s",
+                (ch,),
+            )
+            row = cur.fetchone()
+            if not row:
+                _tv_pair_record_failure(pair_key, now_ts)
+                return _tv_pair_pin_entry_file_response()
+            tenant_slug, _pin_salt, _pin_hash, pin_bypass_db = row[0], row[1], row[2], bool(row[3])
+            ts = str(tenant_slug or "").strip()
+            if not _tv_pair_pin_bypass_effective(ts, pin_bypass_db):
+                return _tv_pair_pin_entry_file_response()
+            lab = str(request.query_params.get("gs_label") or "").strip()[:120]
+            _tv_pair_record_success(pair_key)
+            token = secrets.token_urlsafe(24)
+            th = tv_device_token_hash(token)
+            cur.execute(
+                """
+                INSERT INTO tv_devices (token_hash, tenant_slug, screen_slug, label, status)
+                VALUES (%s,%s,%s,%s,'active')
+                ON CONFLICT (token_hash) DO NOTHING
+                """,
+                (th, ts, slug_n, lab),
+            )
+        conn.commit()
+    loc = f"/screen/{quote(slug_n, safe='')}?gs_tv_token={quote(token, safe='')}"
+    # Часть ТВ-WebView даёт пустой экран на HTTP 302 с длинным Location — отдаём HTML и делаем переход из JS.
+    loc_js = json.dumps(loc, ensure_ascii=False)
+    loc_attr = html.escape(loc, quote=True)
+    jump_html = (
+        "<!doctype html><html lang='ru'><head><meta charset='utf-8'/>"
+        "<meta http-equiv='Cache-Control' content='no-store'/>"
+        "<title>GuardSchool — подключение ТВ</title></head>"
+        "<body style='margin:0;font-family:system-ui;background:#0f172a;color:#e2e8f0'>"
+        "<div style='padding:24px;font-size:18px'>Переход на экран…</div>"
+        f"<script>location.replace({loc_js});</script>"
+        f"<noscript><div style='padding:24px'><a href='{loc_attr}' style='color:#38bdf8'>Открыть экран</a></div>"
+        f"<meta http-equiv='refresh' content='0;url={loc_attr}'/></noscript></body></html>"
+    )
+    return HTMLResponse(
+        content=jump_html,
+        status_code=200,
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0", "Pragma": "no-cache"},
+    )
 
 
 @app.post("/api/tv/pair")
@@ -4115,16 +4447,13 @@ async def tv_pair(request: Request) -> dict[str, Any]:
         body = await request.json()
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid JSON body")
-    code = str(body.get("code") or "").strip().lower()
-    pin = str(body.get("pin") or "").strip()
-    screen_slug = str(body.get("screen_slug") or "").strip()
+    code = _normalize_tv_pair_text(str(body.get("code") or "")).lower()
+    screen_slug = _normalize_screen_slug_for_api(str(body.get("screen_slug") or ""))
     label = str(body.get("label") or "").strip()[:120]
-    if not code or not pin or not screen_slug:
+    if not code or not screen_slug:
         raise HTTPException(status_code=400, detail="code, pin, screen_slug required")
     if not re.fullmatch(r"[a-z2-9]{4}-[a-z2-9]{4}-[a-z2-9]{4}", code):
         raise HTTPException(status_code=400, detail="Invalid code format")
-    if not pin.isdigit() or not (4 <= len(pin) <= 12):
-        raise HTTPException(status_code=400, detail="PIN must be 4..12 digits")
     if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", screen_slug):
         raise HTTPException(status_code=400, detail="Invalid screen_slug")
     now_ts = time.time()
@@ -4136,16 +4465,32 @@ async def tv_pair(request: Request) -> dict[str, Any]:
     ch = tv_code_hash(code)
     with connect_public() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT tenant_slug, pin_salt, pin_hash FROM tv_access WHERE code_hash=%s", (ch,))
+            cur.execute(
+                "SELECT tenant_slug, pin_salt, pin_hash, COALESCE(pin_bypass, false) FROM tv_access WHERE code_hash=%s",
+                (ch,),
+            )
             row = cur.fetchone()
             if not row:
                 _tv_pair_record_failure(pair_key, now_ts)
                 raise HTTPException(status_code=403, detail="Invalid code or PIN")
-            tenant_slug, pin_salt, pin_hash_db = row[0], row[1], row[2]
-            got = tv_pin_hash(pin, pin_salt)
-            if not hmac.compare_digest(got, str(pin_hash_db or "")):
-                _tv_pair_record_failure(pair_key, now_ts)
-                raise HTTPException(status_code=403, detail="Invalid code or PIN")
+            tenant_slug, pin_salt, pin_hash_db, pin_bypass_db = row[0], row[1], row[2], bool(row[3])
+            ts = str(tenant_slug or "").strip()
+            pin_bypass = _tv_pair_pin_bypass_effective(ts, pin_bypass_db)
+            if pin_bypass:
+                pin = _normalize_tv_pair_text(str(body.get("pin") or "")).strip()
+                if len(pin) > 48:
+                    raise HTTPException(status_code=400, detail="PIN too long (bypass mode)")
+                if not pin:
+                    pin = "."
+            else:
+                pin = _normalize_tv_pair_pin(str(body.get("pin") or ""))
+                if not re.fullmatch(r"[0-9]{4,12}", pin):
+                    raise HTTPException(status_code=400, detail="PIN must be 4..12 digits")
+            if not pin_bypass:
+                got = tv_pin_hash(pin, pin_salt)
+                if not hmac.compare_digest(got, str(pin_hash_db or "")):
+                    _tv_pair_record_failure(pair_key, now_ts)
+                    raise HTTPException(status_code=403, detail="Invalid code or PIN")
 
             _tv_pair_record_success(pair_key)
             token = secrets.token_urlsafe(24)
@@ -4178,14 +4523,31 @@ def admin_tv_access_get(request: Request) -> dict[str, Any]:
     slug = current_tenant()
     if not slug:
         raise HTTPException(status_code=400, detail="Tenant is not resolved.")
+    pin_db = False
     with connect_public() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT code_plaintext FROM tv_access WHERE tenant_slug=%s", (slug,))
+            cur.execute(
+                "SELECT code_plaintext, COALESCE(pin_bypass, false) FROM tv_access WHERE tenant_slug=%s",
+                (slug,),
+            )
             row = cur.fetchone()
             ok = bool(row)
             code = str(row[0] or "").strip() if row else ""
+            pin_db = bool(row[1]) if row else False
         conn.commit()
-    return {"status": "ok", "tenant_slug": slug, "configured": ok, "code": code}
+    cfg = load_config()
+    pin_cfg = bool(cfg.get("tv_pair_pin_bypass"))
+    pin_env = _tv_pair_pin_bypass_env()
+    return {
+        "status": "ok",
+        "tenant_slug": slug,
+        "configured": ok,
+        "code": code,
+        "pin_bypass_from_db": pin_db,
+        "pin_bypass_from_config": pin_cfg,
+        "pin_bypass_from_env": pin_env,
+        "pin_bypass_effective": pin_env or pin_db or pin_cfg,
+    }
 
 
 @app.post("/api/admin/tv-access/rotate-code")
@@ -4211,12 +4573,13 @@ async def admin_tv_access_rotate_code(request: Request) -> dict[str, Any]:
                 pin_salt = secrets.token_hex(8)
                 initial_pin = f"{secrets.randbelow(900_000) + 100_000:06d}"
                 pin_hash_db = tv_pin_hash(initial_pin, pin_salt)
+                pin_bypass_init = bool(load_config().get("tv_pair_pin_bypass"))
                 cur.execute(
                     """
-                    INSERT INTO tv_access (tenant_slug, code_plaintext, code_hash, pin_salt, pin_hash, created_at, updated_at)
-                    VALUES (%s,%s,%s,%s,%s,now(),now())
+                    INSERT INTO tv_access (tenant_slug, code_plaintext, code_hash, pin_salt, pin_hash, pin_bypass, created_at, updated_at)
+                    VALUES (%s,%s,%s,%s,%s,%s,now(),now())
                     """,
-                    (slug, code, ch, pin_salt, pin_hash_db),
+                    (slug, code, ch, pin_salt, pin_hash_db, pin_bypass_init),
                 )
                 pin_hint = "Сохраните PIN — он показан один раз. При необходимости смените в настройках."
             else:
@@ -4248,8 +4611,8 @@ async def admin_tv_access_set_pin(request: Request) -> dict[str, Any]:
     if not slug:
         raise HTTPException(status_code=400, detail="Tenant is not resolved.")
     body = await request.json()
-    pin = str(body.get("pin") or "").strip()
-    if not pin.isdigit() or not (4 <= len(pin) <= 12):
+    pin = _normalize_tv_pair_pin(str(body.get("pin") or ""))
+    if not re.fullmatch(r"[0-9]{4,12}", pin):
         raise HTTPException(status_code=400, detail="PIN must be 4..12 digits")
     pin_salt = secrets.token_hex(8)
     ph = tv_pin_hash(pin, pin_salt)
@@ -4266,6 +4629,43 @@ async def admin_tv_access_set_pin(request: Request) -> dict[str, Any]:
             )
         conn.commit()
     return {"status": "ok"}
+
+
+@app.post("/api/admin/tv-access/pin-bypass")
+async def admin_tv_access_pin_bypass(request: Request) -> dict[str, Any]:
+    """Включить/выключить обход PIN: tv_access.pin_bypass (источник для /t/…) + tv_pair_pin_bypass в config.json."""
+    require_auth(request)
+    if deployment_mode() != "saas" or not saas_db_enabled():
+        raise HTTPException(status_code=404, detail="Not found.")
+    from .tenant_ctx import tenant_slug as current_tenant
+
+    slug = current_tenant()
+    if not slug:
+        raise HTTPException(status_code=400, detail="Tenant is not resolved.")
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+    if "enabled" not in body:
+        raise HTTPException(status_code=400, detail="enabled required")
+    enabled = bool(body.get("enabled"))
+    db_written = False
+    with connect_public() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE tv_access SET pin_bypass=%s, updated_at=now() WHERE tenant_slug=%s",
+                (enabled, slug),
+            )
+            db_written = int(cur.rowcount or 0) > 0
+        conn.commit()
+    cfg = load_config()
+    cfg["tv_pair_pin_bypass"] = enabled
+    write_json(CONFIG_PATH, sanitize_config(cfg))
+    return {
+        "status": "ok",
+        "pin_bypass_from_db": enabled if db_written else False,
+        "pin_bypass_from_config": enabled,
+    }
 
 
 @app.get("/api/admin/screen-watch")

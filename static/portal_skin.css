@@ -76,6 +76,12 @@ body.portal-skin code {
   border-color: #f4f7ff;
 }
 
+.portal-btn.danger {
+  border-color: rgba(248, 113, 113, 0.55);
+  background: rgba(127, 29, 29, 0.45);
+  color: #fee2e2;
+}
+
 .portal-hint {
   margin-top: 10px;
   font-size: 12px;

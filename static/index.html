@@ -461,12 +461,18 @@
             <p class="hint" style="margin-top: 0">
               Сгенерируйте короткий код школы, задайте PIN (4–12 цифр) и используйте ссылки для экранов:
               <code>/t/&lt;код&gt;/&lt;экран&gt;</code>.
+              PIN для ТВ хранится <strong>отдельно</strong> от кнопки «Сохранить» вверху: его меняют только поле ниже и «Сохранить PIN».
+              После «Сгенерировать код» старые ссылки и QR с прежним кодом <strong>перестают работать</strong>.
             </p>
             <div class="settings-row settings-btn-row" style="justify-content: flex-start; gap: 10px; flex-wrap: wrap">
               <button type="button" id="tv-rotate-code-btn" class="secondary-btn">Сгенерировать код</button>
               <input id="tv-pin-input" class="standard-input" inputmode="numeric" placeholder="PIN 4–12 цифр" style="max-width: 180px" />
               <button type="button" id="tv-set-pin-btn" class="secondary-btn">Сохранить PIN</button>
             </div>
+            <label class="hint" style="display: flex; align-items: flex-start; gap: 10px; margin-top: 10px; cursor: pointer; max-width: 720px; line-height: 1.45">
+              <input type="checkbox" id="tv-pin-bypass" style="margin-top: 3px" />
+              <span>Тест: не показывать страницу ввода PIN — по ссылке <code>/t/…/…</code> сразу открывается экран (защита только секретным кодом в адресе). Выключается этим же чекбоксом.</span>
+            </label>
             <pre id="tv-code-out" class="settings-probe-out" style="white-space: pre-wrap"></pre>
             <div id="tv-links-wrap" class="settings-row" style="margin-top: 10px"></div>
           </div>

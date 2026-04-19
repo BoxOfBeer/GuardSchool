@@ -190,6 +190,7 @@
                   <button type="button" class="portal-btn" data-act="patch-years-issue" data-kh="${esc(kh)}">лет⊕выдача</button>
                   <button type="button" class="portal-btn" data-act="patch-plan" data-kh="${esc(kh)}">план</button>
                   <button type="button" class="portal-btn" data-act="delete" data-kh="${esc(kh)}">удалить</button>
+                  <button type="button" class="portal-btn danger" data-act="purge" data-kh="${esc(kh)}" title="Лицензия + школа в БД + схема PostgreSQL + каталог tenants">полн. удаление</button>
                 </div>
               </td>
             </tr>`;
@@ -310,9 +311,23 @@
               body: JSON.stringify({ plan_id }),
             });
           } else if (act === "delete") {
-            if (!confirm("Удалить лицензию безвозвратно? Доступно только если ключ ещё не использовали для регистрации."))
+            if (!confirm("Удалить только неиспользованную лицензию (без регистрации школы)?"))
               return;
             await api(`/api/provider/licenses/${encodeURIComponent(kh)}`, { method: "DELETE" });
+          } else if (act === "purge") {
+            if (
+              !confirm(
+                "ПОЛНОЕ удаление: лицензия, пользователь, тенант, схема PostgreSQL, TV-привязки и каталог tenants/<slug>. Без восстановления.",
+              )
+            )
+              return;
+            const v = prompt("Введите слово PURGE заглавными для подтверждения.");
+            if (v !== "PURGE") {
+              show("Отменено (нужно ввести PURGE).");
+              return;
+            }
+            const r = await api(`/api/provider/licenses/${encodeURIComponent(kh)}?purge=1`, { method: "DELETE" });
+            show(`Выполнено:\n${JSON.stringify(r, null, 2)}`);
           } else return;
           await reload();
         } catch (err) {

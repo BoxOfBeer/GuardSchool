@@ -76,7 +76,12 @@ function gsQueryParams(search) {
 
 function getSlug() {
   const parts = window.location.pathname.split("/").filter(Boolean);
-  return parts.length ? parts[parts.length - 1] : "";
+  const raw = parts.length ? parts[parts.length - 1] : "";
+  try {
+    return decodeURIComponent(String(raw || "")).trim().toLowerCase();
+  } catch (_) {
+    return String(raw || "").trim().toLowerCase();
+  }
 }
 
 /** Удалить все ключи localStorage, начинающиеся с gs_ (токен ТВ, гибрид, gs_client_id, все экраны). */
@@ -87,20 +92,41 @@ function purgeAllGsLocalStorage() {
       const k = localStorage.key(i);
       if (k && k.indexOf("gs_") === 0) kill.push(k);
     }
-    kill.forEach((k) => localStorage.removeItem(k));
+    for (let j = 0; j < kill.length; j++) {
+      try {
+        localStorage.removeItem(kill[j]);
+      } catch (_) {}
+    }
   } catch (_) {}
 }
 
-/** Кэши Fetch API (если есть) — не трогаем HttpOnly-cookies. Возвращает Promise. */
+/** Кэши Fetch API (если есть). На части ТВ WebView `caches`/Promise ведут себя нестабильно — не бросаем наружу. */
 function purgeGsCachesBestEffort() {
+  function resolved() {
+    if (typeof Promise !== "undefined" && Promise.resolve) return Promise.resolve();
+    return { then: function (cb) { try { if (typeof cb === "function") cb(); } catch (_) {} } };
+  }
   try {
-    if (!window.caches || !window.caches.keys) return Promise.resolve();
-    return window.caches
-      .keys()
-      .then((keys) => Promise.all(keys.map((k) => window.caches.delete(k))))
-      .catch(() => {});
+    if (!window.caches || typeof window.caches.keys !== "function") return resolved();
+    const ck = window.caches.keys();
+    if (!ck || typeof ck.then !== "function") return resolved();
+    return ck
+      .then(function (keys) {
+        if (!keys || !keys.length) return;
+        if (typeof Promise !== "undefined" && Promise.all) {
+          const ps = [];
+          for (let i = 0; i < keys.length; i++) ps.push(window.caches.delete(keys[i]));
+          return Promise.all(ps);
+        }
+        for (let i = 0; i < keys.length; i++) {
+          try {
+            window.caches.delete(keys[i]);
+          } catch (_) {}
+        }
+      })
+      .catch(function () {});
   } catch (_) {
-    return Promise.resolve();
+    return resolved();
   }
 }
 
@@ -140,6 +166,14 @@ function getGsLabelForPoll() {
   }
 }
 
+/** Токен из Python secrets.token_urlsafe — только ASCII A–Z a–z 0–9 _ - (иначе fetch ломается на заголовке Authorization). */
+function sanitizeGsTvBearerToken(raw) {
+  const s = String(raw || "").trim();
+  if (!s || s.length > 220) return "";
+  if (!/^[A-Za-z0-9_-]+$/.test(s)) return "";
+  return s;
+}
+
 /** Параметры гибрида: primary/fallback API и токен ТВ (из URL один раз → localStorage). */
 function initGsHybridFromUrl() {
   try {
@@ -166,7 +200,8 @@ function initGsHybridFromUrl() {
     }
     if (tok && tok.trim()) {
       try {
-        localStorage.setItem("gs_tv_bearer", tok.trim());
+        const clean = sanitizeGsTvBearerToken(tok);
+        if (clean) localStorage.setItem("gs_tv_bearer", clean);
       } catch (_) {}
       q.delete("gs_tv_token");
       const ns = q.toString();
@@ -212,13 +247,26 @@ function initGsHybridFromUrl() {
     q.delete("gs_reset");
     const ns = q.toString();
     const url = window.location.pathname + (ns ? `?${ns}` : "") + window.location.hash;
-    window.history.replaceState({}, "", url);
-    const go = () => {
+    try {
+      window.history.replaceState(null, "", url);
+    } catch (_) {
+      try {
+        window.history.replaceState({}, "", url);
+      } catch (_) {}
+    }
+    const go = function () {
       try {
         window.location.reload();
       } catch (_) {}
     };
-    Promise.resolve(purgeGsCachesBestEffort()).then(go, go);
+    // Не блокируем reload цепочкой Promise: на Smart TV caches/ Promise иногда дают «тихий» сбой → reload не вызывается.
+    try {
+      const p = purgeGsCachesBestEffort();
+      if (p && typeof p.then === "function") {
+        p.then(function () {}, function () {});
+      }
+    } catch (_) {}
+    setTimeout(go, 0);
   } catch (_) {}
 })();
 
@@ -226,7 +274,14 @@ initGsHybridFromUrl();
 
 function getGsTvBearer() {
   try {
-    return (localStorage.getItem("gs_tv_bearer") || "").trim();
+    const raw = localStorage.getItem("gs_tv_bearer") || "";
+    const clean = sanitizeGsTvBearerToken(raw);
+    if (!clean && raw.trim()) {
+      try {
+        localStorage.removeItem("gs_tv_bearer");
+      } catch (_) {}
+    }
+    return clean;
   } catch (_) {
     return "";
   }
@@ -530,7 +585,13 @@ function hideCrashBanner() {
 
 window.addEventListener("error", (ev) => {
   try {
-    const m = ev && (ev.message || (ev.error && ev.error.message)) ? (ev.message || ev.error.message) : "JS error";
+    let m =
+      ev && (ev.message || (ev.error && ev.error.message)) ? ev.message || (ev.error && ev.error.message) : "";
+    if (!m && ev && ev.filename) {
+      const tail = String(ev.filename).split("/").pop() || String(ev.filename);
+      m = `${tail}:${ev.lineno != null ? ev.lineno : "?"}`;
+    }
+    if (!m) m = "JS error";
     showCrashBanner(`Ошибка JS: ${m}`);
   } catch (_) {}
 });

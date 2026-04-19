@@ -19,6 +19,8 @@ export const state = {
   previewCache: null,
   previewCacheScreenId: null,
   widgetModalWidgetId: null,
+  /** TV: на сервере задан GUARDSCHOOL_TV_PAIR_BYPASS_PIN — чекбокс обхода PIN в UI отключён. */
+  tvPinBypassEnv: false,
 };
 
 export const GRID = { cols: 32, rows: 26 };
@@ -131,6 +133,7 @@ export const elements = {
   tvRotateCodeBtn: document.getElementById("tv-rotate-code-btn"),
   tvPinInput: document.getElementById("tv-pin-input"),
   tvSetPinBtn: document.getElementById("tv-set-pin-btn"),
+  tvPinBypassChk: document.getElementById("tv-pin-bypass"),
   tvCodeOut: document.getElementById("tv-code-out"),
   tvLinksWrap: document.getElementById("tv-links-wrap"),
 };

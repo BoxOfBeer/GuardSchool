@@ -193,17 +193,19 @@
 
   function buildScheduleTable(rows, title, settings) {
     const L = tvUiStrings();
+    settings = settings || {};
     if (!rows.length) {
       return `<section class="schedule-section"><h3 class="screen-section-title">${escapeHtml(title)}</h3><div class="schedule-section-msg">${escapeHtml(L.noData)}</div></section>`;
     }
 
+    // Макс. номер урока по всем строкам (даже с пустым subject) — иначе на ТВ «съедались» колонки и таблица казалась пустой.
     let maxByIndex = 0;
-    for (const row of rows) {
-      for (const les of row.lessons || []) {
-        const n = Number(les.index);
-        const subj = String(les.subject || "").trim();
-        const meaningful = Boolean(subj) || les.is_current || les.is_past || les.is_override || les.is_sample_diff;
-        if (meaningful && Number.isFinite(n) && n > maxByIndex) maxByIndex = n;
+    for (let ri = 0; ri < rows.length; ri++) {
+      const row = rows[ri];
+      const lessons = row.lessons || [];
+      for (let li = 0; li < lessons.length; li++) {
+        const n = Number(lessons[li].index);
+        if (Number.isFinite(n) && n > maxByIndex) maxByIndex = n;
       }
     }
     const maxLessons = Math.max(maxByIndex, 1);
@@ -232,15 +234,28 @@
     const bgOverride = hexToRgbCss(settings.highlightColor, "rgb(187,247,208)");
     const bgSample = hexToRgbCss(settings.sampleDiffColor, "rgb(254,243,199)");
 
-    const isMeaningfulLesson = (lesson) => {
-      if (!lesson) return false;
-      const subj = String(lesson.subject || "").trim();
-      return Boolean(subj) || lesson.is_current || lesson.is_past || lesson.is_override || lesson.is_sample_diff;
-    };
+    /** Колонка урока — если в данных есть ячейка (даже без текста предмета), показываем столбец (слабые ТВ / «пустые» ячейки в JSON). */
+    function rowHasLessonSlot(row, lessonIndex) {
+      const leg = (row.lessons || []).find(function (item) {
+        return Number(item.index) === lessonIndex;
+      });
+      if (!leg) return false;
+      const subj = String(leg.subject || "").trim();
+      if (subj) return true;
+      return Boolean(leg.is_current || leg.is_past || leg.is_override || leg.is_sample_diff);
+    }
 
-    const indices = Array.from({ length: maxLessons }, (_, idx) => idx + 1).filter((lessonIndex) =>
-      rows.some((row) => isMeaningfulLesson((row.lessons || []).find((item) => Number(item.index) === lessonIndex)))
-    );
+    const indices = [];
+    for (let lessonIndex = 1; lessonIndex <= maxLessons; lessonIndex++) {
+      let col = false;
+      for (let ri = 0; ri < rows.length; ri++) {
+        if (rowHasLessonSlot(rows[ri], lessonIndex)) {
+          col = true;
+          break;
+        }
+      }
+      if (col) indices.push(lessonIndex);
+    }
 
     // Важно для слабых ТВ: избегаем больших style-атрибутов и CSS-переменных.
     // Раскраска делается на уровне каждой ячейки <td> (inline rgb()).
@@ -671,15 +686,23 @@
       return buildBellCountdown(schedule.bell_status, widget.settings);
     }
     if (widget.type === "schedule") {
+      const ws = widget.settings || {};
       const title = schedule.bell_status?.schedule_title || L.scheduleDefault;
       const nextDayTitle = `${L.nextSchoolDay} ${formatDateLabel(schedule.next_school_day)}`;
-      const todayBlock = schedule.bell_status?.state === "done"
+      // «done» = день по звонкам закончен — тогда таблицу «сегодня» не показываем (остаётся «завтра»).
+      // Если слотов звонков нет, сервер раньше оставлял state «done» по умолчанию — таблица пропадала зря; учитываем entries.
+      const bellEntries = schedule.bell_status && Array.isArray(schedule.bell_status.entries)
+        ? schedule.bell_status.entries
+        : [];
+      const hideTodayAsSchoolDayOver =
+        schedule.bell_status?.state === "done" && bellEntries.length > 0;
+      const todayBlock = hideTodayAsSchoolDayOver
         ? ""
-        : buildScheduleTable(schedule.today_rows, title, widget.settings);
-      const showTomorrowBlock = widget.settings.showTomorrow !== false
+        : buildScheduleTable(schedule.today_rows, title, ws);
+      const showTomorrowBlock = ws.showTomorrow !== false
         && schedule.tomorrow_schedule_visible !== false;
       const tomorrowBlock = showTomorrowBlock
-        ? buildScheduleTable(schedule.tomorrow_rows, nextDayTitle, widget.settings)
+        ? buildScheduleTable(schedule.tomorrow_rows, nextDayTitle, ws)
         : "";
       return `<div class="schedule-widget-content">${todayBlock}${tomorrowBlock}</div>`;
     }

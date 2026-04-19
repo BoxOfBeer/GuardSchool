@@ -234,13 +234,30 @@ async function refreshTvAccessUi() {
     const st = await api("/api/admin/tv-access");
     const configured = Boolean(st.configured);
     const code = String(st.code || "").trim();
+    const tslug = String(st.tenant_slug || "").trim();
+    state.tvPinBypassEnv = Boolean(st.pin_bypass_from_env);
     if (code) _tvLastCode = code;
+    if (elements.tvPinBypassChk) {
+      elements.tvPinBypassChk.setAttribute("data-loading", "1");
+      elements.tvPinBypassChk.checked = Boolean(
+        st.pin_bypass_from_db || st.pin_bypass_from_config
+      );
+      elements.tvPinBypassChk.disabled = Boolean(st.pin_bypass_from_env);
+      elements.tvPinBypassChk.removeAttribute("data-loading");
+    }
     if (elements.tvCodeOut) {
-      elements.tvCodeOut.textContent = code
-        ? `КОД ШКОЛЫ:\n${code}\n\nСсылки ниже готовы. Нажмите «Сгенерировать код», чтобы сменить код (старые ссылки перестанут работать).`
-        : configured
-          ? "Код школы уже сгенерирован, но не может быть показан. Нажмите «Сгенерировать код», чтобы установить новый код."
-          : "Код школы ещё не создан. Нажмите «Сгенерировать код», затем задайте PIN.";
+      const head = tslug ? `Школа (тенант): ${tslug}\n\n` : "";
+      const envHint = state.tvPinBypassEnv
+        ? "\n\nНа сервере задан GUARDSCHOOL_TV_PAIR_BYPASS_PIN — обход PIN включён в окружении; чекбокс ниже заблокирован.\n"
+        : "";
+      elements.tvCodeOut.textContent =
+        head +
+        envHint +
+        (code
+          ? `КОД ШКОЛЫ:\n${code}\n\nСсылки ниже готовы. «Сгенерировать код» отменяет старые ссылки и QR.`
+          : configured
+            ? "Код школы уже сгенерирован, но не может быть показан. Нажмите «Сгенерировать код», чтобы установить новый код."
+            : "Код школы ещё не создан. Нажмите «Сгенерировать код», затем задайте PIN.");
     }
   } catch (e) {
     if (elements.tvCodeOut) elements.tvCodeOut.textContent = `Ошибка: ${e.message || String(e)}`;
@@ -297,7 +314,10 @@ function bindProgramSettingsModalOnce() {
       if (elements.tvCodeOut) {
         const pinLine = ip ? `\n\nPIN ТВ (показан один раз):\n${ip}\n` : "";
         const hint = r.pin_hint ? `\n${String(r.pin_hint)}` : "";
-        elements.tvCodeOut.textContent = `КОД ШКОЛЫ:\n${code}\n\nСохраните код. После обновления страницы код скрывается.${pinLine}${hint}`;
+        const ts = String(r.tenant_slug || "").trim();
+        const head = ts ? `Школа (тенант): ${ts}\n\n` : "";
+        elements.tvCodeOut.textContent =
+          `${head}КОД ШКОЛЫ:\n${code}\n\nСохраните код и обновите QR/ссылки. Старый код перестаёт работать.${pinLine}${hint}`;
       }
       renderTvLinks(code);
     } catch (e) {
@@ -319,6 +339,27 @@ function bindProgramSettingsModalOnce() {
       });
       alert("PIN сохранён.");
     } catch (e) {
+      alert(e.message || String(e));
+    }
+  });
+
+  elements.tvPinBypassChk?.addEventListener("change", async () => {
+    const el = elements.tvPinBypassChk;
+    if (!el || el.getAttribute("data-loading")) return;
+    if (state.tvPinBypassEnv) {
+      el.checked = !el.checked;
+      alert("Отключите GUARDSCHOOL_TV_PAIR_BYPASS_PIN на сервере — сейчас обход задаётся только переменной окружения.");
+      return;
+    }
+    const want = Boolean(el.checked);
+    try {
+      await api("/api/admin/tv-access/pin-bypass", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: want }),
+      });
+    } catch (e) {
+      el.checked = !want;
       alert(e.message || String(e));
     }
   });
