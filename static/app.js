@@ -265,9 +265,73 @@ async function refreshTvAccessUi() {
   renderTvLinks(_tvLastCode);
 }
 
+function getStoredProgramSettingsTab() {
+  try {
+    const t = sessionStorage.getItem(GS_ADMIN_PROGRAM_SETTINGS_TAB);
+    if (t === "general" || t === "tv" || t === "changelog") return t;
+  } catch (_) {}
+  return "general";
+}
+
+async function refreshProgramHistoryFromApi() {
+  try {
+    const hist = await api("/api/admin/history");
+    state.history = hist.history || [];
+    state.appVersion = hist.app_version || state.appVersion;
+  } catch (_) {}
+  renderHistory();
+}
+
+function syncProgramSettingsTvTabVisibility() {
+  const modal = elements.programSettingsModal;
+  if (!modal) return;
+  const tabBtn = modal.querySelector("[data-ps-tab=\"tv\"]");
+  const saas = state.meta?.deployment_mode === "saas";
+  if (tabBtn) tabBtn.hidden = !saas;
+  if (!saas && getStoredProgramSettingsTab() === "tv") {
+    try {
+      sessionStorage.setItem(GS_ADMIN_PROGRAM_SETTINGS_TAB, "general");
+    } catch (_) {}
+  }
+}
+
+function setProgramSettingsTab(tab) {
+  const modal = elements.programSettingsModal;
+  if (!modal) return;
+  if (tab === "tv" && state.meta?.deployment_mode !== "saas") tab = "general";
+  try {
+    sessionStorage.setItem(GS_ADMIN_PROGRAM_SETTINGS_TAB, tab);
+  } catch (_) {}
+  modal.querySelectorAll("[data-ps-tab]").forEach((btn) => {
+    const id = btn.getAttribute("data-ps-tab");
+    const on = id === tab;
+    btn.classList.toggle("active", on);
+    btn.setAttribute("aria-selected", on ? "true" : "false");
+  });
+  modal.querySelectorAll("[data-ps-pane]").forEach((pane) => {
+    pane.hidden = pane.getAttribute("data-ps-pane") !== tab;
+  });
+  if (tab === "changelog") refreshProgramHistoryFromApi();
+}
+
+function initProgramSettingsTabListenersOnce() {
+  if (initProgramSettingsTabListenersOnce._done) return;
+  initProgramSettingsTabListenersOnce._done = true;
+  elements.programSettingsModal?.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-ps-tab]");
+    if (!b || !elements.programSettingsModal?.contains(b)) return;
+    e.preventDefault();
+    const t = b.getAttribute("data-ps-tab");
+    if (t) setProgramSettingsTab(t);
+  });
+}
+
 function openProgramSettingsModal() {
   if (!elements.programSettingsModal) return;
   closeWidgetModal();
+  initProgramSettingsTabListenersOnce();
+  syncProgramSettingsTvTabVisibility();
+  setProgramSettingsTab(getStoredProgramSettingsTab());
   syncProgramSettingsFieldsFromState();
   renderProgramPaletteCheckboxes();
   refreshSyncStatusLine().catch(() => {});
@@ -277,11 +341,13 @@ function openProgramSettingsModal() {
   } catch (_) {}
   elements.programSettingsModal.hidden = false;
   elements.programSettingsModal.setAttribute("aria-hidden", "false");
+  document.body.classList.add("program-settings-page-open");
 }
 
 function closeProgramSettingsModal() {
   const m = elements.programSettingsModal;
   if (!m) return;
+  document.body.classList.remove("program-settings-page-open");
   const ae = document.activeElement;
   if (ae && m.contains(ae)) {
     if (elements.programSettingsOpenBtn) elements.programSettingsOpenBtn.focus();
@@ -714,6 +780,7 @@ function clampBackgroundRotateIntervalSec(n) {
 const GS_ADMIN_SESSION_TOP = "gs_admin_top";
 const GS_ADMIN_SESSION_SCREEN = "gs_admin_screen_id";
 const GS_ADMIN_SESSION_SECTION = "gs_admin_section";
+const GS_ADMIN_PROGRAM_SETTINGS_TAB = "gs_admin_program_settings_tab";
 
 function restoreAdminUiFromSession() {
   if (!state.config?.screens?.length) return;
@@ -725,7 +792,8 @@ function restoreAdminUiFromSession() {
       }
     }
     const sec = sessionStorage.getItem(GS_ADMIN_SESSION_SECTION);
-    if (sec && ["main", "schedule", "preview", "history"].includes(sec)) state.activeSection = sec;
+    if (sec === "history") state.activeSection = "main";
+    else if (sec && ["main", "schedule", "preview"].includes(sec)) state.activeSection = sec;
     const top = sessionStorage.getItem(GS_ADMIN_SESSION_TOP);
     const sid = sessionStorage.getItem(GS_ADMIN_SESSION_SCREEN);
     if (top === "audio") {

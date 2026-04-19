@@ -44,26 +44,49 @@ def _load_seed_entries() -> list[dict[str, Any]]:
     ]
 
 
+def _version_sort_key(ver: str) -> tuple[Any, ...]:
+    key: list[Any] = []
+    for seg in str(ver or "").strip().split("."):
+        seg = seg.strip()
+        if not seg:
+            continue
+        try:
+            key.append(int(seg))
+        except ValueError:
+            key.append(seg)
+    return tuple(key)
+
+
 def load_change_log() -> list[dict[str, Any]]:
-    """Только записи с непустым version (аудит без версии не показывается и может быть вычищен из файла)."""
+    """Записи с непустым version: объединение журнала школы (файл) и сида репозитория; при одной version — приоритет у файла школы."""
     raw = read_json(CHANGE_LOG_PATH, [])
-    if not isinstance(raw, list):
-        return []
-    out: list[dict[str, Any]] = []
-    for item in raw:
-        if not isinstance(item, dict):
-            continue
-        msg = item.get("message")
-        if msg is None:
-            continue
-        ver_s = str(item.get("version") or "").strip()
-        if not ver_s:
-            continue
-        ts = item.get("timestamp")
-        if not ts:
-            ts = datetime.now().isoformat(timespec="seconds")
-        out.append({"timestamp": str(ts), "message": str(msg), "version": ver_s})
-    return out
+    tenant: list[dict[str, Any]] = []
+    if isinstance(raw, list):
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+            msg = item.get("message")
+            if msg is None:
+                continue
+            ver_s = str(item.get("version") or "").strip()
+            if not ver_s:
+                continue
+            ts = item.get("timestamp")
+            if not ts:
+                ts = datetime.now().isoformat(timespec="seconds")
+            tenant.append({"timestamp": str(ts), "message": str(msg), "version": ver_s})
+    by_ver: dict[str, dict[str, Any]] = {}
+    for item in _load_seed_entries():
+        v = str(item.get("version") or "").strip()
+        if v:
+            by_ver[v] = {"timestamp": str(item.get("timestamp") or ""), "message": str(item.get("message") or ""), "version": v}
+    for item in tenant:
+        v = str(item.get("version") or "").strip()
+        if v:
+            by_ver[v] = item
+    merged = list(by_ver.values())
+    merged.sort(key=lambda x: _version_sort_key(str(x.get("version") or "")), reverse=True)
+    return merged[:_MAX_ENTRIES]
 
 
 def append_release_note(message: str, *, version: str | None = None) -> None:

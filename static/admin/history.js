@@ -6,6 +6,7 @@ import { t } from "./i18n-helpers.js";
 import { escapeHtmlAttr } from "./escape-html.js";
 
 export function renderHistory() {
+  if (!elements.historyList) return;
   const loc = window.GuardSchoolI18n?.getLang?.() === "en" ? "en-US" : "ru-RU";
   const verHint = state.appVersion
     ? `<p class="hint history-app-ver">${t("history.currentVersion")} <strong>${escapeHtmlAttr(state.appVersion)}</strong></p>`

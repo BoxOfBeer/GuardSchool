@@ -1006,13 +1006,95 @@ button {
   padding: 12px 14px 18px;
 }
 
-.program-settings-panel {
-  width: min(640px, 100%);
+body.program-settings-page-open {
+  overflow: hidden;
 }
 
-.program-settings-body {
-  max-height: min(85vh, 840px);
+.program-settings-fullpage[hidden] {
+  display: none !important;
+}
+
+.program-settings-fullpage {
+  position: fixed;
+  inset: 0;
+  z-index: 220;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.program-settings-page-header {
+  flex: 0 0 auto;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(15, 23, 42, 0.97);
+  backdrop-filter: blur(10px);
+}
+
+.program-settings-page-header-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  max-width: 960px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.program-settings-page-header-inner h2 {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.program-settings-subtabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 16px 12px;
+  max-width: 960px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.program-settings-subtab {
+  appearance: none;
+  font: inherit;
+  cursor: pointer;
+  padding: 8px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(30, 41, 59, 0.55);
+  color: var(--muted);
+}
+
+.program-settings-subtab:hover {
+  border-color: rgba(56, 189, 248, 0.45);
+  color: var(--text);
+}
+
+.program-settings-subtab.active {
+  border-color: rgba(56, 189, 248, 0.75);
+  color: var(--accent);
+  background: rgba(30, 41, 59, 0.85);
+}
+
+.program-settings-page-scroll {
+  flex: 1 1 auto;
   overflow-y: auto;
+  padding: 16px 16px 40px;
+}
+
+.program-settings-pane {
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+.program-settings-changelog-title {
+  margin: 0 0 8px;
+  font-size: 1.05rem;
+  font-weight: 700;
 }
 
 .program-settings-palette-head {
@@ -2228,6 +2310,8 @@ label.bell-file-upload:hover {
 
 .history-msg {
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .history-app-ver {

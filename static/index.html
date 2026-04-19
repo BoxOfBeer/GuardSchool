@@ -283,12 +283,6 @@
           <div id="preview-sound-diag" class="preview-sound-diag" hidden></div>
           <div id="preview" class="screen-preview"></div>
         </div>
-
-        <div class="card span-2" data-section="history">
-          <h2 data-i18n="section.changelogTitle">Изменения программы</h2>
-          <p class="hint history-lead" data-i18n="history.lead">Здесь только выпуски программы (номер версии в записи). Сохранения расписания и настроек в этот список не попадают.</p>
-          <div id="history-list" class="history-list"></div>
-        </div>
       </section>
       </div>
 
@@ -396,15 +390,21 @@
     </main>
   </div>
 
-  <div id="program-settings-modal" class="widget-editor-modal program-settings-modal" hidden aria-hidden="true">
-    <div class="widget-editor-modal-backdrop" data-close-program-settings tabindex="-1"></div>
-    <div class="widget-editor-modal-panel program-settings-panel" role="dialog" aria-modal="true" aria-labelledby="program-settings-modal-title">
-      <div class="widget-editor-modal-header">
+  <div id="program-settings-modal" class="program-settings-fullpage" hidden aria-hidden="true">
+    <header class="program-settings-page-header">
+      <div class="program-settings-page-header-inner">
         <h2 id="program-settings-modal-title" data-i18n="programSettings.title">Настройки программы</h2>
         <button type="button" class="secondary-btn compact-btn" data-close-program-settings data-i18n="modal.close">Закрыть</button>
       </div>
-      <div class="widget-editor-modal-body program-settings-body">
-        <div class="settings-popover-grid">
+      <nav class="program-settings-subtabs" role="tablist" aria-label="Разделы настроек">
+        <button type="button" class="program-settings-subtab active" role="tab" data-ps-tab="general" aria-selected="true" data-i18n="programSettings.tabGeneral">Общее</button>
+        <button type="button" class="program-settings-subtab" role="tab" data-ps-tab="tv" aria-selected="false" data-i18n="programSettings.tabTv">ТВ (SaaS)</button>
+        <button type="button" class="program-settings-subtab" role="tab" data-ps-tab="changelog" aria-selected="false" data-i18n="programSettings.tabChangelog">Изменения</button>
+      </nav>
+    </header>
+    <div class="program-settings-page-scroll">
+      <div id="program-settings-pane-general" class="program-settings-pane" data-ps-pane="general" role="tabpanel">
+        <div class="settings-popover-grid program-settings-pane-grid">
           <h4 class="settings-popover-subhead" data-i18n="regional.title">Язык, время и пояс</h4>
           <label class="settings-row"><span data-i18n="top.lang">Язык</span>
             <select id="admin-locale-select" class="standard-input wide-input" title="Language">
@@ -456,27 +456,6 @@
           <p class="hint program-settings-palette-hint" data-i18n="programSettings.paletteHint">Снятая галочка скрывает тип только в списке под заголовком «Виджеты» (кнопка «Настроить»). На ТВ и в сетке предпросмотра без изменений. Чтобы настроить скрытый блок — отметьте тип снова.</p>
           <div id="program-settings-palette-checkboxes" class="program-settings-palette-grid"></div>
 
-          <h4 id="tv-access-head" class="settings-popover-subhead" style="margin-top: 16px" hidden>Подключение ТВ (SaaS)</h4>
-          <div id="tv-access-wrap" class="settings-row" hidden>
-            <p class="hint" style="margin-top: 0">
-              Сгенерируйте короткий код школы, задайте PIN (4–12 цифр) и используйте ссылки для экранов:
-              <code>/t/&lt;код&gt;/&lt;экран&gt;</code>.
-              PIN для ТВ хранится <strong>отдельно</strong> от кнопки «Сохранить» вверху: его меняют только поле ниже и «Сохранить PIN».
-              После «Сгенерировать код» старые ссылки и QR с прежним кодом <strong>перестают работать</strong>.
-            </p>
-            <div class="settings-row settings-btn-row" style="justify-content: flex-start; gap: 10px; flex-wrap: wrap">
-              <button type="button" id="tv-rotate-code-btn" class="secondary-btn">Сгенерировать код</button>
-              <input id="tv-pin-input" class="standard-input" inputmode="numeric" placeholder="PIN 4–12 цифр" style="max-width: 180px" />
-              <button type="button" id="tv-set-pin-btn" class="secondary-btn">Сохранить PIN</button>
-            </div>
-            <label class="hint" style="display: flex; align-items: flex-start; gap: 10px; margin-top: 10px; cursor: pointer; max-width: 720px; line-height: 1.45">
-              <input type="checkbox" id="tv-pin-bypass" style="margin-top: 3px" />
-              <span>Тест: не показывать страницу ввода PIN — по ссылке <code>/t/…/…</code> сразу открывается экран (защита только секретным кодом в адресе). Выключается этим же чекбоксом.</span>
-            </label>
-            <pre id="tv-code-out" class="settings-probe-out" style="white-space: pre-wrap"></pre>
-            <div id="tv-links-wrap" class="settings-row" style="margin-top: 10px"></div>
-          </div>
-
           <div class="settings-row settings-btn-row">
             <button id="save-config-btn" type="button" class="primary-btn" data-i18n="top.save">Сохранить</button>
             <button id="export-data-btn" type="button" class="secondary-btn" data-i18n="top.export">Экспорт ZIP</button>
@@ -496,6 +475,39 @@
           <p class="hint settings-file-input-hint" data-i18n="top.filePickerHint">Подпись кнопки выбора файла задаётся браузером/ОС и может не совпадать с языком интерфейса.</p>
         </div>
       </div>
+
+      <div id="program-settings-pane-tv" class="program-settings-pane" data-ps-pane="tv" role="tabpanel" hidden>
+        <div class="settings-popover-grid program-settings-pane-grid">
+          <h4 id="tv-access-head" class="settings-popover-subhead" style="margin-top: 0" hidden>Подключение ТВ (SaaS)</h4>
+          <div id="tv-access-wrap" class="settings-row" hidden>
+            <p class="hint" style="margin-top: 0">
+              Сгенерируйте короткий код школы, задайте PIN (4–12 цифр) и используйте ссылки для экранов:
+              <code>/t/&lt;код&gt;/&lt;экран&gt;</code>.
+              PIN для ТВ хранится <strong>отдельно</strong> от кнопки «Сохранить» вверху: его меняют только поле ниже и «Сохранить PIN».
+              После «Сгенерировать код» старые ссылки и QR с прежним кодом <strong>перестают работать</strong>.
+            </p>
+            <div class="settings-row settings-btn-row" style="justify-content: flex-start; gap: 10px; flex-wrap: wrap">
+              <button type="button" id="tv-rotate-code-btn" class="secondary-btn">Сгенерировать код</button>
+              <input id="tv-pin-input" class="standard-input" inputmode="numeric" placeholder="PIN 4–12 цифр" style="max-width: 180px" />
+              <button type="button" id="tv-set-pin-btn" class="secondary-btn">Сохранить PIN</button>
+            </div>
+            <label class="hint" style="display: flex; align-items: flex-start; gap: 10px; margin-top: 10px; cursor: pointer; max-width: 720px; line-height: 1.45">
+              <input type="checkbox" id="tv-pin-bypass" style="margin-top: 3px" />
+              <span>Тест: не показывать страницу ввода PIN — по ссылке <code>/t/…/…</code> сразу открывается экран (защита только секретным кодом в адресе). Выключается этим же чекбоксом.</span>
+            </label>
+            <pre id="tv-code-out" class="settings-probe-out" style="white-space: pre-wrap"></pre>
+            <div id="tv-links-wrap" class="settings-row" style="margin-top: 10px"></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="program-settings-pane-changelog" class="program-settings-pane" data-ps-pane="changelog" role="tabpanel" hidden>
+        <div class="settings-popover-grid program-settings-pane-grid program-settings-changelog-wrap">
+          <h3 class="program-settings-changelog-title" data-i18n="section.changelogTitle">Изменения программы</h3>
+          <p class="hint history-lead" data-i18n="history.lead">Здесь только выпуски программы (номер версии в записи). Сохранения расписания и настроек в этот список не попадают.</p>
+          <div id="history-list" class="history-list"></div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -511,6 +523,6 @@
   </div>
 
   <script src="/static/i18n.js?v=3"></script>
-  <script type="module" src="/static/app.js?v=1.02.001"></script>
+  <script type="module" src="/static/app.js?v=1.02.033"></script>
 </body>
 </html>
