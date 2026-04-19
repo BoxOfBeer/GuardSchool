@@ -435,6 +435,19 @@ function getGsGridForPoll(slug) {
   }
 }
 
+/** Первый виджет типа `type` в конфиге экрана (в т.ч. только внутри карусели — его нет в mobile-stack / sortWidgetsForDom). */
+function pickWidgetByTypeFromScreen(screen, type) {
+  const want = String(type || "").trim();
+  if (!want || !screen || !Array.isArray(screen.widgets)) return null;
+  for (let i = 0; i < screen.widgets.length; i++) {
+    const w = screen.widgets[i];
+    if (!w || String(w.type || "") !== want) continue;
+    if (w.menu_only === true || w.type === "emergency") continue;
+    return w;
+  }
+  return null;
+}
+
 function getGsClassesForPoll(slug) {
   try {
     const q = gsQueryParams(window.location.search || "");
@@ -1015,19 +1028,11 @@ function render(screenPayload) {
       ? orderedAll.filter((w) => configuredSet.has(String(w.id)))
       : orderedDefault;
     let filtered = mwTypes ? ordered.filter((w) => mwTypes.has(String(w.type))) : ordered;
-    // Тип отмечен в gs_mw, но виджета нет в mobile_widget_ids — всё равно показываем из полного стека (иначе «только schedule» → пусто).
+    // Тип в gs_mw, но виджета нет в ленте (не в mobile_widget_ids / выключен / только внутри карусели) — берём из полного конфига экрана.
     if (mwTypes && mwTypes.size) {
       for (const t of mwTypes) {
         if (filtered.some((w) => w && String(w.type) === t)) continue;
-        const cand = orderedAll.find(
-          (w) =>
-            w &&
-            String(w.type) === t &&
-            w.enabled !== false &&
-            w.menu_only !== true &&
-            w.type !== "emergency" &&
-            !(hiddenWidgetIds.has(w.id) && w.type !== "carousel")
-        );
+        const cand = pickWidgetByTypeFromScreen(screen, t);
         if (cand && !filtered.some((w) => String(w.id) === String(cand.id))) filtered.push(cand);
       }
       const rank = new Map(orderedAll.map((w, i) => [String(w.id), i]));
@@ -1087,8 +1092,23 @@ function render(screenPayload) {
       if (w.menu_only === true) return false;
       return true;
     });
-    // На экране с mobile_mode «сетка на устройстве» — та же логика фильтра типов, что и в ленте (иначе gs_mw игнорируется).
+    // На экране с mobile_mode «сетка на устройстве» — фильтр gs_mw; дочерние карусели подмешиваем из полного конфига.
     if (deviceGridOverride && mwTypes && mwTypes.size) {
+      const seen = new Set(ordered.map((w) => String(w.id)));
+      for (const t of mwTypes) {
+        if (ordered.some((w) => w && String(w.type) === t)) continue;
+        const w = pickWidgetByTypeFromScreen(screen, t);
+        if (w && !seen.has(String(w.id))) {
+          ordered.push(w);
+          seen.add(String(w.id));
+        }
+      }
+      const ord = screen.widgets || [];
+      const idx = (w) => {
+        const i = ord.findIndex((x) => x && String(x.id) === String(w.id));
+        return i < 0 ? 1e9 : i;
+      };
+      ordered.sort((a, b) => idx(a) - idx(b));
       ordered = ordered.filter((w) => {
         if (!w) return false;
         if (w.type === "emergency") return true;
@@ -1097,7 +1117,9 @@ function render(screenPayload) {
     }
 
     ordered.forEach((widget) => {
-      if (widget.enabled === false) return;
+      const allowDisabledForMw =
+        Boolean(deviceGridOverride && mwTypes && mwTypes.size && mwTypes.has(String(widget.type)));
+      if (widget.enabled === false && !allowDisabledForMw) return;
       if (hiddenWidgetIds.has(widget.id) && widget.type !== "carousel") return;
       const block = document.createElement("div");
       block.className = "screen-widget";
