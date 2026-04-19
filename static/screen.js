@@ -328,6 +328,17 @@ function ensureDeviceSettingsUi() {
         <div class="gs-device-classes-hint">Фильтр типов виджетов в ленте. Пустой список в хранилище = все типы. Сохранение «на устройстве» не должно сбрасывать отмеченные типы — см. галочку ниже.</div>
         <div id="gs-device-widgets" class="gs-device-settings-checks"></div>
       </div>
+      <div class="gs-device-settings-row gs-device-url-hint-wrap">
+        <details class="gs-device-url-hint">
+          <summary>Сброс и параметры в адресе (редко нужно)</summary>
+          <p class="gs-device-url-hint-body">
+            Сброс настроек этого экрана в браузере: добавьте в URL <code>?gs_reset=1</code> (классы, виджеты, сетка/лента, гибрид и токен ТВ для slug) или <code>?gs_reset=all</code> — все ключи <code>gs_*</code> в localStorage и кэши Fetch. Параметр из адреса убирается сам; cookie входа в админку страница не трогает.
+            Подпись места в статистике: <code>?gs_label=Столовая</code>.
+            Принудительно сетка при мобильном режиме экрана: <code>?gs_grid=1</code>, сброс: <code>?gs_grid=0</code>.
+            Имя ПК Windows в браузер не передаётся; в статистику уходит краткая строка устройства (платформа/модель), если доступно.
+          </p>
+        </details>
+      </div>
       <div class="gs-device-settings-actions">
         <button type="button" class="gs-device-btn-primary" id="gs-device-apply">Применить</button>
         <button type="button" class="gs-device-btn-secondary" id="gs-device-reset">Сбросить</button>
@@ -403,10 +414,10 @@ function getGsMobileWidgetsForPoll(slug) {
   }
 }
 
-function screenPollUrl(base, slug, cid, lab, dev, mobileMode) {
-  const m = Boolean(mobileMode);
-  const classes = m ? getGsClassesForPoll(slug) : "";
-  const mw = m ? getGsMobileWidgetsForPoll(slug) : "";
+function screenPollUrl(base, slug, cid, lab, dev, _mobileMode) {
+  const classes = (getGsClassesForPoll(slug) || "").trim();
+  // gs_mw обрабатывает только клиент; в URL — чтобы сразу после ?gs_mw= попало в localStorage.
+  const mw = (getGsMobileWidgetsForPoll(slug) || "").trim();
   const qs = `ts=${Date.now()}&gs_client=${cid}&gs_label=${lab}&gs_device=${dev}`
     + (classes ? `&gs_classes=${encodeURIComponent(classes)}` : "")
     + (mw ? `&gs_mw=${encodeURIComponent(mw)}` : "");

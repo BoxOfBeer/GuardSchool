@@ -1375,9 +1375,8 @@ def sanitize_config(config: dict[str, Any]) -> dict[str, Any]:
     return config
 
 
-# ВРЕМЕННО: отключить фильтр классов экрана / gs_classes для расписания (диагностика ТВ).
-# После проверки выставить False и вернуть логику выбора параллелей.
-_TEMP_DISABLE_SCREEN_CLASS_FILTER = True
+# Фильтр классов по `screen.selected_classes` и по `?gs_classes=` (настройки устройства на ТВ/телефоне).
+_TEMP_DISABLE_SCREEN_CLASS_FILTER = False
 
 
 def load_schedule() -> list[dict[str, Any]]:

@@ -221,6 +221,33 @@ body.screen-body {
   padding-right: 4px;
 }
 
+.gs-device-url-hint-wrap {
+  margin-top: 8px;
+}
+
+.gs-device-url-hint {
+  font-size: 13px;
+  color: rgba(203, 213, 225, 0.95);
+}
+
+.gs-device-url-hint summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: #94a3b8;
+}
+
+.gs-device-url-hint-body {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: rgba(148, 163, 184, 0.95);
+}
+
+.gs-device-url-hint-body code {
+  font-size: 11px;
+  word-break: break-all;
+}
+
 /* Слои фона ТВ: плавная смена картинки без мигания всего экрана */
 .gs-tv-bg-layer {
   position: absolute;
