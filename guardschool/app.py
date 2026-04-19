@@ -1417,7 +1417,7 @@ def distinct_schedule_class_names_from_sources(
     by_key: dict[str, str] = {}
     for source in (dated or [], weekly or [], sample or []):
         for item in source:
-            raw = str(item.get("class_name") or "").strip()
+            raw = str(item.get("class_name") or item.get("class_key") or "").strip()
             if not raw:
                 continue
             k = normalize_class(raw)
@@ -4008,10 +4008,9 @@ def get_screen(request: Request, slug: str) -> JSONResponse:
         raise HTTPException(status_code=404, detail="Экран не найден.")
     pickable = pickable_classes_for_screen(screen0)
     qp = request.query_params
-    # Персонализация для устройства: можно передать ?gs_classes=6A,9 и сохранить в localStorage клиента.
-    # Это переопределяет selected_classes только для этого запроса (телефона), конфиг в БД/файле не трогаем.
+    # Фильтр gs_classes только в мобильном режиме экрана; иначе игнорируем (ТВ/сетка = только конфиг).
     raw_classes = str(qp.get("gs_classes") or "").strip()
-    if raw_classes:
+    if raw_classes and bool(screen0.get("mobile_mode")):
         parts = [p.strip() for p in raw_classes.split(",") if p.strip()]
         parts = parts[:12]
         if parts:

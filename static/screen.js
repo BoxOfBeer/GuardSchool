@@ -232,34 +232,9 @@ function getGsTvBearer() {
   }
 }
 
-/**
- * Плавающая шестерёнка: на сервере включается с mobile_mode, но ТВ/телефон часто без него.
- * Показываем на сенсоре, узком окне и типичных ТВ UA; на обычном ПК с мышью — только если в конфиге mobile_mode.
- */
+/** Плавающая шестерёнка и фильтр классов на устройстве — только при mobile_mode экрана (см. get_screen / screenPollUrl). */
 function gsShowScreenDeviceGear(screen) {
-  if (!screen) return false;
-  try {
-    const q = gsQueryParams(window.location.search || "");
-    if (q.get("gs_gear") === "1") return true;
-  } catch (_) {}
-  if (screen.mobile_mode) return true;
-  try {
-    if (window.matchMedia && window.matchMedia("(max-width: 720px)").matches) return true;
-    if (window.matchMedia && window.matchMedia("(pointer: coarse)").matches) return true;
-    if (Number(navigator.maxTouchPoints) > 0) return true;
-  } catch (_) {}
-  try {
-    if (window.matchMedia && window.matchMedia("(pointer: coarse) and (hover: none)").matches) return true;
-  } catch (_) {}
-  const ua = String(navigator.userAgent || "");
-  if (
-    /SmartTV|SMART-TV|BRAVIA|Apple TV|Tizen|webOS|WebTV|GoogleTV|AFTM|AFTB|AFTT|MiTV|HbbTV|NetCast|VIDAA|Freeview|YouView|TV\s*Browser|CrKey/i.test(
-      ua
-    )
-  ) {
-    return true;
-  }
-  return false;
+  return Boolean(screen && screen.mobile_mode);
 }
 
 function ensureDeviceSettingsUi() {
@@ -373,9 +348,10 @@ function getGsMobileWidgetsForPoll(slug) {
   }
 }
 
-function screenPollUrl(base, slug, cid, lab, dev) {
-  const classes = getGsClassesForPoll(slug);
-  const mw = getGsMobileWidgetsForPoll(slug);
+function screenPollUrl(base, slug, cid, lab, dev, mobileMode) {
+  const m = Boolean(mobileMode);
+  const classes = m ? getGsClassesForPoll(slug) : "";
+  const mw = m ? getGsMobileWidgetsForPoll(slug) : "";
   const qs = `ts=${Date.now()}&gs_client=${cid}&gs_label=${lab}&gs_device=${dev}`
     + (classes ? `&gs_classes=${encodeURIComponent(classes)}` : "")
     + (mw ? `&gs_mw=${encodeURIComponent(mw)}` : "");
@@ -1368,8 +1344,13 @@ async function refresh() {
 
     let response = null;
     let lastErr = null;
+    const mobilePoll = Boolean(
+      window.__lastScreenPayload &&
+      window.__lastScreenPayload.screen &&
+      window.__lastScreenPayload.screen.mobile_mode,
+    );
     for (const b of bases) {
-      const url = screenPollUrl(b, slug, cid, lab, dev);
+      const url = screenPollUrl(b, slug, cid, lab, dev, mobilePoll);
       try {
         const r = await fetchScreenPayload(url, hdr, Math.min(45000, timeoutMs + 5000));
         if (r.ok) {
@@ -1387,7 +1368,7 @@ async function refresh() {
     let payload = await response.json();
     if (gsRepairToxicGsClasses(slug, payload.pickable_classes || [])) {
       for (const b of bases) {
-        const url2 = screenPollUrl(b, slug, cid, lab, dev);
+        const url2 = screenPollUrl(b, slug, cid, lab, dev, mobilePoll);
         try {
           const r2 = await fetchScreenPayload(url2, hdr, Math.min(45000, timeoutMs + 5000));
           if (r2.ok) {
