@@ -1310,6 +1310,18 @@ def schedule_date_iso(raw: Any) -> str:
         return raw.date().isoformat()
     if isinstance(raw, date):
         return raw.isoformat()
+    if isinstance(raw, (int, float)) and not isinstance(raw, bool):
+        try:
+            n = int(raw)
+        except (TypeError, ValueError):
+            n = 0
+        # Серийный номер даты Excel (часто попадает в JSON при ручном экспорте)
+        if 29500 < n < 65000:
+            try:
+                return (date(1899, 12, 30) + timedelta(days=n)).isoformat()
+            except (OverflowError, ValueError):
+                return ""
+        return ""
     s = str(raw).strip()
     if not s:
         return ""
@@ -2002,44 +2014,57 @@ def build_schedule_payload(
     classes = screen.get("selected_classes", [])
     selectors = [normalize_class(item) for item in classes if normalize_class(item)]
 
-    future_iso = sorted(
+    tgt_iso = target_date.isoformat()
+    all_future_iso = sorted(
         {
             d_iso
             for item in schedule_data
             if (d_iso := schedule_date_iso(item.get("date")))
             and len(d_iso) >= 10
-            and d_iso > target_date.isoformat()
+            and d_iso > tgt_iso
+        }
+    )
+    filtered_future_iso = sorted(
+        {
+            d_iso
+            for item in schedule_data
+            if (d_iso := schedule_date_iso(item.get("date")))
+            and len(d_iso) >= 10
+            and d_iso > tgt_iso
             and class_in_selected(item["class_key"], selectors)
         }
     )
+    future_pick = filtered_future_iso or all_future_iso
     next_school_date = (
-        date.fromisoformat(future_iso[0][:10])
-        if future_iso
+        date.fromisoformat(future_pick[0][:10])
+        if future_pick
         else date.fromordinal(target_date.toordinal() + 1)
     )
 
     show_next_day = tomorrow_schedule_visible(bell_status)
 
-    today_rows = collect_enriched_schedule_rows(
-        day=target_date,
-        marker_reference_date=target_date,
-        schedule_data=schedule_data,
-        full_data=full_data,
-        sample_data=sample_data,
-        overrides=overrides,
-        selectors=selectors,
-        bell_status=bell_status,
-    )
-    tomorrow_rows = collect_enriched_schedule_rows(
-        day=next_school_date,
-        marker_reference_date=target_date,
-        schedule_data=schedule_data,
-        full_data=full_data,
-        sample_data=sample_data,
-        overrides=overrides,
-        selectors=selectors,
-        bell_status=bell_status,
-    )
+    def _collect(day: date, sel: list[str]) -> list[dict[str, Any]]:
+        return collect_enriched_schedule_rows(
+            day=day,
+            marker_reference_date=target_date,
+            schedule_data=schedule_data,
+            full_data=full_data,
+            sample_data=sample_data,
+            overrides=overrides,
+            selectors=sel,
+            bell_status=bell_status,
+        )
+
+    sel_use = selectors
+    today_rows = _collect(target_date, sel_use)
+    tomorrow_rows = _collect(next_school_date, sel_use)
+    if selectors and (not today_rows or not tomorrow_rows):
+        t_all_today = _collect(target_date, [])
+        t_all_tomorrow = _collect(next_school_date, [])
+        if (not today_rows and t_all_today) or (not tomorrow_rows and t_all_tomorrow):
+            sel_use = []
+            today_rows = t_all_today
+            tomorrow_rows = t_all_tomorrow
     max_lesson_index_today = max_lesson_index_from_enriched_rows(today_rows)
 
     return {
