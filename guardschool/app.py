@@ -1267,6 +1267,11 @@ def sanitize_config(config: dict[str, Any]) -> dict[str, Any]:
     return config
 
 
+# ВРЕМЕННО: отключить фильтр классов экрана / gs_classes для расписания (диагностика ТВ).
+# После проверки выставить False и вернуть логику выбора параллелей.
+_TEMP_DISABLE_SCREEN_CLASS_FILTER = True
+
+
 def load_schedule() -> list[dict[str, Any]]:
     maybe_import_schedule_from_folder()
     return read_json(SCHEDULE_PATH, [])
@@ -1441,6 +1446,12 @@ def distinct_schedule_class_names_from_sources(
 
 def pickable_classes_for_screen(screen_cfg: dict[str, Any]) -> list[str]:
     """Классы для шестерёнки на ТВ/телефоне: настройка экрана + все из импорта (чтобы не терять 7А и т.п.)."""
+    if _TEMP_DISABLE_SCREEN_CLASS_FILTER:
+        return distinct_schedule_class_names_from_sources(
+            load_schedule(),
+            load_full_schedule(),
+            load_schedule_sample(),
+        )
     from_import = distinct_schedule_class_names_from_sources(
         load_schedule(),
         load_full_schedule(),
@@ -1979,9 +1990,8 @@ def compute_max_lesson_index_for_screen_day(screen: dict[str, Any], day: date) -
 
     classes = screen.get("selected_classes", [])
     selectors = [normalize_class(item) for item in classes if normalize_class(item)]
-    if not selectors:
-        _ML_INDEX_CACHE[(sid, dk)] = (None, now)
-        return None
+    if _TEMP_DISABLE_SCREEN_CLASS_FILTER:
+        selectors = []
 
     schedule_data = load_schedule()
     full_data = load_full_schedule()
@@ -2013,6 +2023,8 @@ def build_schedule_payload(
     bell_status = build_bell_status(screen, target_date, cfg)
     classes = screen.get("selected_classes", [])
     selectors = [normalize_class(item) for item in classes if normalize_class(item)]
+    if _TEMP_DISABLE_SCREEN_CLASS_FILTER:
+        selectors = []
 
     tgt_iso = target_date.isoformat()
     all_future_iso = sorted(
@@ -4035,7 +4047,11 @@ def get_screen(request: Request, slug: str) -> JSONResponse:
     qp = request.query_params
     # Фильтр gs_classes только в мобильном режиме экрана; иначе игнорируем (ТВ/сетка = только конфиг).
     raw_classes = str(qp.get("gs_classes") or "").strip()
-    if raw_classes and bool(screen0.get("mobile_mode")):
+    if (
+        not _TEMP_DISABLE_SCREEN_CLASS_FILTER
+        and raw_classes
+        and bool(screen0.get("mobile_mode"))
+    ):
         parts = [p.strip() for p in raw_classes.split(",") if p.strip()]
         parts = parts[:12]
         if parts:
