@@ -4382,9 +4382,35 @@ def _tv_pair_gate_notice_html(*, title: str, message: str, status: int = 404) ->
     )
 
 
+_TV_SCHOOL_CODE_TRIPLET = re.compile(r"^[a-z2-9]{4}-[a-z2-9]{4}-[a-z2-9]{4}$")
+_TV_SCHOOL_CODE_TRIPLET_LOOSE = re.compile(r"^[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}$")
+
+
+def _canonical_tv_school_code(normalized_lower: str) -> str | None:
+    """
+    Код из URL/тела: строго xxx-xxx-xxx или те же 12 символов без дефисов (часть ТВ режет дефисы в пути).
+    Допускаются старые коды с 0/1 в триплетах (loose).
+    """
+    s = (normalized_lower or "").strip()
+    if _TV_SCHOOL_CODE_TRIPLET.fullmatch(s):
+        return s
+    letters = re.sub(r"[^a-z0-9]", "", s)
+    if len(letters) != 12:
+        return None
+    cand = f"{letters[:4]}-{letters[4:8]}-{letters[8:12]}"
+    if _TV_SCHOOL_CODE_TRIPLET.fullmatch(cand):
+        return cand
+    if _TV_SCHOOL_CODE_TRIPLET_LOOSE.fullmatch(cand):
+        return cand
+    return None
+
+
 _TV_ACCESS_BY_CODE_SQL = (
     "SELECT tenant_slug, pin_salt, pin_hash, COALESCE(pin_bypass, false) FROM tv_access "
-    "WHERE code_hash=%s OR lower(trim(coalesce(code_plaintext, '')))=%s LIMIT 1"
+    "WHERE code_hash=%s "
+    "OR lower(trim(coalesce(code_plaintext, '')))=%s "
+    "OR regexp_replace(lower(trim(coalesce(code_plaintext, ''))), '[^a-z0-9]', '', 'g')=%s "
+    "LIMIT 1"
 )
 
 
@@ -4400,20 +4426,21 @@ def tv_pair_page(request: Request, code: str, screen_slug: str) -> Response:
             message="В этой конфигурации сервера автоматическое подключение телевизора недоступно.",
             status=503,
         )
-    code_n = _normalize_tv_pair_text(str(code or "")).lower()
-    slug_n = _normalize_screen_slug_for_api(str(screen_slug or ""))
-    if not re.fullmatch(r"[a-z2-9]{4}-[a-z2-9]{4}-[a-z2-9]{4}", code_n):
+    code_raw = _normalize_tv_pair_text(str(code or "")).lower()
+    code_canon = _canonical_tv_school_code(code_raw)
+    if not code_canon:
         return _tv_pair_gate_notice_html(
             title="Неверная ссылка",
             message="Формат кода в адресе не распознан. Попросите администратора школы прислать ссылку для этого телевизора ещё раз.",
         )
+    slug_n = _normalize_screen_slug_for_api(str(screen_slug or ""))
     if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", slug_n):
         return _tv_pair_gate_notice_html(
             title="Неверная ссылка",
             message="Имя экрана в адресе не распознано. Попросите администратора школы прислать ссылку ещё раз.",
         )
     now_ts = time.time()
-    pair_key = _tv_pair_client_key(request, code_n)
+    pair_key = _tv_pair_client_key(request, code_canon)
     retry_after = _tv_pair_check_rate_limit(pair_key, now_ts)
     if retry_after > 0:
         return HTMLResponse(
@@ -4422,10 +4449,11 @@ def tv_pair_page(request: Request, code: str, screen_slug: str) -> Response:
             status_code=429,
             headers={"Cache-Control": "no-store"},
         )
-    ch = tv_code_hash(code_n)
+    ch = tv_code_hash(code_canon)
+    code_digits_only = re.sub(r"[^a-z0-9]", "", code_canon)
     with connect_public() as conn:
         with conn.cursor() as cur:
-            cur.execute(_TV_ACCESS_BY_CODE_SQL, (ch, code_n))
+            cur.execute(_TV_ACCESS_BY_CODE_SQL, (ch, code_canon, code_digits_only))
             row = cur.fetchone()
             if not row:
                 _tv_pair_record_failure(pair_key, now_ts)
@@ -4484,12 +4512,13 @@ async def tv_pair(request: Request) -> dict[str, Any]:
         body = await request.json()
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid JSON body")
-    code = _normalize_tv_pair_text(str(body.get("code") or "")).lower()
+    code_raw = _normalize_tv_pair_text(str(body.get("code") or "")).lower()
+    code = _canonical_tv_school_code(code_raw) or ""
     screen_slug = _normalize_screen_slug_for_api(str(body.get("screen_slug") or ""))
     label = str(body.get("label") or "").strip()[:120]
-    if not code or not screen_slug:
+    if not code_raw or not screen_slug:
         raise HTTPException(status_code=400, detail="code, pin, screen_slug required")
-    if not re.fullmatch(r"[a-z2-9]{4}-[a-z2-9]{4}-[a-z2-9]{4}", code):
+    if not code:
         raise HTTPException(status_code=400, detail="Invalid code format")
     if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", screen_slug):
         raise HTTPException(status_code=400, detail="Invalid screen_slug")
@@ -4500,9 +4529,10 @@ async def tv_pair(request: Request) -> dict[str, Any]:
         raise HTTPException(status_code=429, detail=f"Too many attempts. Retry after {retry_after}s")
 
     ch = tv_code_hash(code)
+    code_digits_only = re.sub(r"[^a-z0-9]", "", code)
     with connect_public() as conn:
         with conn.cursor() as cur:
-            cur.execute(_TV_ACCESS_BY_CODE_SQL, (ch, code))
+            cur.execute(_TV_ACCESS_BY_CODE_SQL, (ch, code, code_digits_only))
             row = cur.fetchone()
             if not row:
                 _tv_pair_record_failure(pair_key, now_ts)
