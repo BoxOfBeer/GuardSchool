@@ -721,14 +721,14 @@ function playOneBellClip(url, key) {
       finish();
     });
     a.addEventListener("error", () => {
+      if (key) playedBellKeys.delete(key);
       window.clearTimeout(safety);
       finish();
     });
     a.play()
-      .then(() => {
-        if (key) playedBellKeys.add(key);
-      })
+      .then(() => {})
       .catch(() => {
+        if (key) playedBellKeys.delete(key);
         window.clearTimeout(safety);
         finish();
       });
@@ -772,12 +772,14 @@ function tickBellAudio(payload) {
     if (mins === st && secs < secWin && row.sound_start) {
       const k = `${base}_s`;
       if (!playedBellKeys.has(k)) {
+        playedBellKeys.add(k);
         clips.push({ url: row.sound_start, key: k });
       }
     }
     if (mins === en && secs < secWin && row.sound_end) {
       const k = `${base}_e`;
       if (!playedBellKeys.has(k)) {
+        playedBellKeys.add(k);
         clips.push({ url: row.sound_end, key: k });
       }
     }
