@@ -709,61 +709,64 @@ def _require_optional_tv_bearer(request: Request) -> None:
 
 def _require_tv_access_for_screen(request: Request, screen_slug: str) -> None:
     """
-    TV auth в SaaS:
-    - если задан GUARDSCHOOL_TV_BEARER_TOKEN: принимаем либо его, либо device-token (по code+pin pairing)
-    - если не задан: по-старому без авторизации
+    TV auth для /api/screen/{slug}:
+    - GUARDSCHOOL_TV_BEARER_TOKEN задан: нужен Bearer; совпал с общим секретом — ок; иначе пробуем device-token.
+    - секрет не задан: при Bearer в SaaS всё равно резолвим device-token → set_tenant_slug (иначе load_config()
+      без cookie тенанта на school.* даёт пустое расписание).
 
-    Device-token: тенант берём из строки tv_devices (token_hash глобально уникален), а не из cookie.
-    Иначе на общем school.* без gs_saas_tenant ТВ после пары всегда получает 403, хотя браузер с cookie — нет.
+    Device-token: тенант из tv_devices (не из cookie).
     """
-    expected = (os.environ.get("GUARDSCHOOL_TV_BEARER_TOKEN") or "").strip()
     auth = (request.headers.get("authorization") or "").strip()
-    if not expected:
+    got = auth[7:].strip() if auth.startswith("Bearer ") else ""
+    expected = (os.environ.get("GUARDSCHOOL_TV_BEARER_TOKEN") or "").strip()
+
+    if expected:
+        if not got:
+            raise HTTPException(status_code=401, detail="Требуется токен ТВ (Bearer).")
+        if hmac.compare_digest(got, expected):
+            return
+
+    if deployment_mode() == "saas" and saas_db_enabled() and got:
+        from .tenant_ctx import set_tenant_slug
+
+        th = tv_device_token_hash(got)
+        now = utcnow()
+        with connect_public() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT tenant_slug, status, expires_at FROM tv_devices
+                    WHERE token_hash=%s AND lower(trim(screen_slug)) = %s
+                    """,
+                    (th, screen_slug),
+                )
+                row = cur.fetchone()
+                if not row:
+                    raise HTTPException(status_code=403, detail="Неверный токен ТВ.")
+                tenant_from_device, status, expires_at = row[0], row[1], row[2]
+                if status != "active":
+                    raise HTTPException(status_code=403, detail="Токен ТВ отключён.")
+                if expires_at is not None and expires_at <= now:
+                    raise HTTPException(status_code=403, detail="Токен ТВ истёк.")
+                cur.execute(
+                    "UPDATE tv_devices SET last_seen_at=now() WHERE token_hash=%s AND lower(trim(screen_slug)) = %s",
+                    (th, screen_slug),
+                )
+            conn.commit()
+        slug = str(tenant_from_device or "").strip()
+        if not slug:
+            raise HTTPException(status_code=403, detail="Неверный токен ТВ.")
+        set_tenant_slug(slug)
+        try:
+            from .saas_db import ensure_tenant_schema, schema_name_for_slug
+
+            ensure_tenant_schema(schema_name_for_slug(slug))
+        except Exception:
+            pass
         return
-    if not auth.startswith("Bearer "):
+
+    if expected:
         raise HTTPException(status_code=401, detail="Требуется токен ТВ (Bearer).")
-    got = auth[7:].strip()
-    if hmac.compare_digest(got, expected):
-        return
-    # device-token: только в SaaS
-    if deployment_mode() != "saas" or not saas_db_enabled():
-        raise HTTPException(status_code=403, detail="Неверный токен ТВ.")
-    from .tenant_ctx import set_tenant_slug
-
-    th = tv_device_token_hash(got)
-    now = utcnow()
-    with connect_public() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT tenant_slug, status, expires_at FROM tv_devices
-                WHERE token_hash=%s AND lower(trim(screen_slug)) = %s
-                """,
-                (th, screen_slug),
-            )
-            row = cur.fetchone()
-            if not row:
-                raise HTTPException(status_code=403, detail="Неверный токен ТВ.")
-            tenant_from_device, status, expires_at = row[0], row[1], row[2]
-            if status != "active":
-                raise HTTPException(status_code=403, detail="Токен ТВ отключён.")
-            if expires_at is not None and expires_at <= now:
-                raise HTTPException(status_code=403, detail="Токен ТВ истёк.")
-            cur.execute(
-                "UPDATE tv_devices SET last_seen_at=now() WHERE token_hash=%s AND lower(trim(screen_slug)) = %s",
-                (th, screen_slug),
-            )
-        conn.commit()
-    slug = str(tenant_from_device or "").strip()
-    if not slug:
-        raise HTTPException(status_code=403, detail="Неверный токен ТВ.")
-    set_tenant_slug(slug)
-    try:
-        from .saas_db import ensure_tenant_schema, schema_name_for_slug
-
-        ensure_tenant_schema(schema_name_for_slug(slug))
-    except Exception:
-        pass
 
 
 _TV_PAIR_ZW_RE = re.compile(r"[\u200b-\u200d\ufeff]")
