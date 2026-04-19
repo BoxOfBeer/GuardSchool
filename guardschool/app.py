@@ -1956,6 +1956,23 @@ def build_schedule_payload(
     classes = screen.get("selected_classes", [])
     selectors = [normalize_class(item) for item in classes if normalize_class(item)]
 
+    next_school_date_iso = None
+    future_dates = sorted(
+        {
+            item["date"]
+            for item in schedule_data
+            if class_in_selected(item["class_key"], selectors) and item["date"] > target_date.isoformat()
+        }
+    )
+    if future_dates:
+        next_school_date_iso = future_dates[0]
+    next_school_date = (
+        date.fromisoformat(next_school_date_iso)
+        if next_school_date_iso
+        else date.fromordinal(target_date.toordinal() + 1)
+    )
+    show_next_day = tomorrow_schedule_visible(bell_status)
+
     today_rows = collect_enriched_schedule_rows(
         day=target_date,
         marker_reference_date=target_date,
@@ -1966,34 +1983,15 @@ def build_schedule_payload(
         selectors=selectors,
         bell_status=bell_status,
     )
-
-    # Ближайший день с расписанием. Важно: расписание может быть только недельным (full_data),
-    # тогда простая эвристика "следующая дата из schedule.json" не работает на выходных.
-    # Ищем вперёд до 14 дней, пока не найдём непустые строки.
-    next_school_date = date.fromordinal(target_date.toordinal() + 1)
-    tomorrow_rows: list[dict[str, Any]] = []
-    for step in range(1, 15):
-        cand = date.fromordinal(target_date.toordinal() + step)
-        rows = collect_enriched_schedule_rows(
-            day=cand,
-            marker_reference_date=target_date,
-            schedule_data=schedule_data,
-            full_data=full_data,
-            sample_data=sample_data,
-            overrides=overrides,
-            selectors=selectors,
-            bell_status=bell_status,
-        )
-        if rows:
-            next_school_date = cand
-            tomorrow_rows = rows
-            break
-
-    # Показываем блок «следующий учебный день» если:
-    # - в текущий день уроки уже завершены, ИЛИ
-    # - на сегодня вообще нет расписания (выходной/каникулы), но впереди найден день с расписанием.
-    show_next_day = bool(tomorrow_rows) and (
-        tomorrow_schedule_visible(bell_status) or not today_rows
+    tomorrow_rows = collect_enriched_schedule_rows(
+        day=next_school_date,
+        marker_reference_date=target_date,
+        schedule_data=schedule_data,
+        full_data=full_data,
+        sample_data=sample_data,
+        overrides=overrides,
+        selectors=selectors,
+        bell_status=bell_status,
     )
     max_lesson_index_today = max_lesson_index_from_enriched_rows(today_rows)
 

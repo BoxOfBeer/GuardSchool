@@ -1081,27 +1081,6 @@ function render(screenPayload) {
       else if (widget.settings && widget.settings.backdrop === false) el.classList.add("no-backdrop");
       else el.classList.remove("no-backdrop");
     });
-    // Карусель при soft-update не проходит цикл выше: перерисуем слайды с расписанием/звонками.
-    if (scheduleChanged && GRef.updateCarouselSlidesForScheduleData) {
-      root.querySelectorAll(".carousel-widget").forEach((carouselEl) => {
-        const wid = carouselEl.dataset.widgetId;
-        const w = (screen.widgets || []).find((x) => String(x.id) === String(wid));
-        if (!w || w.type !== "carousel") return;
-        const childWidgets = GRef.orderedCarouselChildWidgets
-          ? GRef.orderedCarouselChildWidgets(screen, w)
-          : (screen.widgets || []).filter((item) => (w.settings.childWidgetIds || []).includes(item.id));
-        GRef.updateCarouselSlidesForScheduleData(
-          carouselEl,
-          w,
-          childWidgets,
-          schedule,
-          screen,
-          holidays,
-          announcements || [],
-          marquee || []
-        );
-      });
-    }
   }
 
   if (GRef.applyTvScreenBackground) {
