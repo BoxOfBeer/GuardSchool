@@ -4362,20 +4362,56 @@ def _tv_pair_pin_entry_file_response() -> FileResponse:
     )
 
 
+def _tv_pair_gate_notice_html(*, title: str, message: str, status: int = 404) -> HTMLResponse:
+    """Текст без формы PIN и без URL админки — для ТВ при неверной ссылке или когда PIN не используется."""
+    t = html.escape(title)
+    m = html.escape(message, quote=False)
+    doc = (
+        "<!doctype html><html lang='ru'><head><meta charset='utf-8'/>"
+        "<meta http-equiv='Cache-Control' content='no-store'/>"
+        f"<title>{t}</title></head>"
+        "<body style='margin:0;font-family:system-ui;background:#0f172a;color:#e2e8f0;padding:28px;max-width:560px'>"
+        f"<h1 style='font-size:20px;margin:0 0 12px'>{t}</h1>"
+        f"<p style='margin:0;line-height:1.5;font-size:16px;color:#cbd5e1'>{m}</p>"
+        "</body></html>"
+    )
+    return HTMLResponse(
+        content=doc,
+        status_code=status,
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0", "Pragma": "no-cache"},
+    )
+
+
+_TV_ACCESS_BY_CODE_SQL = (
+    "SELECT tenant_slug, pin_salt, pin_hash, COALESCE(pin_bypass, false) FROM tv_access "
+    "WHERE code_hash=%s OR lower(trim(coalesce(code_plaintext, '')))=%s LIMIT 1"
+)
+
+
 @app.get("/t/{code}/{screen_slug}", response_class=HTMLResponse)
 def tv_pair_page(request: Request, code: str, screen_slug: str) -> Response:
     """
-    Страница ввода PIN; если для школы включён tv_pair_pin_bypass (или env) —
-    сразу редирект на /screen/…?gs_tv_token=… (как initGsHybridFromUrl в screen.js).
+    Вход по ссылке /t/…: при обходе PIN — сразу экран с токеном; при обычном режиме — только тогда
+    отдаём страницу ввода PIN (никогда не подставляем форму PIN «вслепую» при неверном коде или обходе).
     """
     if deployment_mode() != "saas" or not saas_db_enabled():
-        return _tv_pair_pin_entry_file_response()
+        return _tv_pair_gate_notice_html(
+            title="ТВ-подключение",
+            message="В этой конфигурации сервера автоматическое подключение телевизора недоступно.",
+            status=503,
+        )
     code_n = _normalize_tv_pair_text(str(code or "")).lower()
     slug_n = _normalize_screen_slug_for_api(str(screen_slug or ""))
     if not re.fullmatch(r"[a-z2-9]{4}-[a-z2-9]{4}-[a-z2-9]{4}", code_n):
-        return _tv_pair_pin_entry_file_response()
+        return _tv_pair_gate_notice_html(
+            title="Неверная ссылка",
+            message="Формат кода в адресе не распознан. Попросите администратора школы прислать ссылку для этого телевизора ещё раз.",
+        )
     if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", slug_n):
-        return _tv_pair_pin_entry_file_response()
+        return _tv_pair_gate_notice_html(
+            title="Неверная ссылка",
+            message="Имя экрана в адресе не распознано. Попросите администратора школы прислать ссылку ещё раз.",
+        )
     now_ts = time.time()
     pair_key = _tv_pair_client_key(request, code_n)
     retry_after = _tv_pair_check_rate_limit(pair_key, now_ts)
@@ -4389,14 +4425,14 @@ def tv_pair_page(request: Request, code: str, screen_slug: str) -> Response:
     ch = tv_code_hash(code_n)
     with connect_public() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                "SELECT tenant_slug, pin_salt, pin_hash, COALESCE(pin_bypass, false) FROM tv_access WHERE code_hash=%s",
-                (ch,),
-            )
+            cur.execute(_TV_ACCESS_BY_CODE_SQL, (ch, code_n))
             row = cur.fetchone()
             if not row:
                 _tv_pair_record_failure(pair_key, now_ts)
-                return _tv_pair_pin_entry_file_response()
+                return _tv_pair_gate_notice_html(
+                    title="Ссылка недействительна",
+                    message="Код школы в ссылке не найден или был обновлён. Попросите администратора школы в программе снова сгенерировать код для телевизора и прислать новую ссылку.",
+                )
             tenant_slug, _pin_salt, _pin_hash, pin_bypass_db = row[0], row[1], row[2], bool(row[3])
             ts = str(tenant_slug or "").strip()
             if not _tv_pair_pin_bypass_effective(ts, pin_bypass_db):
@@ -4466,10 +4502,7 @@ async def tv_pair(request: Request) -> dict[str, Any]:
     ch = tv_code_hash(code)
     with connect_public() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                "SELECT tenant_slug, pin_salt, pin_hash, COALESCE(pin_bypass, false) FROM tv_access WHERE code_hash=%s",
-                (ch,),
-            )
+            cur.execute(_TV_ACCESS_BY_CODE_SQL, (ch, code))
             row = cur.fetchone()
             if not row:
                 _tv_pair_record_failure(pair_key, now_ts)
