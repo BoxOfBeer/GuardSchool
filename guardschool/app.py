@@ -4421,6 +4421,7 @@ def tv_pair_page(request: Request, code: str, screen_slug: str) -> Response:
     jump_html = (
         "<!doctype html><html lang='ru'><head><meta charset='utf-8'/>"
         "<meta http-equiv='Cache-Control' content='no-store'/>"
+        f"<meta http-equiv='refresh' content='0;url={loc_attr}'/>"
         "<title>GuardSchool — подключение ТВ</title></head>"
         "<body style='margin:0;font-family:system-ui;background:#0f172a;color:#e2e8f0'>"
         "<div style='padding:24px;font-size:18px'>Переход на экран…</div>"
@@ -4504,12 +4505,13 @@ async def tv_pair(request: Request) -> dict[str, Any]:
                 (th, tenant_slug, screen_slug, label),
             )
         conn.commit()
+    screen_path = f"/screen/{quote(screen_slug, safe='')}?gs_tv_token={quote(token, safe='')}"
     return {
         "status": "ok",
         "token": token,
         "tenant_slug": tenant_slug,
         "screen_slug": screen_slug,
-        "screen_path": f"/screen/{screen_slug}",
+        "screen_path": screen_path,
     }
 
 

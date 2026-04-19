@@ -108,7 +108,14 @@ go.addEventListener("click", async () => {
       if (t) localStorage.setItem("gs_tv_bearer", t);
     } catch (_) {}
     const sl = normalizeTvPairText(screen_slug).toLowerCase();
-    window.location.href = data.screen_path || `/screen/${encodeURIComponent(sl)}`;
+    let path = data.screen_path || `/screen/${encodeURIComponent(sl)}`;
+    try {
+      const t2 = sanitizeGsTvBearerToken(String(data.token || ""));
+      if (t2 && path.indexOf("gs_tv_token=") < 0) {
+        path += (path.indexOf("?") >= 0 ? "&" : "?") + "gs_tv_token=" + encodeURIComponent(t2);
+      }
+    } catch (_) {}
+    window.location.href = path;
   } catch (e) {
     show(out, String(e));
   } finally {
