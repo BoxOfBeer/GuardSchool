@@ -11,6 +11,5 @@ export function getSectionTabs() {
     { id: "main", label: t("section.main") },
     { id: "schedule", label: t("section.schedule") },
     { id: "preview", label: t("section.preview") },
-    { id: "history", label: t("section.changelog") },
   ];
 }

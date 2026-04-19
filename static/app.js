@@ -80,6 +80,54 @@ function syncProgramSettingsFieldsFromState() {
   }
 }
 
+function emergencyWidget() {
+  const screen = selectedScreen();
+  const w = screen?.widgets?.find((x) => x.type === "emergency");
+  return w || null;
+}
+
+function syncEmergencyModeCheckbox() {
+  const el = document.getElementById("admin-emergency-mode");
+  if (!el) return;
+  const w = emergencyWidget();
+  if (!w) {
+    el.disabled = true;
+    el.checked = false;
+    return;
+  }
+  el.disabled = false;
+  el.checked = !!w.enabled;
+}
+
+function bindEmergencyModeOnce() {
+  if (bindEmergencyModeOnce._done) return;
+  bindEmergencyModeOnce._done = true;
+  const el = document.getElementById("admin-emergency-mode");
+  if (!el) return;
+  el.addEventListener("change", () => {
+    const w = emergencyWidget();
+    if (!w) return;
+    w.enabled = !!el.checked;
+    render();
+  });
+}
+
+function setProgramSettingsTab(tab) {
+  const root = elements.programSettingsPanel;
+  if (!root) return;
+  const allowed = new Set(["general", "tv", "changelog"]);
+  const t = allowed.has(tab) ? tab : "general";
+  root.querySelectorAll("[data-ps-tab]").forEach((btn) => {
+    const on = btn.getAttribute("data-ps-tab") === t;
+    btn.classList.toggle("active", on);
+    btn.setAttribute("aria-selected", on ? "true" : "false");
+  });
+  root.querySelectorAll("[data-ps-pane]").forEach((pane) => {
+    pane.hidden = pane.getAttribute("data-ps-pane") !== t;
+  });
+  if (t === "changelog") renderHistory();
+}
+
 function renderProgramPaletteCheckboxes() {
   const wrap = elements.programSettingsPaletteWrap;
   if (!wrap || !state.config) return;
@@ -103,22 +151,22 @@ function renderProgramPaletteCheckboxes() {
 }
 
 function openProgramSettingsModal() {
-  if (!elements.programSettingsModal) return;
+  if (!elements.programSettingsPanel) return;
   closeWidgetModal();
+  state.programSettingsPanelActive = true;
+  state.audioStreamPanelActive = false;
   syncProgramSettingsFieldsFromState();
   renderProgramPaletteCheckboxes();
+  setProgramSettingsTab("general");
   try {
-    GuardSchoolI18n.applyDom(elements.programSettingsModal);
+    GuardSchoolI18n.applyDom(elements.programSettingsPanel);
   } catch (_) {}
-  elements.programSettingsModal.hidden = false;
-  elements.programSettingsModal.setAttribute("aria-hidden", "false");
+  render();
 }
 
 function closeProgramSettingsModal() {
-  const m = elements.programSettingsModal;
-  if (!m) return;
-  m.hidden = true;
-  m.setAttribute("aria-hidden", "true");
+  state.programSettingsPanelActive = false;
+  render();
 }
 
 function bindProgramSettingsModalOnce() {
@@ -126,13 +174,21 @@ function bindProgramSettingsModalOnce() {
   bindProgramSettingsModalOnce._done = true;
   elements.programSettingsOpenBtn?.addEventListener("click", (e) => {
     e.preventDefault();
-    openProgramSettingsModal();
+    if (state.programSettingsPanelActive) closeProgramSettingsModal();
+    else openProgramSettingsModal();
   });
   document.addEventListener("click", (e) => {
     if (e.target.closest("[data-close-program-settings]")) {
       e.preventDefault();
       closeProgramSettingsModal();
     }
+  });
+  elements.programSettingsPanel?.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-ps-tab]");
+    if (!b || !elements.programSettingsPanel?.contains(b)) return;
+    e.preventDefault();
+    const t = b.getAttribute("data-ps-tab");
+    if (t) setProgramSettingsTab(t);
   });
 }
 
@@ -933,6 +989,7 @@ function renderTabs() {
   audioBtn.textContent = t("tabs.pcAudio");
   audioBtn.onclick = () => {
     closeWidgetModal();
+    state.programSettingsPanelActive = false;
     state.audioStreamPanelActive = true;
     render();
   };
@@ -944,6 +1001,7 @@ function renderTabs() {
     button.textContent = screen.name;
     button.onclick = () => {
       state.audioStreamPanelActive = false;
+      state.programSettingsPanelActive = false;
       closeWidgetModal();
       state.selectedScreenId = screen.id;
       render();
@@ -1254,7 +1312,7 @@ function bindWidgetModalOnce() {
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
     if (state.widgetModalWidgetId) closeWidgetModal();
-    else if (elements.programSettingsModal && !elements.programSettingsModal.hidden) closeProgramSettingsModal();
+    else if (state.programSettingsPanelActive) closeProgramSettingsModal();
   });
 }
 
@@ -1435,6 +1493,7 @@ function renderWeekdayBellGrid() {
 }
 
 function renderHistory() {
+  if (!elements.historyList) return;
   const loc = window.GuardSchoolI18n?.getLang?.() === "en" ? "en-US" : "ru-RU";
   const verHint = state.appVersion
     ? `<p class="hint history-app-ver">${t("history.currentVersion")} <strong>${escapeHtmlAttr(state.appVersion)}</strong></p>`
@@ -1863,6 +1922,7 @@ function duplicateCurrentScreen() {
   ns.widgets = widgets;
   state.config.screens.splice(idx + 1, 0, ns);
   state.selectedScreenId = ns.id;
+  state.programSettingsPanelActive = false;
   render();
 }
 
@@ -2005,8 +2065,36 @@ function render() {
   const tabPanel = document.getElementById("section-tabs-panel");
   const screenWrap = document.getElementById("screen-editor-wrap");
   const audioPanel = document.getElementById("audio-stream-panel");
+  const programPanel = elements.programSettingsPanel;
 
   renderTabs();
+
+  if (state.programSettingsPanelActive) {
+    state.audioStreamPanelActive = false;
+    if (elements.deleteScreenBtn) {
+      elements.deleteScreenBtn.hidden = true;
+      elements.deleteScreenBtn.disabled = true;
+    }
+    if (elements.duplicateScreenBtn) elements.duplicateScreenBtn.hidden = true;
+    if (tabPanel) tabPanel.style.display = "none";
+    if (screenWrap) screenWrap.hidden = true;
+    if (audioPanel) audioPanel.hidden = true;
+    if (programPanel) {
+      programPanel.hidden = false;
+      programPanel.setAttribute("aria-hidden", "false");
+    }
+    syncEmergencyModeCheckbox();
+    renderHistory();
+    elements.programSettingsOpenBtn?.classList.add("active");
+    window.GuardSchoolScreen?.clearAllTimers();
+    return;
+  }
+
+  if (programPanel) {
+    programPanel.hidden = true;
+    programPanel.setAttribute("aria-hidden", "true");
+  }
+  elements.programSettingsOpenBtn?.classList.remove("active");
 
   if (state.audioStreamPanelActive) {
     if (elements.deleteScreenBtn) {
@@ -2056,6 +2144,7 @@ function render() {
     elements.deleteScreenBtn.disabled = state.config.screens.length <= 1;
   }
   if (elements.duplicateScreenBtn) elements.duplicateScreenBtn.hidden = false;
+  syncEmergencyModeCheckbox();
 }
 
 function updateWidgetField(path, value) {
@@ -2218,6 +2307,7 @@ function addScreen() {
   const screen = createDefaultScreen(index);
   state.config.screens.push(screen);
   state.audioStreamPanelActive = false;
+  state.programSettingsPanelActive = false;
   closeWidgetModal();
   state.selectedScreenId = screen.id;
   render();
@@ -2410,6 +2500,7 @@ function deleteScreen() {
     return;
   }
   closeWidgetModal();
+  state.programSettingsPanelActive = false;
   state.config.screens = state.config.screens.filter((item) => item.id !== state.selectedScreenId);
   state.selectedScreenId = state.config.screens[0].id;
   render();
@@ -2459,6 +2550,7 @@ async function init() {
   bindPcPlayerOnce();
   bindSettingsSoundTestsOnce();
   bindWidgetModalOnce();
+  bindEmergencyModeOnce();
   bindProgramSettingsModalOnce();
   render();
   setInterval(() => {

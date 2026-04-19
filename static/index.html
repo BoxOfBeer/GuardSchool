@@ -13,6 +13,13 @@
         <img class="brand-logo-mini" src="/brand-logo" alt="">
         <span class="top-bar-title" data-i18n="brand.title">GuardSchool</span>
       </div>
+      <div class="top-bar-actions">
+        <label class="top-bar-emergency">
+          <input type="checkbox" id="admin-emergency-mode" />
+          <span data-i18n="top.emergencyMode">Аварийный режим</span>
+        </label>
+        <button type="button" id="save-config-btn" class="primary-btn compact-btn" data-i18n="top.save">Сохранить</button>
+      </div>
       <div class="top-bar-nav-wrap">
         <div id="tabs" class="top-nav-tabs"></div>
         <button type="button" id="program-settings-open-btn" class="top-nav-btn top-settings-open-btn" data-i18n="top.settings">Настройки</button>
@@ -20,6 +27,75 @@
     </header>
 
     <main class="main-content">
+      <section id="program-settings-panel" class="program-settings-panel-main" hidden aria-hidden="true">
+        <div class="program-settings-head">
+          <h2 class="program-settings-page-title" data-i18n="programSettings.title">Настройки программы</h2>
+        </div>
+        <div class="program-settings-tabbar" role="tablist">
+          <button type="button" class="secondary-btn compact-btn program-settings-back-btn" data-close-program-settings data-i18n="programSettings.backToEditor">К редактору</button>
+          <button type="button" class="program-settings-subtab active" role="tab" data-ps-tab="general" aria-selected="true" data-i18n="programSettings.tabGeneral">Общее</button>
+          <button type="button" class="program-settings-subtab" role="tab" data-ps-tab="tv" aria-selected="false" data-i18n="programSettings.tabTv">ТВ (SaaS)</button>
+          <button type="button" class="program-settings-subtab" role="tab" data-ps-tab="changelog" aria-selected="false" data-i18n="programSettings.tabChangelog">Изменения</button>
+          <span class="program-settings-tabbar-spacer" aria-hidden="true"></span>
+          <button type="button" id="logout-btn" class="secondary-btn compact-btn" data-i18n="top.logout">Выйти</button>
+        </div>
+        <div class="program-settings-panes">
+          <div id="program-settings-pane-general" class="program-settings-pane" data-ps-pane="general" role="tabpanel">
+            <div class="program-settings-columns">
+              <div class="program-settings-col">
+                <h4 class="settings-popover-subhead" data-i18n="regional.title">Язык, время и пояс</h4>
+                <label class="settings-row"><span data-i18n="top.lang">Язык</span>
+                  <select id="admin-locale-select" class="standard-input program-settings-control" title="Language">
+                    <option value="ru">Русский</option>
+                    <option value="en">English</option>
+                  </select>
+                </label>
+                <label class="settings-row"><span data-i18n="regional.timezone">Часовой пояс</span>
+                  <select id="admin-timezone" class="standard-input program-settings-control" title="IANA timezone"></select>
+                </label>
+                <label class="settings-row" data-i18n-title="regional.offsetHint"><span data-i18n="regional.offset">Сдвиг времени (мин)</span>
+                  <input type="number" id="admin-clock-offset" class="standard-input program-settings-control" min="-720" max="720" step="1" value="0">
+                </label>
+                <p class="hint settings-regional-hint" data-i18n="regional.offsetHint">Добавляется к «настенному» времени на ТВ (если часы устройства неточны). Диапазон ±720 мин.</p>
+                <label class="settings-row" data-i18n="top.fontPx">Шрифт интерфейса (px)
+                  <input type="number" id="ui-font-size-input" class="standard-input program-settings-control" min="12" max="24" value="14">
+                </label>
+              </div>
+              <div class="program-settings-col">
+                <h4 class="settings-popover-subhead program-settings-palette-head" data-i18n="programSettings.paletteTitle">Виджеты в боковом списке</h4>
+                <p class="hint program-settings-palette-hint" data-i18n="programSettings.paletteHint">Скрытые типы не показываются в списке «Виджеты» слева; на ТВ и в превью сетке всё без изменений. Чтобы настроить скрытый блок — включите тип здесь.</p>
+                <div id="program-settings-palette-checkboxes" class="program-settings-palette-grid"></div>
+              </div>
+              <div class="program-settings-col">
+                <h4 class="settings-popover-subhead" data-i18n="programSettings.colFilesTitle">Данные и звук</h4>
+                <div class="settings-row settings-btn-row program-settings-btn-row">
+                  <button id="export-data-btn" type="button" class="secondary-btn compact-btn" data-i18n="top.export">Экспорт ZIP</button>
+                  <button id="import-data-btn" type="button" class="secondary-btn compact-btn" data-i18n="top.import">Импорт ZIP</button>
+                  <input id="import-data-input" type="file" accept=".zip" hidden>
+                </div>
+                <div class="settings-row settings-test-row program-settings-btn-row">
+                  <span class="settings-inline-label" data-i18n="top.sound">Звук</span>
+                  <button id="settings-test-rupor-btn" type="button" class="secondary-btn compact-btn" data-i18n="top.soundRupor">Рупор</button>
+                  <button id="settings-test-tv-btn" type="button" class="secondary-btn compact-btn" data-i18n="top.soundTv">ТВ</button>
+                </div>
+                <pre id="settings-sound-test-result" class="settings-probe-out"></pre>
+                <label class="settings-row" data-i18n="top.bgFile">Фон ТВ (файл)
+                  <input id="background-input" type="file" accept="image/*">
+                </label>
+                <p class="hint settings-file-input-hint" data-i18n="top.filePickerHint">Подпись кнопки выбора файла задаётся браузером/ОС и может не совпадать с языком интерфейса.</p>
+              </div>
+            </div>
+          </div>
+          <div id="program-settings-pane-tv" class="program-settings-pane" data-ps-pane="tv" role="tabpanel" hidden>
+            <p class="hint" data-i18n="programSettings.tvUnavailable">Подключение ТВ через облако (код школы, PIN, ссылки) доступно в развёртывании SaaS. В этой сборке раздел не используется.</p>
+          </div>
+          <div id="program-settings-pane-changelog" class="program-settings-pane" data-ps-pane="changelog" role="tabpanel" hidden>
+            <p class="hint history-lead" data-i18n="history.lead">Журнал выпусков программы по номерам версий.</p>
+            <div id="history-list" class="history-list"></div>
+          </div>
+        </div>
+      </section>
+
       <div id="section-tabs-panel" class="section-tabs-panel">
         <div id="section-tabs" class="section-tabs"></div>
       </div>
@@ -246,11 +322,6 @@
           <div id="preview-sound-diag" class="preview-sound-diag" hidden></div>
           <div id="preview" class="screen-preview"></div>
         </div>
-
-        <div class="card span-2" data-section="history">
-          <h2 data-i18n="section.changelogTitle">Изменения программы</h2>
-          <div id="history-list" class="history-list"></div>
-        </div>
       </section>
       </div>
 
@@ -318,59 +389,6 @@
         </div>
       </section>
     </main>
-  </div>
-
-  <div id="program-settings-modal" class="widget-editor-modal program-settings-modal" hidden aria-hidden="true">
-    <div class="widget-editor-modal-backdrop" data-close-program-settings tabindex="-1"></div>
-    <div class="widget-editor-modal-panel program-settings-panel" role="dialog" aria-modal="true" aria-labelledby="program-settings-modal-title">
-      <div class="widget-editor-modal-header">
-        <h2 id="program-settings-modal-title" data-i18n="programSettings.title">Настройки программы</h2>
-        <button type="button" class="secondary-btn compact-btn" data-close-program-settings data-i18n="modal.close">Закрыть</button>
-      </div>
-      <div class="widget-editor-modal-body program-settings-body">
-        <div class="settings-popover-grid">
-          <h4 class="settings-popover-subhead" data-i18n="regional.title">Язык, время и пояс</h4>
-          <label class="settings-row"><span data-i18n="top.lang">Язык</span>
-            <select id="admin-locale-select" class="standard-input wide-input" title="Language">
-              <option value="ru">Русский</option>
-              <option value="en">English</option>
-            </select>
-          </label>
-          <label class="settings-row"><span data-i18n="regional.timezone">Часовой пояс</span>
-            <select id="admin-timezone" class="standard-input wide-input" title="IANA timezone"></select>
-          </label>
-          <label class="settings-row" data-i18n-title="regional.offsetHint"><span data-i18n="regional.offset">Сдвиг времени (мин)</span>
-            <input type="number" id="admin-clock-offset" class="standard-input" min="-720" max="720" step="1" value="0">
-          </label>
-          <p class="hint settings-regional-hint" data-i18n="regional.offsetHint">Добавляется к «настенному» времени на ТВ (если часы устройства неточны). Диапазон ±720 мин.</p>
-          <label class="settings-row" data-i18n="top.fontPx">Шрифт интерфейса (px)
-            <input type="number" id="ui-font-size-input" class="standard-input" min="12" max="24" value="14">
-          </label>
-
-          <h4 class="settings-popover-subhead program-settings-palette-head" data-i18n="programSettings.paletteTitle">Виджеты в боковом списке</h4>
-          <p class="hint program-settings-palette-hint" data-i18n="programSettings.paletteHint">Скрытые типы не показываются в списке «Виджеты» слева; на ТВ и в превью сетке всё без изменений. Чтобы настроить скрытый блок — включите тип здесь.</p>
-          <div id="program-settings-palette-checkboxes" class="program-settings-palette-grid"></div>
-
-          <div class="settings-row settings-btn-row">
-            <button id="save-config-btn" type="button" class="primary-btn" data-i18n="top.save">Сохранить</button>
-            <button id="export-data-btn" type="button" class="secondary-btn" data-i18n="top.export">Экспорт ZIP</button>
-            <button id="import-data-btn" type="button" class="secondary-btn" data-i18n="top.import">Импорт ZIP</button>
-            <input id="import-data-input" type="file" accept=".zip" hidden>
-            <button id="logout-btn" type="button" class="secondary-btn" data-i18n="top.logout">Выйти</button>
-          </div>
-          <div class="settings-row settings-test-row">
-            <span class="settings-inline-label" data-i18n="top.sound">Звук</span>
-            <button id="settings-test-rupor-btn" type="button" class="secondary-btn" data-i18n="top.soundRupor">Рупор</button>
-            <button id="settings-test-tv-btn" type="button" class="secondary-btn" data-i18n="top.soundTv">ТВ</button>
-          </div>
-          <pre id="settings-sound-test-result" class="settings-probe-out"></pre>
-          <label class="settings-row" data-i18n="top.bgFile">Фон ТВ (файл)
-            <input id="background-input" type="file" accept="image/*">
-          </label>
-          <p class="hint settings-file-input-hint" data-i18n="top.filePickerHint">Подпись кнопки выбора файла задаётся браузером/ОС и может не совпадать с языком интерфейса.</p>
-        </div>
-      </div>
-    </div>
   </div>
 
   <div id="widget-editor-modal" class="widget-editor-modal" hidden aria-hidden="true">
