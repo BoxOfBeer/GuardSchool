@@ -1353,7 +1353,11 @@ def class_matches_selector(class_key: str, selector: str) -> bool:
         return True
     grade_match = re.match(r"^(\d+)$", normalized_selector)
     if grade_match:
-        return re.match(rf"^{grade_match.group(1)}\s*[a-zа-я]+$", class_key) is not None
+        n = grade_match.group(1)
+        # «Только параллель» (7): подходит «7», «7а», «7 математика» из колонки «Класс».
+        # Не подходит «10» для селектора «1» (следующий символ — цифра).
+        # Старый шаблон ^N\s*[a-zа-я]+$ ломался на «7 русский яз» (пробел внутри «названия класса»).
+        return re.match(rf"^{re.escape(n)}(\D|$)", class_key) is not None
     return False
 
 
