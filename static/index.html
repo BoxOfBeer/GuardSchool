@@ -29,6 +29,7 @@
       </div>
       <div class="top-bar-actions">
         <button type="button" id="save-config-top-btn" class="primary-btn compact-btn" data-i18n="top.save">Сохранить</button>
+        <button type="button" id="logout-top-btn" class="secondary-btn compact-btn" data-i18n="top.logout">Выйти</button>
       </div>
       <div class="top-bar-nav-wrap">
         <div id="tabs" class="top-nav-tabs"></div>
@@ -289,6 +290,132 @@
       </section>
       </div>
 
+      <section id="program-settings-panel" class="editor-grid program-settings-embed" hidden aria-hidden="true">
+        <div class="card span-2 program-settings-card">
+          <header class="program-settings-page-header">
+            <div class="program-settings-page-header-inner">
+              <h2 id="program-settings-modal-title" data-i18n="programSettings.title">Настройки программы</h2>
+              <div class="program-settings-header-actions">
+                <button type="button" id="save-config-btn" class="primary-btn compact-btn" data-i18n="top.save">Сохранить</button>
+                <button type="button" class="secondary-btn compact-btn" data-close-program-settings data-i18n="modal.close">Закрыть</button>
+              </div>
+            </div>
+            <div class="program-settings-tabstrip">
+              <nav class="section-tabs program-settings-subtabs" role="tablist" aria-label="Разделы настроек">
+                <button type="button" class="section-tab-btn program-settings-subtab active" role="tab" data-ps-tab="general" aria-selected="true" data-i18n="programSettings.tabGeneral">Общее</button>
+                <button type="button" class="section-tab-btn program-settings-subtab" role="tab" data-ps-tab="tv" aria-selected="false" data-i18n="programSettings.tabTv">ТВ (SaaS)</button>
+                <button type="button" class="section-tab-btn program-settings-subtab" role="tab" data-ps-tab="changelog" aria-selected="false" data-i18n="programSettings.tabChangelog">Изменения</button>
+              </nav>
+            </div>
+          </header>
+          <div class="program-settings-page-scroll">
+            <div id="program-settings-pane-general" class="program-settings-pane" data-ps-pane="general" role="tabpanel">
+              <div class="settings-popover-grid program-settings-pane-grid">
+                <h4 class="settings-popover-subhead" data-i18n="regional.title">Язык, время и пояс</h4>
+                <label class="settings-row"><span data-i18n="top.lang">Язык</span>
+                  <select id="admin-locale-select" class="standard-input wide-input" title="Language">
+                    <option value="ru">Русский</option>
+                    <option value="en">English</option>
+                  </select>
+                </label>
+                <label class="settings-row"><span data-i18n="regional.timezone">Часовой пояс</span>
+                  <select id="admin-timezone" class="standard-input wide-input" title="IANA timezone"></select>
+                </label>
+                <label class="settings-row" data-i18n-title="regional.offsetHint"><span data-i18n="regional.offset">Сдвиг времени (мин)</span>
+                  <input type="number" id="admin-clock-offset" class="standard-input" min="-720" max="720" step="1" value="0">
+                </label>
+                <p class="hint settings-regional-hint" data-i18n="regional.offsetHint">Добавляется к «настенному» времени на ТВ (если часы устройства неточны). Диапазон ±720 мин.</p>
+
+                <h4 class="settings-popover-subhead">Облако / гибрид</h4>
+                <p class="hint">Локальный сервер может подтягивать ZIP с облака по токену. ТВ: параметры URL <code>gs_primary_base</code>, <code>gs_fallback_base</code>, <code>gs_tv_token</code>, <code>gs_poll_timeout_sec</code>.</p>
+                <label class="settings-row"><span>URL облака (синхронизация)</span>
+                  <input type="url" id="cloud-base-url" class="standard-input wide-input" placeholder="https://guarddoc.ru" autocomplete="off">
+                </label>
+                <label class="settings-row"><span>Интервал синхронизации (мин)</span>
+                  <input type="number" id="cloud-sync-interval" class="standard-input" min="1" max="1440" value="5">
+                </label>
+                <label class="settings-row toggle-label"><input type="checkbox" id="cloud-sync-enabled" checked> <span>Включить синхронизацию с облаком</span></label>
+                <label class="settings-row"><span>Токен синхронизации (предпочтительно env GUARDSCHOOL_CLOUD_SYNC_TOKEN на ПК)</span>
+                  <input type="password" id="cloud-sync-token" class="standard-input wide-input" placeholder="" autocomplete="new-password">
+                </label>
+                <label class="settings-row"><span>Primary URL для ТВ (LAN)</span>
+                  <input type="url" id="screen-primary-base" class="standard-input wide-input" placeholder="http://192.168.1.10:8000" autocomplete="off">
+                </label>
+                <label class="settings-row"><span>Fallback URL (облако)</span>
+                  <input type="url" id="screen-fallback-base" class="standard-input wide-input" placeholder="https://guarddoc.ru" autocomplete="off">
+                </label>
+                <label class="settings-row toggle-label"><input type="checkbox" id="screen-fallback-enabled"> <span>Разрешить ТВ fallback на облако</span></label>
+                <label class="settings-row"><span>Таймаут опроса ТВ (сек)</span>
+                  <input type="number" id="screen-poll-timeout" class="standard-input" min="2" max="60" value="5">
+                </label>
+                <p class="hint" id="sync-status-line">Синхронизация: —</p>
+                <div class="settings-row settings-btn-row program-settings-footer-actions">
+                  <button type="button" id="sync-now-btn" class="secondary-btn compact-btn">Синхронизировать сейчас</button>
+                </div>
+
+                <div class="settings-row settings-row-inline">
+                  <label for="ui-font-size-input" class="settings-inline-label" data-i18n="top.fontPx">Шрифт интерфейса (px)</label>
+                  <input type="number" id="ui-font-size-input" class="standard-input settings-fontpx-input" min="12" max="24" value="14" title="12–24">
+                </div>
+
+                <h4 class="settings-popover-subhead program-settings-palette-head" data-i18n="programSettings.paletteTitle">Виджеты в списке под «Виджеты»</h4>
+                <p class="hint program-settings-palette-hint" data-i18n="programSettings.paletteHint">Снятая галочка скрывает тип только в списке под заголовком «Виджеты» (кнопка «Настроить»). На ТВ и в сетке предпросмотра без изменений. Чтобы настроить скрытый блок — отметьте тип снова.</p>
+                <div id="program-settings-palette-checkboxes" class="program-settings-palette-grid"></div>
+
+                <div class="settings-row settings-btn-row program-settings-footer-actions">
+                  <button id="export-data-btn" type="button" class="secondary-btn compact-btn" data-i18n="top.export">Экспорт ZIP</button>
+                  <button id="import-data-btn" type="button" class="secondary-btn compact-btn" data-i18n="top.import">Импорт ZIP</button>
+                  <input id="import-data-input" type="file" accept=".zip" hidden>
+                </div>
+                <div class="settings-row settings-test-row">
+                  <span class="settings-inline-label" data-i18n="top.sound">Звук</span>
+                  <button id="settings-test-rupor-btn" type="button" class="secondary-btn" data-i18n="top.soundRupor">Рупор</button>
+                  <button id="settings-test-tv-btn" type="button" class="secondary-btn" data-i18n="top.soundTv">ТВ</button>
+                </div>
+                <pre id="settings-sound-test-result" class="settings-probe-out"></pre>
+                <label class="settings-row" data-i18n="top.bgFile">Фон ТВ (файл)
+                  <input id="background-input" type="file" accept="image/*">
+                </label>
+                <p class="hint settings-file-input-hint" data-i18n="top.filePickerHint">Подпись кнопки выбора файла задаётся браузером/ОС и может не совпадать с языком интерфейса.</p>
+              </div>
+            </div>
+
+            <div id="program-settings-pane-tv" class="program-settings-pane" data-ps-pane="tv" role="tabpanel" hidden>
+              <div class="settings-popover-grid program-settings-pane-grid">
+                <h4 id="tv-access-head" class="settings-popover-subhead" style="margin-top: 0" hidden>Подключение ТВ (SaaS)</h4>
+                <div id="tv-access-wrap" class="settings-row" hidden>
+                  <p class="hint" style="margin-top: 0">
+                    Сгенерируйте короткий код школы, задайте PIN (4–12 цифр) и используйте ссылки для экранов:
+                    <code>/t/&lt;код&gt;/&lt;экран&gt;</code>.
+                    PIN для ТВ хранится <strong>отдельно</strong> от кнопки «Сохранить» вверху: его меняют только поле ниже и «Сохранить PIN».
+                    После «Сгенерировать код» старые ссылки и QR с прежним кодом <strong>перестают работать</strong>.
+                  </p>
+                  <div class="settings-row settings-btn-row" style="justify-content: flex-start; gap: 10px; flex-wrap: wrap">
+                    <button type="button" id="tv-rotate-code-btn" class="secondary-btn">Сгенерировать код</button>
+                    <input id="tv-pin-input" class="standard-input" inputmode="numeric" placeholder="PIN 4–12 цифр" style="max-width: 180px" />
+                    <button type="button" id="tv-set-pin-btn" class="secondary-btn">Сохранить PIN</button>
+                  </div>
+                  <label class="hint" style="display: flex; align-items: flex-start; gap: 10px; margin-top: 10px; cursor: pointer; max-width: 720px; line-height: 1.45">
+                    <input type="checkbox" id="tv-pin-bypass" style="margin-top: 3px" />
+                    <span>Тест: не показывать страницу ввода PIN — по ссылке <code>/t/…/…</code> сразу открывается экран (защита только секретным кодом в адресе). Выключается этим же чекбоксом.</span>
+                  </label>
+                  <pre id="tv-code-out" class="settings-probe-out" style="white-space: pre-wrap"></pre>
+                  <div id="tv-links-wrap" class="settings-row" style="margin-top: 10px"></div>
+                </div>
+              </div>
+            </div>
+
+            <div id="program-settings-pane-changelog" class="program-settings-pane" data-ps-pane="changelog" role="tabpanel" hidden>
+              <div class="settings-popover-grid program-settings-pane-grid program-settings-changelog-wrap">
+                <h3 class="program-settings-changelog-title" data-i18n="section.changelogTitle">Изменения программы</h3>
+                <p class="hint history-lead" data-i18n="history.lead">Здесь только выпуски программы (номер версии в записи). Сохранения расписания и настроек в этот список не попадают.</p>
+                <div id="history-list" class="history-list"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section id="audio-stream-panel" class="editor-grid" hidden>
         <div class="card span-2 audio-stream-card">
           <div class="card-header">
@@ -391,131 +518,6 @@
         </div>
       </section>
     </main>
-  </div>
-
-  <div id="program-settings-modal" class="program-settings-fullpage" hidden aria-hidden="true">
-    <header class="program-settings-page-header">
-      <div class="program-settings-page-header-inner">
-        <h2 id="program-settings-modal-title" data-i18n="programSettings.title">Настройки программы</h2>
-        <div class="program-settings-header-actions">
-          <button type="button" id="save-config-btn" class="primary-btn compact-btn" data-i18n="top.save">Сохранить</button>
-          <button type="button" class="secondary-btn compact-btn" data-close-program-settings data-i18n="modal.close">Закрыть</button>
-        </div>
-      </div>
-      <div class="program-settings-tabstrip">
-        <nav class="section-tabs program-settings-subtabs" role="tablist" aria-label="Разделы настроек">
-          <button type="button" class="section-tab-btn program-settings-subtab active" role="tab" data-ps-tab="general" aria-selected="true" data-i18n="programSettings.tabGeneral">Общее</button>
-          <button type="button" class="section-tab-btn program-settings-subtab" role="tab" data-ps-tab="tv" aria-selected="false" data-i18n="programSettings.tabTv">ТВ (SaaS)</button>
-          <button type="button" class="section-tab-btn program-settings-subtab" role="tab" data-ps-tab="changelog" aria-selected="false" data-i18n="programSettings.tabChangelog">Изменения</button>
-        </nav>
-      </div>
-    </header>
-    <div class="program-settings-page-scroll">
-      <div id="program-settings-pane-general" class="program-settings-pane" data-ps-pane="general" role="tabpanel">
-        <div class="settings-popover-grid program-settings-pane-grid">
-          <h4 class="settings-popover-subhead" data-i18n="regional.title">Язык, время и пояс</h4>
-          <label class="settings-row"><span data-i18n="top.lang">Язык</span>
-            <select id="admin-locale-select" class="standard-input wide-input" title="Language">
-              <option value="ru">Русский</option>
-              <option value="en">English</option>
-            </select>
-          </label>
-          <label class="settings-row"><span data-i18n="regional.timezone">Часовой пояс</span>
-            <select id="admin-timezone" class="standard-input wide-input" title="IANA timezone"></select>
-          </label>
-          <label class="settings-row" data-i18n-title="regional.offsetHint"><span data-i18n="regional.offset">Сдвиг времени (мин)</span>
-            <input type="number" id="admin-clock-offset" class="standard-input" min="-720" max="720" step="1" value="0">
-          </label>
-          <p class="hint settings-regional-hint" data-i18n="regional.offsetHint">Добавляется к «настенному» времени на ТВ (если часы устройства неточны). Диапазон ±720 мин.</p>
-
-          <h4 class="settings-popover-subhead">Облако / гибрид</h4>
-          <p class="hint">Локальный сервер может подтягивать ZIP с облака по токену. ТВ: параметры URL <code>gs_primary_base</code>, <code>gs_fallback_base</code>, <code>gs_tv_token</code>, <code>gs_poll_timeout_sec</code>.</p>
-          <label class="settings-row"><span>URL облака (синхронизация)</span>
-            <input type="url" id="cloud-base-url" class="standard-input wide-input" placeholder="https://guarddoc.ru" autocomplete="off">
-          </label>
-          <label class="settings-row"><span>Интервал синхронизации (мин)</span>
-            <input type="number" id="cloud-sync-interval" class="standard-input" min="1" max="1440" value="5">
-          </label>
-          <label class="settings-row toggle-label"><input type="checkbox" id="cloud-sync-enabled" checked> <span>Включить синхронизацию с облаком</span></label>
-          <label class="settings-row"><span>Токен синхронизации (предпочтительно env GUARDSCHOOL_CLOUD_SYNC_TOKEN на ПК)</span>
-            <input type="password" id="cloud-sync-token" class="standard-input wide-input" placeholder="" autocomplete="new-password">
-          </label>
-          <label class="settings-row"><span>Primary URL для ТВ (LAN)</span>
-            <input type="url" id="screen-primary-base" class="standard-input wide-input" placeholder="http://192.168.1.10:8000" autocomplete="off">
-          </label>
-          <label class="settings-row"><span>Fallback URL (облако)</span>
-            <input type="url" id="screen-fallback-base" class="standard-input wide-input" placeholder="https://guarddoc.ru" autocomplete="off">
-          </label>
-          <label class="settings-row toggle-label"><input type="checkbox" id="screen-fallback-enabled"> <span>Разрешить ТВ fallback на облако</span></label>
-          <label class="settings-row"><span>Таймаут опроса ТВ (сек)</span>
-            <input type="number" id="screen-poll-timeout" class="standard-input" min="2" max="60" value="5">
-          </label>
-          <p class="hint" id="sync-status-line">Синхронизация: —</p>
-          <div class="settings-row settings-btn-row program-settings-footer-actions">
-            <button type="button" id="sync-now-btn" class="secondary-btn compact-btn">Синхронизировать сейчас</button>
-          </div>
-
-          <div class="settings-row settings-row-inline">
-            <label for="ui-font-size-input" class="settings-inline-label" data-i18n="top.fontPx">Шрифт интерфейса (px)</label>
-            <input type="number" id="ui-font-size-input" class="standard-input settings-fontpx-input" min="12" max="24" value="14" title="12–24">
-          </div>
-
-          <h4 class="settings-popover-subhead program-settings-palette-head" data-i18n="programSettings.paletteTitle">Виджеты в списке под «Виджеты»</h4>
-          <p class="hint program-settings-palette-hint" data-i18n="programSettings.paletteHint">Снятая галочка скрывает тип только в списке под заголовком «Виджеты» (кнопка «Настроить»). На ТВ и в сетке предпросмотра без изменений. Чтобы настроить скрытый блок — отметьте тип снова.</p>
-          <div id="program-settings-palette-checkboxes" class="program-settings-palette-grid"></div>
-
-          <div class="settings-row settings-btn-row program-settings-footer-actions">
-            <button id="export-data-btn" type="button" class="secondary-btn compact-btn" data-i18n="top.export">Экспорт ZIP</button>
-            <button id="import-data-btn" type="button" class="secondary-btn compact-btn" data-i18n="top.import">Импорт ZIP</button>
-            <input id="import-data-input" type="file" accept=".zip" hidden>
-            <button id="logout-btn" type="button" class="secondary-btn compact-btn" data-i18n="top.logout">Выйти</button>
-          </div>
-          <div class="settings-row settings-test-row">
-            <span class="settings-inline-label" data-i18n="top.sound">Звук</span>
-            <button id="settings-test-rupor-btn" type="button" class="secondary-btn" data-i18n="top.soundRupor">Рупор</button>
-            <button id="settings-test-tv-btn" type="button" class="secondary-btn" data-i18n="top.soundTv">ТВ</button>
-          </div>
-          <pre id="settings-sound-test-result" class="settings-probe-out"></pre>
-          <label class="settings-row" data-i18n="top.bgFile">Фон ТВ (файл)
-            <input id="background-input" type="file" accept="image/*">
-          </label>
-          <p class="hint settings-file-input-hint" data-i18n="top.filePickerHint">Подпись кнопки выбора файла задаётся браузером/ОС и может не совпадать с языком интерфейса.</p>
-        </div>
-      </div>
-
-      <div id="program-settings-pane-tv" class="program-settings-pane" data-ps-pane="tv" role="tabpanel" hidden>
-        <div class="settings-popover-grid program-settings-pane-grid">
-          <h4 id="tv-access-head" class="settings-popover-subhead" style="margin-top: 0" hidden>Подключение ТВ (SaaS)</h4>
-          <div id="tv-access-wrap" class="settings-row" hidden>
-            <p class="hint" style="margin-top: 0">
-              Сгенерируйте короткий код школы, задайте PIN (4–12 цифр) и используйте ссылки для экранов:
-              <code>/t/&lt;код&gt;/&lt;экран&gt;</code>.
-              PIN для ТВ хранится <strong>отдельно</strong> от кнопки «Сохранить» вверху: его меняют только поле ниже и «Сохранить PIN».
-              После «Сгенерировать код» старые ссылки и QR с прежним кодом <strong>перестают работать</strong>.
-            </p>
-            <div class="settings-row settings-btn-row" style="justify-content: flex-start; gap: 10px; flex-wrap: wrap">
-              <button type="button" id="tv-rotate-code-btn" class="secondary-btn">Сгенерировать код</button>
-              <input id="tv-pin-input" class="standard-input" inputmode="numeric" placeholder="PIN 4–12 цифр" style="max-width: 180px" />
-              <button type="button" id="tv-set-pin-btn" class="secondary-btn">Сохранить PIN</button>
-            </div>
-            <label class="hint" style="display: flex; align-items: flex-start; gap: 10px; margin-top: 10px; cursor: pointer; max-width: 720px; line-height: 1.45">
-              <input type="checkbox" id="tv-pin-bypass" style="margin-top: 3px" />
-              <span>Тест: не показывать страницу ввода PIN — по ссылке <code>/t/…/…</code> сразу открывается экран (защита только секретным кодом в адресе). Выключается этим же чекбоксом.</span>
-            </label>
-            <pre id="tv-code-out" class="settings-probe-out" style="white-space: pre-wrap"></pre>
-            <div id="tv-links-wrap" class="settings-row" style="margin-top: 10px"></div>
-          </div>
-        </div>
-      </div>
-
-      <div id="program-settings-pane-changelog" class="program-settings-pane" data-ps-pane="changelog" role="tabpanel" hidden>
-        <div class="settings-popover-grid program-settings-pane-grid program-settings-changelog-wrap">
-          <h3 class="program-settings-changelog-title" data-i18n="section.changelogTitle">Изменения программы</h3>
-          <p class="hint history-lead" data-i18n="history.lead">Здесь только выпуски программы (номер версии в записи). Сохранения расписания и настроек в этот список не попадают.</p>
-          <div id="history-list" class="history-list"></div>
-        </div>
-      </div>
-    </div>
   </div>
 
   <div id="widget-editor-modal" class="widget-editor-modal" hidden aria-hidden="true">

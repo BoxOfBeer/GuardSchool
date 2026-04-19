@@ -555,7 +555,7 @@ export function bindWidgetModalOnce() {
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
     if (state.widgetModalWidgetId) closeWidgetModal();
-    else if (elements.programSettingsModal && !elements.programSettingsModal.hidden) deps.closeProgramSettingsModal();
+    else if (state.programSettingsPanelActive) deps.closeProgramSettingsModal();
   });
 }
 
