@@ -1599,7 +1599,8 @@ async function init() {
   }, 15000);
 }
 
-elements.saveConfigBtn.onclick = saveAll;
+if (elements.saveConfigBtn) elements.saveConfigBtn.onclick = saveAll;
+if (elements.saveConfigTopBtn) elements.saveConfigTopBtn.onclick = saveAll;
 elements.exportDataBtn.onclick = async () => {
   await downloadFile("/api/admin/export", "gorniitv_export");
 };

@@ -29,6 +29,7 @@ export const elements = {
   tabs: document.getElementById("tabs"),
   sectionTabs: document.getElementById("section-tabs"),
   saveConfigBtn: document.getElementById("save-config-btn"),
+  saveConfigTopBtn: document.getElementById("save-config-top-btn"),
   exportDataBtn: document.getElementById("export-data-btn"),
   importDataBtn: document.getElementById("import-data-btn"),
   importDataInput: document.getElementById("import-data-input"),

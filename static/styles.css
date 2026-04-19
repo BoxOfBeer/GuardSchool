@@ -131,6 +131,13 @@ body {
   letter-spacing: -0.02em;
 }
 
+.top-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
 .top-bar-nav-wrap {
   display: flex;
   align-items: center;
@@ -1037,47 +1044,52 @@ body.program-settings-page-open {
   justify-content: space-between;
   gap: 12px;
   padding: 12px 16px;
-  max-width: 960px;
+  max-width: 1100px;
   margin: 0 auto;
   width: 100%;
+  flex-wrap: wrap;
 }
 
 .program-settings-page-header-inner h2 {
   margin: 0;
   font-size: 1.1rem;
   font-weight: 700;
+  min-width: 0;
 }
 
-.program-settings-subtabs {
+.program-settings-header-actions {
   display: flex;
-  flex-wrap: wrap;
+  align-items: center;
   gap: 8px;
-  padding: 0 16px 12px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  margin-left: auto;
+}
+
+.program-settings-tabstrip {
+  border-top: 1px solid rgba(148, 163, 184, 0.14);
+  background: rgba(15, 23, 42, 0.42);
+}
+
+/* Те же визуальные принципы, что у вкладок «Экран / Расписание / Превью» */
+.program-settings-subtabs.section-tabs {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  width: 100%;
   max-width: 960px;
   margin: 0 auto;
-  width: 100%;
+  padding: 6px 16px 8px;
+  box-sizing: border-box;
 }
 
-.program-settings-subtab {
-  appearance: none;
-  font: inherit;
-  cursor: pointer;
-  padding: 8px 14px;
-  border-radius: 10px;
-  border: 1px solid rgba(148, 163, 184, 0.35);
-  background: rgba(30, 41, 59, 0.55);
-  color: var(--muted);
+.program-settings-subtabs .section-tab-btn {
+  flex: 0 0 auto;
+  width: auto;
 }
 
-.program-settings-subtab:hover {
-  border-color: rgba(56, 189, 248, 0.45);
-  color: var(--text);
-}
-
-.program-settings-subtab.active {
-  border-color: rgba(56, 189, 248, 0.75);
-  color: var(--accent);
-  background: rgba(30, 41, 59, 0.85);
+.program-settings-footer-actions button {
+  flex: 0 0 auto;
 }
 
 .program-settings-page-scroll {

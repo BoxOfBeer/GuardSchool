@@ -27,6 +27,9 @@
         <img class="brand-logo-mini" src="/brand-logo" alt="">
         <span class="top-bar-title" data-i18n="brand.title">GuardSchool</span>
       </div>
+      <div class="top-bar-actions">
+        <button type="button" id="save-config-top-btn" class="primary-btn compact-btn" data-i18n="top.save">Сохранить</button>
+      </div>
       <div class="top-bar-nav-wrap">
         <div id="tabs" class="top-nav-tabs"></div>
         <label class="top-bar-emergency">
@@ -394,13 +397,18 @@
     <header class="program-settings-page-header">
       <div class="program-settings-page-header-inner">
         <h2 id="program-settings-modal-title" data-i18n="programSettings.title">Настройки программы</h2>
-        <button type="button" class="secondary-btn compact-btn" data-close-program-settings data-i18n="modal.close">Закрыть</button>
+        <div class="program-settings-header-actions">
+          <button type="button" id="save-config-btn" class="primary-btn compact-btn" data-i18n="top.save">Сохранить</button>
+          <button type="button" class="secondary-btn compact-btn" data-close-program-settings data-i18n="modal.close">Закрыть</button>
+        </div>
       </div>
-      <nav class="program-settings-subtabs" role="tablist" aria-label="Разделы настроек">
-        <button type="button" class="program-settings-subtab active" role="tab" data-ps-tab="general" aria-selected="true" data-i18n="programSettings.tabGeneral">Общее</button>
-        <button type="button" class="program-settings-subtab" role="tab" data-ps-tab="tv" aria-selected="false" data-i18n="programSettings.tabTv">ТВ (SaaS)</button>
-        <button type="button" class="program-settings-subtab" role="tab" data-ps-tab="changelog" aria-selected="false" data-i18n="programSettings.tabChangelog">Изменения</button>
-      </nav>
+      <div class="program-settings-tabstrip">
+        <nav class="section-tabs program-settings-subtabs" role="tablist" aria-label="Разделы настроек">
+          <button type="button" class="section-tab-btn program-settings-subtab active" role="tab" data-ps-tab="general" aria-selected="true" data-i18n="programSettings.tabGeneral">Общее</button>
+          <button type="button" class="section-tab-btn program-settings-subtab" role="tab" data-ps-tab="tv" aria-selected="false" data-i18n="programSettings.tabTv">ТВ (SaaS)</button>
+          <button type="button" class="section-tab-btn program-settings-subtab" role="tab" data-ps-tab="changelog" aria-selected="false" data-i18n="programSettings.tabChangelog">Изменения</button>
+        </nav>
+      </div>
     </header>
     <div class="program-settings-page-scroll">
       <div id="program-settings-pane-general" class="program-settings-pane" data-ps-pane="general" role="tabpanel">
@@ -443,8 +451,8 @@
             <input type="number" id="screen-poll-timeout" class="standard-input" min="2" max="60" value="5">
           </label>
           <p class="hint" id="sync-status-line">Синхронизация: —</p>
-          <div class="settings-row settings-btn-row">
-            <button type="button" id="sync-now-btn" class="secondary-btn">Синхронизировать сейчас</button>
+          <div class="settings-row settings-btn-row program-settings-footer-actions">
+            <button type="button" id="sync-now-btn" class="secondary-btn compact-btn">Синхронизировать сейчас</button>
           </div>
 
           <div class="settings-row settings-row-inline">
@@ -456,12 +464,11 @@
           <p class="hint program-settings-palette-hint" data-i18n="programSettings.paletteHint">Снятая галочка скрывает тип только в списке под заголовком «Виджеты» (кнопка «Настроить»). На ТВ и в сетке предпросмотра без изменений. Чтобы настроить скрытый блок — отметьте тип снова.</p>
           <div id="program-settings-palette-checkboxes" class="program-settings-palette-grid"></div>
 
-          <div class="settings-row settings-btn-row">
-            <button id="save-config-btn" type="button" class="primary-btn" data-i18n="top.save">Сохранить</button>
-            <button id="export-data-btn" type="button" class="secondary-btn" data-i18n="top.export">Экспорт ZIP</button>
-            <button id="import-data-btn" type="button" class="secondary-btn" data-i18n="top.import">Импорт ZIP</button>
+          <div class="settings-row settings-btn-row program-settings-footer-actions">
+            <button id="export-data-btn" type="button" class="secondary-btn compact-btn" data-i18n="top.export">Экспорт ZIP</button>
+            <button id="import-data-btn" type="button" class="secondary-btn compact-btn" data-i18n="top.import">Импорт ZIP</button>
             <input id="import-data-input" type="file" accept=".zip" hidden>
-            <button id="logout-btn" type="button" class="secondary-btn" data-i18n="top.logout">Выйти</button>
+            <button id="logout-btn" type="button" class="secondary-btn compact-btn" data-i18n="top.logout">Выйти</button>
           </div>
           <div class="settings-row settings-test-row">
             <span class="settings-inline-label" data-i18n="top.sound">Звук</span>
