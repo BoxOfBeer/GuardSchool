@@ -773,9 +773,29 @@ def _normalize_tv_pair_text(s: str) -> str:
     """NFKC + убрать ZWSP/BOM: на ТВ часто приходят полноширинные цифры и невидимые символы."""
     t = unicodedata.normalize("NFKC", str(s or ""))
     t = _TV_PAIR_ZW_RE.sub("", t).strip()
-    for bad, good in (("\u2013", "-"), ("\u2014", "-"), ("\u2212", "-"), ("\uff0d", "-")):
+    for bad, good in (
+        ("\u2010", "-"),
+        ("\u2011", "-"),
+        ("\u2012", "-"),
+        ("\u2013", "-"),
+        ("\u2014", "-"),
+        ("\u2015", "-"),
+        ("\u2212", "-"),
+        ("\uff0d", "-"),
+    ):
         t = t.replace(bad, good)
     return t
+
+
+def _tv_school_code_compact(s: str) -> str:
+    """Только a-z0-9 после той же нормализации, что для пары ТВ (сверка URL ↔ code_plaintext в БД)."""
+    t = _normalize_tv_pair_text(str(s or "")).lower()
+    return re.sub(r"[^a-z0-9]", "", t)
+
+
+def _tv_path_code_segment(raw: str) -> str:
+    """Сегмент кода из пути: обрезка слэшей/точек по краям (часть встроенных браузеров ТВ)."""
+    return str(raw or "").strip().strip("/.").strip()
 
 
 def _pin_digits_to_ascii(s: str) -> str:
@@ -4394,7 +4414,7 @@ def _canonical_tv_school_code(normalized_lower: str) -> str | None:
     s = (normalized_lower or "").strip()
     if _TV_SCHOOL_CODE_TRIPLET.fullmatch(s):
         return s
-    letters = re.sub(r"[^a-z0-9]", "", s)
+    letters = _tv_school_code_compact(s)
     if len(letters) != 12:
         return None
     cand = f"{letters[:4]}-{letters[4:8]}-{letters[8:12]}"
@@ -4414,6 +4434,26 @@ _TV_ACCESS_BY_CODE_SQL = (
 )
 
 
+def _tv_access_lookup_row(cur: Any, *, code_canon: str) -> tuple[Any, Any, Any, Any] | None:
+    """Поиск tv_access по хешу/SQL и резервно по компактному коду (ZWSP/дефисы Unicode в БД или в URL ТВ)."""
+    ch = tv_code_hash(code_canon)
+    code_digits_only = re.sub(r"[^a-z0-9]", "", code_canon)
+    cur.execute(_TV_ACCESS_BY_CODE_SQL, (ch, code_canon, code_digits_only))
+    row = cur.fetchone()
+    if row:
+        return row
+    want = _tv_school_code_compact(code_canon)
+    if len(want) != 12:
+        return None
+    cur.execute(
+        "SELECT tenant_slug, pin_salt, pin_hash, COALESCE(pin_bypass, false), coalesce(code_plaintext,'') FROM tv_access"
+    )
+    for r in cur.fetchall() or []:
+        if _tv_school_code_compact(str(r[4] or "")) == want:
+            return (r[0], r[1], r[2], r[3])
+    return None
+
+
 @app.get("/t/{code}/{screen_slug}", response_class=HTMLResponse)
 def tv_pair_page(request: Request, code: str, screen_slug: str) -> Response:
     """
@@ -4426,7 +4466,7 @@ def tv_pair_page(request: Request, code: str, screen_slug: str) -> Response:
             message="В этой конфигурации сервера автоматическое подключение телевизора недоступно.",
             status=503,
         )
-    code_raw = _normalize_tv_pair_text(str(code or "")).lower()
+    code_raw = _normalize_tv_pair_text(_tv_path_code_segment(code)).lower()
     code_canon = _canonical_tv_school_code(code_raw)
     if not code_canon:
         return _tv_pair_gate_notice_html(
@@ -4449,12 +4489,9 @@ def tv_pair_page(request: Request, code: str, screen_slug: str) -> Response:
             status_code=429,
             headers={"Cache-Control": "no-store"},
         )
-    ch = tv_code_hash(code_canon)
-    code_digits_only = re.sub(r"[^a-z0-9]", "", code_canon)
     with connect_public() as conn:
         with conn.cursor() as cur:
-            cur.execute(_TV_ACCESS_BY_CODE_SQL, (ch, code_canon, code_digits_only))
-            row = cur.fetchone()
+            row = _tv_access_lookup_row(cur, code_canon=code_canon)
             if not row:
                 _tv_pair_record_failure(pair_key, now_ts)
                 return _tv_pair_gate_notice_html(
@@ -4528,12 +4565,9 @@ async def tv_pair(request: Request) -> dict[str, Any]:
     if retry_after > 0:
         raise HTTPException(status_code=429, detail=f"Too many attempts. Retry after {retry_after}s")
 
-    ch = tv_code_hash(code)
-    code_digits_only = re.sub(r"[^a-z0-9]", "", code)
     with connect_public() as conn:
         with conn.cursor() as cur:
-            cur.execute(_TV_ACCESS_BY_CODE_SQL, (ch, code, code_digits_only))
-            row = cur.fetchone()
+            row = _tv_access_lookup_row(cur, code_canon=code)
             if not row:
                 _tv_pair_record_failure(pair_key, now_ts)
                 raise HTTPException(status_code=403, detail="Invalid code or PIN")
