@@ -28,4 +28,7 @@ def normalize_class(value: str) -> str:
     m = _STAR_CLASS_RE.fullmatch(t)
     if m:
         return f"{m.group(1)}*" if m.group(2) else m.group(1)
+    # «7a» с латинской «a» (конфиг/URL) → «7а» как в Excel с кириллической «а».
+    if re.fullmatch(r"\d+a", t):
+        return t[:-1] + "а"
     return t

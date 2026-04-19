@@ -1428,17 +1428,25 @@ def distinct_schedule_class_names_from_sources(
 
 
 def pickable_classes_for_screen(screen_cfg: dict[str, Any]) -> list[str]:
-    """Классы для фильтра на устройстве (ТВ/телефон): как в настройке экрана или все из импорта."""
-    raw_sel = screen_cfg.get("selected_classes")
-    if isinstance(raw_sel, list):
-        out = list(dict.fromkeys(s for s in (str(x).strip() for x in raw_sel) if s))
-        if out:
-            return out
-    return distinct_schedule_class_names_from_sources(
+    """Классы для шестерёнки на ТВ/телефоне: настройка экрана + все из импорта (чтобы не терять 7А и т.п.)."""
+    from_import = distinct_schedule_class_names_from_sources(
         load_schedule(),
         load_full_schedule(),
         load_schedule_sample(),
     )
+    raw_sel = screen_cfg.get("selected_classes")
+    configured: list[str] = []
+    if isinstance(raw_sel, list):
+        configured = [str(x).strip() for x in raw_sel if str(x).strip()]
+    if not configured:
+        return from_import
+    by_norm: dict[str, str] = {}
+    for raw in configured + from_import:
+        k = normalize_class(raw)
+        if not k:
+            continue
+        by_norm.setdefault(k, raw)
+    return sorted(by_norm.values(), key=class_sort_key)
 
 
 def time_to_minutes(value: str) -> int:
@@ -2004,25 +2012,11 @@ def build_schedule_payload(
             and class_in_selected(item["class_key"], selectors)
         }
     )
-    next_day_candidates: list[date] = []
-    seen_iso: set[str] = set()
-    for iso in future_iso:
-        if len(iso) < 10:
-            continue
-        try:
-            d0 = date.fromisoformat(iso[:10])
-        except ValueError:
-            continue
-        k0 = d0.isoformat()
-        if k0 not in seen_iso:
-            seen_iso.add(k0)
-            next_day_candidates.append(d0)
-    for k in range(1, 15):
-        d1 = date.fromordinal(target_date.toordinal() + k)
-        k1 = d1.isoformat()
-        if k1 not in seen_iso:
-            seen_iso.add(k1)
-            next_day_candidates.append(d1)
+    next_school_date = (
+        date.fromisoformat(future_iso[0][:10])
+        if future_iso
+        else date.fromordinal(target_date.toordinal() + 1)
+    )
 
     show_next_day = tomorrow_schedule_visible(bell_status)
 
@@ -2036,25 +2030,16 @@ def build_schedule_payload(
         selectors=selectors,
         bell_status=bell_status,
     )
-    tomorrow_rows: list[dict[str, Any]] = []
-    next_school_date = (
-        next_day_candidates[0] if next_day_candidates else date.fromordinal(target_date.toordinal() + 1)
+    tomorrow_rows = collect_enriched_schedule_rows(
+        day=next_school_date,
+        marker_reference_date=target_date,
+        schedule_data=schedule_data,
+        full_data=full_data,
+        sample_data=sample_data,
+        overrides=overrides,
+        selectors=selectors,
+        bell_status=bell_status,
     )
-    for d_try in next_day_candidates:
-        tr = collect_enriched_schedule_rows(
-            day=d_try,
-            marker_reference_date=target_date,
-            schedule_data=schedule_data,
-            full_data=full_data,
-            sample_data=sample_data,
-            overrides=overrides,
-            selectors=selectors,
-            bell_status=bell_status,
-        )
-        if tr:
-            tomorrow_rows = tr
-            next_school_date = d_try
-            break
     max_lesson_index_today = max_lesson_index_from_enriched_rows(today_rows)
 
     return {
