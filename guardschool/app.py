@@ -1495,27 +1495,12 @@ def load_bell_schedules() -> dict[str, Any]:
 
 
 def class_matches_selector(class_key: str, selector: str) -> bool:
+    """Только точное совпадение ключа (после normalize_class): «7» и «7а» — разные классы."""
     class_key = normalize_class(class_key)
     normalized_selector = normalize_class(selector)
     if not normalized_selector:
         return False
-    if class_key == normalized_selector:
-        return True
-    grade_match = re.match(r"^(\d+)$", normalized_selector)
-    if grade_match:
-        n = grade_match.group(1)
-        # «Только параллель» 7: «7а», «7 математика»; не «10» для «1»; не «7*» (звёздочный класс — только «7*»).
-        if not class_key.startswith(n):
-            return False
-        rest = class_key[len(n) :]
-        if not rest:
-            return True
-        if rest[0].isdigit():
-            return False
-        if rest.lstrip().startswith("*"):
-            return False
-        return True
-    return False
+    return class_key == normalized_selector
 
 
 def class_in_selected(class_key: str, selectors: list[str]) -> bool:

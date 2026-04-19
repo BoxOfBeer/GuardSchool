@@ -427,6 +427,20 @@ function screenPollUrl(base, slug, cid, lab, dev, _mobileMode) {
 }
 
 /** На этом устройстве показать сетку, даже если в веб-конфиге включён mobile_mode (?gs_grid=1 сохраняется в localStorage). */
+/** Подписи типов виджетов в панели «Настройки для этого устройства» (value остаётся англ. ключом для gs_mw). */
+const GS_DEVICE_WIDGET_TYPE_LABELS = {
+  date: "Дата",
+  time: "Время",
+  text: "Текст",
+  bell_status: "Звонки",
+  schedule: "Расписание",
+  carousel: "Карусель",
+  holidays: "Праздники",
+  announcements: "Объявления",
+  marquee: "Бегущая строка",
+  image: "Фон / картинка",
+};
+
 function getGsGridForPoll(slug) {
   if (!slug) return false;
   try {
@@ -1323,12 +1337,21 @@ function syncDeviceSettingsFromPayload(screenPayload) {
     if (!rawMwSaved && types.length) {
       types.forEach((t) => selectedTypes.add(String(t)));
     }
-    wrapWidgets.innerHTML = types
-      .map(
-        (t) =>
-          `<label class="opt"><input type="checkbox" value="${String(t)}" ${selectedTypes.has(String(t)) ? "checked" : ""} /> <span>${String(t)}</span></label>`
-      )
-      .join("");
+    wrapWidgets.textContent = "";
+    types.forEach((t) => {
+      const key = String(t);
+      const lab = document.createElement("label");
+      lab.className = "opt";
+      const inp = document.createElement("input");
+      inp.type = "checkbox";
+      inp.value = key;
+      inp.checked = selectedTypes.has(key);
+      const span = document.createElement("span");
+      span.textContent = GS_DEVICE_WIDGET_TYPE_LABELS[key] || key;
+      lab.appendChild(inp);
+      lab.appendChild(span);
+      wrapWidgets.appendChild(lab);
+    });
 
     btnApply.onclick = () => {
       const boxes = [...wrapClasses.querySelectorAll('input[type="checkbox"]')];
