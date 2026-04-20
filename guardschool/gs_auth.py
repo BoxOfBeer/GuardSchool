@@ -82,18 +82,49 @@ def _demo_session_secret_bytes() -> bytes:
     return hashlib.sha256(raw.encode("utf-8")).digest()
 
 
-def create_demo_session_token(exp_epoch: int) -> str:
-    """Временная сессия после /demo/{token}; не использует password_hash владельца."""
+def create_demo_session_token(
+    exp_epoch: int,
+    template_slug: str | None = None,
+    isolated_slug: str | None = None,
+) -> str:
+    """
+    Временная сессия после /demo/{token}; не использует password_hash владельца.
+    Если заданы template_slug и isolated_slug (копия данных), выпускается v3-токен,
+    привязанный к поддомену/тенанту-шаблону — без этого нельзя подставить чужой isolated_slug.
+    """
     exp = int(exp_epoch)
+    tpl = (template_slug or "").strip().lower()
+    iso = (isolated_slug or "").strip().lower()
+    if tpl and iso and iso != tpl:
+        msg = f"__gsdemo_v3__:{exp}:{tpl}:{iso}".encode("utf-8")
+        sig = hmac.new(_demo_session_secret_bytes(), msg, hashlib.sha256).hexdigest()
+        return f"__gsdemo_v3__:{exp}:{tpl}:{iso}:{sig}"
     msg = f"__gsdemo__:{exp}".encode("utf-8")
     sig = hmac.new(_demo_session_secret_bytes(), msg, hashlib.sha256).hexdigest()
     return f"__gsdemo__:{exp}:{sig}"
 
 
 def verify_demo_session_token(token: str | None) -> bool:
-    if not token or not str(token).startswith("__gsdemo__:"):
+    if not token:
         return False
-    parts = str(token).split(":")
+    s = str(token)
+    if s.startswith("__gsdemo_v3__:"):
+        parts = s.split(":")
+        if len(parts) != 5:
+            return False
+        try:
+            exp = int(parts[1])
+        except ValueError:
+            return False
+        if int(time.time()) > exp:
+            return False
+        tpl, iso, sig = parts[2], parts[3], parts[4]
+        msg = f"__gsdemo_v3__:{exp}:{tpl}:{iso}".encode("utf-8")
+        expected = hmac.new(_demo_session_secret_bytes(), msg, hashlib.sha256).hexdigest()
+        return hmac.compare_digest(expected, sig)
+    if not s.startswith("__gsdemo__:"):
+        return False
+    parts = s.split(":")
     if len(parts) != 3:
         return False
     try:
@@ -105,6 +136,18 @@ def verify_demo_session_token(token: str | None) -> bool:
     msg = f"__gsdemo__:{exp}".encode("utf-8")
     expected = hmac.new(_demo_session_secret_bytes(), msg, hashlib.sha256).hexdigest()
     return hmac.compare_digest(expected, parts[2])
+
+
+def demo_v3_binding_from_token(token: str | None) -> tuple[str, str] | None:
+    """Для v3-демо: (template_slug, isolated_slug) или None."""
+    if not token or not str(token).startswith("__gsdemo_v3__:"):
+        return None
+    parts = str(token).split(":")
+    if len(parts) != 5:
+        return None
+    if not verify_demo_session_token(token):
+        return None
+    return parts[2].strip().lower(), parts[3].strip().lower()
 
 
 def is_demo_session_for_admin_ui(request: Request) -> bool:

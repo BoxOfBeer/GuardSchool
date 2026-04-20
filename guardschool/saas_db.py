@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import secrets
+import shutil
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -103,6 +104,8 @@ def ensure_public_schema() -> None:
                     CREATE TABLE IF NOT EXISTS demo_sessions (
                         token_hash TEXT PRIMARY KEY,
                         tenant_slug TEXT NOT NULL DEFAULT '',
+                        isolated_slug TEXT NOT NULL DEFAULT '',
+                        consumed_at TIMESTAMPTZ NULL,
                         created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
                         expires_at TIMESTAMPTZ NOT NULL
                     );
@@ -137,6 +140,16 @@ def ensure_public_schema() -> None:
             # Backward-compatible: add tenant_slug if table existed before.
             try:
                 cur.execute("ALTER TABLE demo_sessions ADD COLUMN IF NOT EXISTS tenant_slug TEXT NOT NULL DEFAULT ''")
+            except Exception:
+                pass
+            try:
+                cur.execute(
+                    "ALTER TABLE demo_sessions ADD COLUMN IF NOT EXISTS isolated_slug TEXT NOT NULL DEFAULT ''"
+                )
+            except Exception:
+                pass
+            try:
+                cur.execute("ALTER TABLE demo_sessions ADD COLUMN IF NOT EXISTS consumed_at TIMESTAMPTZ NULL")
             except Exception:
                 pass
             try:
@@ -264,14 +277,42 @@ def tv_device_token_hash(token: str) -> str:
     return hashlib.sha256(pep + b"\ndevice\n" + raw).hexdigest()
 
 
-def cleanup_expired_demo_sessions() -> int:
-    """Удаляет просроченные строки demo_sessions (токен уже недействителен)."""
+def drop_tenant_schema_if_exists(tenant_slug: str) -> None:
+    """DROP SCHEMA CASCADE для схемы тенанта (SaaS). Безопасно для отсутствующей схемы."""
     if not saas_db_enabled():
-        return 0
+        return
+    import psycopg2.sql as sql
+
+    sch = schema_name_for_slug(tenant_slug)
     with connect_public() as conn:
         with conn.cursor() as cur:
+            cur.execute(sql.SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(sql.Identifier(sch)))
+        conn.commit()
+
+
+def cleanup_expired_demo_sessions() -> int:
+    """Удаляет просроченные строки demo_sessions и каталоги ephemeral-демо (isolated_slug)."""
+    if not saas_db_enabled():
+        return 0
+    from .tenant_ctx import tenant_data_dir
+
+    doomed: list[str] = []
+    with connect_public() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT isolated_slug FROM demo_sessions WHERE expires_at < now() AND COALESCE(isolated_slug,'') <> ''"
+            )
+            doomed = [str(r[0]).strip().lower() for r in (cur.fetchall() or []) if r and r[0]]
             cur.execute("DELETE FROM demo_sessions WHERE expires_at < now()")
             n = int(cur.rowcount or 0)
         conn.commit()
+    for s in doomed:
+        try:
+            drop_tenant_schema_if_exists(s)
+        except Exception:
+            pass
+        root = tenant_data_dir(s)
+        if root.is_dir():
+            shutil.rmtree(root, ignore_errors=True)
     return n
 

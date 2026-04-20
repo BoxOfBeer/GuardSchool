@@ -34,6 +34,7 @@ from .gs_class_key import normalize_class
 from .gs_auth import (
     create_demo_session_token,
     create_session_token,
+    demo_v3_binding_from_token,
     hash_password,
     is_authenticated,
     is_demo_session_for_admin_ui,
@@ -2274,6 +2275,9 @@ async def _tenant_middleware(request: Request, call_next):
             if left and left not in ("www", "admin"):
                 slug = left
         # portal: guarddoc.ru / www.guarddoc.ru -> slug остаётся None
+        bound = _demo_middleware_binding_slug(request, slug)
+        if bound:
+            slug = bound
         set_tenant_slug(slug)
         if slug:
             try:
@@ -2474,6 +2478,90 @@ def _demo_token_hash(token: str) -> str:
     pepper = (os.environ.get("GUARDSCHOOL_DEMO_PEPPER") or os.environ.get("GUARDSCHOOL_LICENSE_PEPPER") or "").encode("utf-8")
     raw = (token or "").strip().encode("utf-8")
     return hashlib.sha256(pepper + b"\n" + raw).hexdigest()
+
+
+def _new_demo_isolated_slug() -> str:
+    """Уникальный slug каталога для копии демо (не совпадает с боевыми tenant slug)."""
+    return "d" + secrets.token_hex(12)
+
+
+def _is_demo_isolated_slug(s: str) -> bool:
+    return bool(re.fullmatch(r"d[0-9a-f]{24}", (s or "").strip().lower()))
+
+
+def _rmtree_tenant_data_disk(slug: str) -> None:
+    if deployment_mode() != "saas":
+        return
+    try:
+        from .tenant_ctx import tenant_data_dir
+
+        root = tenant_data_dir((slug or "").strip().lower())
+        if root.is_dir():
+            shutil.rmtree(root, ignore_errors=True)
+    except Exception:
+        pass
+
+
+def _purge_isolated_demo_copy(iso_slug: str) -> None:
+    """Удалить ephemeral-демо: схема PostgreSQL + каталог tenants/<isolated>/data."""
+    s = (iso_slug or "").strip().lower()
+    if not _is_demo_isolated_slug(s):
+        return
+    try:
+        from .saas_db import drop_tenant_schema_if_exists
+
+        drop_tenant_schema_if_exists(s)
+    except Exception:
+        pass
+    _rmtree_tenant_data_disk(s)
+
+
+def _provision_demo_isolated_snapshot(template_slug: str, isolated_slug: str) -> None:
+    """Копия tenants/<template>/data → tenants/<isolated>/data + схема PostgreSQL для изолированного демо."""
+    from .tenant_ctx import tenant_data_dir
+
+    tpl = (template_slug or "").strip().lower()
+    iso = (isolated_slug or "").strip().lower()
+    if not tpl or not iso or not _is_demo_isolated_slug(iso):
+        raise ValueError("Invalid demo snapshot slugs")
+    src = tenant_data_dir(tpl)
+    dst = tenant_data_dir(iso)
+    if not src.is_dir():
+        raise FileNotFoundError(f"Missing tenant data for template {tpl!r}")
+    if dst.exists():
+        shutil.rmtree(dst, ignore_errors=True)
+    skip_uploads = (os.environ.get("GUARDSCHOOL_DEMO_SNAPSHOT_SKIP_UPLOADS") or "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+    kw: dict[str, Any] = {"symlinks": False}
+    if skip_uploads:
+        kw["ignore"] = lambda _src, names: [n for n in names if n == "uploads"]
+    shutil.copytree(src, dst, **kw)
+    ensure_tenant_schema(schema_name_for_slug(iso))
+
+
+def _demo_middleware_binding_slug(request: Request, host_slug: str | None) -> str | None:
+    """
+    Если активна демо-сессия v3, подменяем tenant_slug на изолированную копию,
+    но только когда Host/cookie указывают на тот же шаблонный тенант (защита от подстановки чужого slug).
+    """
+    from .tenant_ctx import tenant_data_dir
+
+    tok = request.cookies.get(SESSION_COOKIE) or ""
+    if not verify_demo_session_token(tok):
+        return None
+    bound = demo_v3_binding_from_token(tok)
+    if not bound:
+        return None
+    tpl, iso = bound
+    if not host_slug or tpl != host_slug:
+        return None
+    if not tenant_data_dir(iso).is_dir():
+        return None
+    return iso
 
 
 def _tenant_ui_host_for_demo(tenant_slug: str) -> str:
@@ -2956,6 +3044,7 @@ def _provider_purge_license_db_and_disk(key_hash: str) -> dict[str, Any]:
     slugs: list[str] = []
     schemas: list[str] = []
     user_ids: list[str] = []
+    demo_iso_slugs: list[str] = []
     with connect_public() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT 1 FROM licenses WHERE key_hash=%s LIMIT 1", (key_hash,))
@@ -2980,6 +3069,11 @@ def _provider_purge_license_db_and_disk(key_hash: str) -> dict[str, Any]:
             for sch in schemas:
                 cur.execute(sql.SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(sql.Identifier(sch)))
             if slugs:
+                cur.execute(
+                    "SELECT DISTINCT isolated_slug FROM demo_sessions WHERE tenant_slug = ANY(%s) AND COALESCE(isolated_slug,'')<>''",
+                    (slugs,),
+                )
+                demo_iso_slugs = [str(r[0]).strip().lower() for r in (cur.fetchall() or []) if r and r[0]]
                 cur.execute(
                     "DELETE FROM tv_devices WHERE tenant_slug = ANY(%s)",
                     (slugs,),
@@ -3013,6 +3107,8 @@ def _provider_purge_license_db_and_disk(key_hash: str) -> dict[str, Any]:
         try:
             from .tenant_ctx import tenant_data_dir
 
+            for iso in demo_iso_slugs:
+                _purge_isolated_demo_copy(iso)
             for slug in slugs:
                 root = tenant_data_dir(slug)
                 if root.is_dir():
@@ -3068,6 +3164,7 @@ def _provider_purge_tenant_by_slug(slug: str) -> dict[str, Any]:
 
     slug_n = _provider_tenant_slug_param_safe(slug)
     schema_dropped: str | None = None
+    demo_iso: list[str] = []
     with connect_public() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -3083,6 +3180,11 @@ def _provider_purge_tenant_by_slug(slug: str) -> dict[str, Any]:
             cur.execute(sql.SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(sql.Identifier(schema_name)))
             cur.execute("DELETE FROM tv_devices WHERE tenant_slug=%s", (slug_n,))
             cur.execute("DELETE FROM tv_access WHERE tenant_slug=%s", (slug_n,))
+            cur.execute(
+                "SELECT DISTINCT isolated_slug FROM demo_sessions WHERE tenant_slug=%s AND COALESCE(isolated_slug,'')<>''",
+                (slug_n,),
+            )
+            demo_iso = [str(r[0]).strip().lower() for r in (cur.fetchall() or []) if r and r[0]]
             cur.execute("DELETE FROM demo_sessions WHERE tenant_slug=%s", (slug_n,))
             cur.execute("DELETE FROM sessions WHERE user_id=%s", (owner_id,))
             cur.execute("DELETE FROM tenants WHERE slug=%s", (slug_n,))
@@ -3090,6 +3192,8 @@ def _provider_purge_tenant_by_slug(slug: str) -> dict[str, Any]:
             cur.execute("DELETE FROM licenses WHERE key_hash=%s", (lic_hash,))
         conn.commit()
     if deployment_mode() == "saas":
+        for iso in demo_iso:
+            _purge_isolated_demo_copy(iso)
         try:
             from .tenant_ctx import tenant_data_dir
 
@@ -3137,13 +3241,33 @@ async def provider_create_demo(request: Request) -> dict[str, Any]:
     ttl_min = max(5, min(180, ttl_min))
     if not slug:
         raise HTTPException(status_code=400, detail="tenant_slug required")
+    from .tenant_ctx import tenant_data_dir
+
+    if not tenant_data_dir(slug).is_dir():
+        raise HTTPException(status_code=404, detail="Tenant data not found on server.")
+    isolated = _new_demo_isolated_slug()
+    try:
+        _provision_demo_isolated_snapshot(slug, isolated)
+    except Exception:
+        _purge_isolated_demo_copy(isolated)
+        raise HTTPException(
+            status_code=503,
+            detail="Could not allocate an isolated demo copy (snapshot).",
+        ) from None
     token = secrets.token_urlsafe(24)
     th = _demo_token_hash(token)
     expires_at = utcnow() + timedelta(minutes=ttl_min)
-    with connect_public() as conn:
-        with conn.cursor() as cur:
-            cur.execute("INSERT INTO demo_sessions (token_hash, tenant_slug, expires_at) VALUES (%s,%s,%s)", (th, slug, expires_at))
-        conn.commit()
+    try:
+        with connect_public() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO demo_sessions (token_hash, tenant_slug, isolated_slug, expires_at) VALUES (%s,%s,%s,%s)",
+                    (th, slug, isolated, expires_at),
+                )
+            conn.commit()
+    except Exception:
+        _purge_isolated_demo_copy(isolated)
+        raise
     return {
         "status": "ok",
         "token": token,
@@ -3180,15 +3304,37 @@ def demo_login(token: str, request: Request, response: Response) -> Response:
         )
     th = _demo_token_hash(token)
     now = utcnow()
+    isolated_res = ""
+    expires_at = None
     with connect_public() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT expires_at FROM demo_sessions WHERE token_hash=%s AND tenant_slug=%s", (th, slug))
+            cur.execute(
+                """
+                UPDATE demo_sessions
+                SET consumed_at = now()
+                WHERE token_hash=%s AND tenant_slug=%s AND expires_at > %s AND consumed_at IS NULL
+                RETURNING COALESCE(isolated_slug,''), expires_at
+                """,
+                (th, slug, now),
+            )
             row = cur.fetchone()
-            if not row or not row[0] or row[0] <= now:
-                raise HTTPException(status_code=403, detail="Demo token expired.")
-            expires_at = row[0]
-            # одноразовый
-            cur.execute("DELETE FROM demo_sessions WHERE token_hash=%s", (th,))
+            if row:
+                isolated_res = str(row[0] or "").strip().lower()
+                expires_at = row[1]
+            if not row:
+                cur.execute(
+                    "SELECT expires_at, consumed_at FROM demo_sessions WHERE token_hash=%s AND tenant_slug=%s",
+                    (th, slug),
+                )
+                row2 = cur.fetchone()
+                if not row2:
+                    raise HTTPException(status_code=403, detail="Demo token invalid.")
+                exp2, cons2 = row2[0], row2[1]
+                if not exp2 or exp2 <= now:
+                    raise HTTPException(status_code=403, detail="Demo token expired.")
+                if cons2:
+                    raise HTTPException(status_code=403, detail="Demo token already used.")
+                raise HTTPException(status_code=403, detail="Demo token invalid.")
         conn.commit()
 
     auth = load_auth()
@@ -3198,7 +3344,10 @@ def demo_login(token: str, request: Request, response: Response) -> Response:
         exp_epoch = int(expires_at.timestamp())  # type: ignore[union-attr]
     except Exception:
         exp_epoch = int(time.time()) + 3600
-    token2 = create_demo_session_token(exp_epoch)
+    if isolated_res and _is_demo_isolated_slug(isolated_res):
+        token2 = create_demo_session_token(exp_epoch, template_slug=slug, isolated_slug=isolated_res)
+    else:
+        token2 = create_demo_session_token(exp_epoch)
     sec = session_cookie_secure(request)
     max_age = max(60, exp_epoch - int(time.time()))
     response = RedirectResponse("/", status_code=302)
@@ -3212,6 +3361,16 @@ def demo_login(token: str, request: Request, response: Response) -> Response:
         secure=sec,
         path="/",
     )
+    if isolated_res and _is_demo_isolated_slug(isolated_res):
+        response.set_cookie(
+            SAAS_TENANT_COOKIE,
+            _encode_saas_tenant_cookie_value(isolated_res),
+            max_age=max_age,
+            httponly=True,
+            samesite="lax",
+            secure=sec,
+            path="/",
+        )
     return response
 
 
@@ -3370,8 +3529,8 @@ def portal_demo_setup_page(request: Request) -> Response:
 def portal_try_demo(request: Request) -> Response:
     """
     Публичный «быстрый демо» с портала: редирект на поддомен песочницы с одноразовым /demo/{token}.
-    Данные — отдельный тенант (по умолчанию slug=demo, см. GUARDSCHOOL_DEMO_TENANT_SLUG), с настройками по умолчанию,
-    не боевой кабинет школы. Сессия после /demo/ — демо-cookie (вход без пароля владельца реальной школы).
+    Для каждого токена создаётся копия данных песочницы (отдельный каталог тенанта); гости не делят одно дерево файлов.
+    Шаблон — GUARDSCHOOL_DEMO_TENANT_SLUG (по умолчанию demo). Сессия после /demo/ — демо-cookie с привязкой к копии.
     """
     if not _is_guarddoc_portal(request):
         raise HTTPException(status_code=404, detail="Not found")
@@ -3384,17 +3543,30 @@ def portal_try_demo(request: Request) -> Response:
     except Exception:
         pass
     slug = _try_demo_sandbox_slug()
+    isolated = _new_demo_isolated_slug()
+    try:
+        _provision_demo_isolated_snapshot(slug, isolated)
+    except Exception:
+        _purge_isolated_demo_copy(isolated)
+        raise HTTPException(
+            status_code=503,
+            detail="Could not allocate an isolated demo copy (snapshot).",
+        ) from None
     token = secrets.token_urlsafe(24)
     th = _demo_token_hash(token)
     ttl_min = _try_demo_ttl_minutes()
     expires_at = utcnow() + timedelta(minutes=ttl_min)
-    with connect_public() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "INSERT INTO demo_sessions (token_hash, tenant_slug, expires_at) VALUES (%s,%s,%s)",
-                (th, slug, expires_at),
-            )
-        conn.commit()
+    try:
+        with connect_public() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO demo_sessions (token_hash, tenant_slug, isolated_slug, expires_at) VALUES (%s,%s,%s,%s)",
+                    (th, slug, isolated, expires_at),
+                )
+            conn.commit()
+    except Exception:
+        _purge_isolated_demo_copy(isolated)
+        raise
     target_host = _try_demo_redirect_host(slug)
     scheme = (os.environ.get("GUARDSCHOOL_PUBLIC_SCHOOL_SCHEME") or "https").strip().lower()
     if scheme not in ("http", "https"):
