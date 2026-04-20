@@ -1018,33 +1018,37 @@ function renderEmergencyTemplatesAdmin() {
     .join("");
   const soundRo = state.meta?.saas_mode ? "readonly" : "";
   root.innerHTML = `
-    <div class="settings-row settings-btn-row" style="flex-wrap:wrap;gap:8px">
-      <button type="button" class="secondary-btn compact-btn" id="emergency-add-tpl">${escapeHtml(t("emergencyTemplates.add"))}</button>
-      <button type="button" class="secondary-btn compact-btn" id="emergency-del-tpl">${escapeHtml(t("emergencyTemplates.delete"))}</button>
-      <button type="button" class="secondary-btn compact-btn" id="emergency-restore-tpl">${escapeHtml(t("emergencyTemplates.restore"))}</button>
-    </div>
-    <label class="settings-row"><span>${escapeHtml(t("emergencyTemplates.pick"))}</span>
-      <select id="emergency-admin-pick" class="standard-input wide-input">${opts}</select></label>
-    <label class="settings-row"><span>${escapeHtml(t("emergencyTemplates.templateTitle"))}</span>
-      <input type="text" id="emergency-f-title" class="standard-input wide-input" value="${escapeHtmlAttr(String(tpl.title || ""))}"></label>
-    <label class="settings-row"><span>${escapeHtml(t("w.textLines"))}</span>
-      <textarea id="emergency-f-text" class="wide-input" rows="5">${escapeHtml(String(s.text || ""))}</textarea></label>
-    <div class="settings-row" style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-      <label><span>${escapeHtml(t("w.fontSize"))}</span><input type="number" id="emergency-f-fs" class="standard-input" min="10" max="200" value="${Number(s.fontSize) || 42}"></label>
-      <label><span>${escapeHtml(t("w.color"))}</span><input type="color" id="emergency-f-color" value="${escapeHtmlAttr(/^#[0-9a-fA-F]{6}$/.test(String(s.color || "").trim()) ? String(s.color).trim() : "#ffffff")}"></label>
-      <label><span>${escapeHtml(t("w.blockBg"))}</span><input type="text" id="emergency-f-bg" class="standard-input" value="${escapeHtmlAttr(String(s.background || "#b91c1c"))}"></label>
-      <label class="toggle-label"><input type="checkbox" id="emergency-f-bold" ${s.bold !== false ? "checked" : ""}> ${escapeHtml(t("w.bold"))}</label>
-      <label class="toggle-label"><input type="checkbox" id="emergency-f-backdrop" ${s.backdrop !== false ? "checked" : ""}> ${escapeHtml(t("w.backdrop"))}</label>
-      <label class="toggle-label"><input type="checkbox" id="emergency-f-sound" ${s.soundEnabled === true ? "checked" : ""}> ${escapeHtml(t("emergencyTemplates.globalSound"))}</label>
-    </div>
-    <label class="settings-row"><span>${escapeHtml(t("w.emergencySoundFile"))}</span>
-      <input type="text" id="emergency-f-surl" class="standard-input wide-input" value="${escapeHtmlAttr(String(s.soundUrl || ""))}" ${soundRo}></label>
-    <div class="compact-form-row">${state.meta?.saas_mode ? "" : `<label class="bell-file-upload"><span class="bell-file-upload-main">${escapeHtml(t("w.browse"))}</span>
-      <input type="file" accept="audio/*" id="emergency-f-sound-file" hidden></label>`}</div>
-    <h4 class="settings-popover-subhead" style="margin-top:14px">${escapeHtml(t("emergencyTemplates.perScreenBlock"))}</h4>
-    ${rows || `<p class="hint">${escapeHtml(t("emergencyTemplates.noScreens"))}</p>`}
-    <div class="settings-row settings-btn-row" style="margin-top:12px">
-      <button type="button" class="primary-btn compact-btn" id="emergency-save-editor">${escapeHtml(t("emergencyTemplates.saveTemplate"))}</button>
+    <div class="emergency-editor-shell">
+      <div class="emergency-editor-toolbar">
+        <label class="settings-row emergency-editor-picker"><span>${escapeHtml(t("emergencyTemplates.pick"))}</span>
+          <select id="emergency-admin-pick" class="standard-input emergency-admin-pick-select">${opts}</select></label>
+        <div class="settings-row settings-btn-row emergency-editor-actions">
+          <button type="button" class="secondary-btn compact-btn" id="emergency-add-tpl">${escapeHtml(t("emergencyTemplates.add"))}</button>
+          <button type="button" class="secondary-btn compact-btn" id="emergency-del-tpl">${escapeHtml(t("emergencyTemplates.delete"))}</button>
+          <button type="button" class="secondary-btn compact-btn" id="emergency-restore-tpl">${escapeHtml(t("emergencyTemplates.restore"))}</button>
+        </div>
+      </div>
+      <label class="settings-row"><span>${escapeHtml(t("emergencyTemplates.templateTitle"))}</span>
+        <input type="text" id="emergency-f-title" class="standard-input wide-input" value="${escapeHtmlAttr(String(tpl.title || ""))}"></label>
+      <label class="settings-row"><span>${escapeHtml(t("w.textLines"))}</span>
+        <textarea id="emergency-f-text" class="wide-input" rows="5">${escapeHtml(String(s.text || ""))}</textarea></label>
+      <div class="settings-row emergency-editor-grid">
+        <label><span>${escapeHtml(t("w.fontSize"))}</span><input type="number" id="emergency-f-fs" class="standard-input" min="10" max="200" value="${Number(s.fontSize) || 42}"></label>
+        <label><span>${escapeHtml(t("w.color"))}</span><input type="color" id="emergency-f-color" value="${escapeHtmlAttr(/^#[0-9a-fA-F]{6}$/.test(String(s.color || "").trim()) ? String(s.color).trim() : "#ffffff")}"></label>
+        <label><span>${escapeHtml(t("w.blockBg"))}</span><input type="text" id="emergency-f-bg" class="standard-input" value="${escapeHtmlAttr(String(s.background || "#b91c1c"))}"></label>
+        <label class="toggle-label"><input type="checkbox" id="emergency-f-bold" ${s.bold !== false ? "checked" : ""}> ${escapeHtml(t("w.bold"))}</label>
+        <label class="toggle-label"><input type="checkbox" id="emergency-f-backdrop" ${s.backdrop !== false ? "checked" : ""}> ${escapeHtml(t("w.backdrop"))}</label>
+        <label class="toggle-label"><input type="checkbox" id="emergency-f-sound" ${s.soundEnabled === true ? "checked" : ""}> ${escapeHtml(t("emergencyTemplates.globalSound"))}</label>
+      </div>
+      <label class="settings-row"><span>${escapeHtml(t("w.emergencySoundFile"))}</span>
+        <input type="text" id="emergency-f-surl" class="standard-input wide-input" value="${escapeHtmlAttr(String(s.soundUrl || ""))}" ${soundRo}></label>
+      <div class="compact-form-row">${state.meta?.saas_mode ? "" : `<label class="bell-file-upload"><span class="bell-file-upload-main">${escapeHtml(t("w.browse"))}</span>
+        <input type="file" accept="audio/*" id="emergency-f-sound-file" hidden></label>`}</div>
+      <h4 class="settings-popover-subhead emergency-editor-subhead">${escapeHtml(t("emergencyTemplates.perScreenBlock"))}</h4>
+      ${rows || `<p class="hint">${escapeHtml(t("emergencyTemplates.noScreens"))}</p>`}
+      <div class="settings-row settings-btn-row emergency-editor-save-wrap">
+        <button type="button" class="primary-btn compact-btn" id="emergency-save-editor">${escapeHtml(t("emergencyTemplates.saveTemplate"))}</button>
+      </div>
     </div>`;
 
   document.getElementById("emergency-admin-pick").onchange = (e) => {

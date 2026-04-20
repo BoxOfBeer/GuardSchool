@@ -309,6 +309,53 @@ select.top-bar-lang-select {
   gap: 8px;
 }
 
+
+.emergency-editor-shell {
+  max-width: 780px;
+  margin: 0 auto;
+  padding: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.34);
+}
+
+.emergency-editor-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: end;
+  margin-bottom: 10px;
+}
+
+.emergency-editor-picker {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+.emergency-admin-pick-select {
+  width: min(36ch, 100%);
+  min-width: 18ch;
+}
+
+.emergency-editor-actions {
+  flex: 0 1 auto;
+  justify-content: flex-start;
+}
+
+.emergency-editor-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 10px;
+}
+
+.emergency-editor-subhead {
+  margin-top: 14px;
+}
+
+.emergency-editor-save-wrap {
+  margin-top: 12px;
+}
+
 .settings-row {
   display: grid;
   gap: 4px;
