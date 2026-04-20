@@ -141,8 +141,26 @@ function settingInputs(widget, index) {
         </label>
       </div>`
     );
+    const eiu = escapeHtmlAttr(String(widget.settings.imageUrl || ""));
+    const eic = escapeHtmlAttr(String(widget.settings.imageCaption || ""));
+    parts.push(
+      `<label>${t("w.emergencyImageUrl")}<input class="wide-input" type="text" data-key="widget:${index}:settings.imageUrl" value="${eiu}" placeholder="/uploads/…"></label>`
+    );
+    parts.push(
+      `<label>${t("w.emergencyImageCaption")}<input class="wide-input" type="text" data-key="widget:${index}:settings.imageCaption" value="${eic}"></label>`
+    );
+    parts.push(
+      `<div class="compact-form-row">
+        <label class="bell-file-upload">
+          <span class="bell-file-upload-main">${t("w.emergencyImageBrowse")}</span>
+          <span class="bell-file-upload-sub">${t("w.browseSub")}</span>
+          <input type="file" accept="image/*" data-emergency-image-upload="${index}" hidden>
+        </label>
+      </div>`
+    );
     parts.push(`<p class="hint">${t("w.emergencyHint")}</p>`);
     parts.push(`<p class="hint">${t("w.emergencySoundHint")}</p>`);
+    parts.push(`<p class="hint">${t("w.emergencyLocalImageHint")}</p>`);
   }
   if (widget.type === "image") {
     coerceWidgetImageSlots(widget);
@@ -390,6 +408,21 @@ export async function uploadEmergencySound(file, widgetIndex) {
   deps.renderPreview();
 }
 
+export async function uploadEmergencyWidgetImage(file, widgetIndex) {
+  const formData = new FormData();
+  formData.append("file", file);
+  const payload = await api("/api/admin/upload-widget-image", { method: "POST", body: formData });
+  const sc = screen();
+  if (!sc) return;
+  const w = sc.widgets[widgetIndex];
+  if (!w || w.type !== "emergency") return;
+  if (!w.settings) w.settings = {};
+  w.settings.imageUrl = payload.path || "";
+  deps.render();
+  if (state.widgetModalWidgetId === w.id) syncWidgetModal();
+  deps.renderPreview();
+}
+
 export function addWidgetImageSlot(widgetIndex) {
   const sc = screen();
   if (!sc) return;
@@ -444,6 +477,14 @@ function bindWidgetEditorEvents(root, index) {
         const f = event.target.files && event.target.files[0];
         if (f) {
           uploadEmergencySound(f, Number(event.target.dataset.emergencySoundUpload));
+          event.target.value = "";
+        }
+        return;
+      }
+      if (event.target.dataset.emergencyImageUpload != null) {
+        const f = event.target.files && event.target.files[0];
+        if (f) {
+          uploadEmergencyWidgetImage(f, Number(event.target.dataset.emergencyImageUpload));
           event.target.value = "";
         }
         return;

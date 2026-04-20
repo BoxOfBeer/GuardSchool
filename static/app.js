@@ -269,7 +269,7 @@ async function refreshTvAccessUi() {
 function getStoredProgramSettingsTab() {
   try {
     const t = sessionStorage.getItem(GS_ADMIN_PROGRAM_SETTINGS_TAB);
-    if (t === "general" || t === "tv" || t === "changelog") return t;
+    if (t === "general" || t === "tv" || t === "changelog" || t === "emergency") return t;
   } catch (_) {}
   return "general";
 }
@@ -313,6 +313,7 @@ function setProgramSettingsTab(tab) {
     pane.hidden = pane.getAttribute("data-ps-pane") !== tab;
   });
   if (tab === "changelog") refreshProgramHistoryFromApi();
+  if (tab === "emergency") renderEmergencyTemplatesAdmin();
 }
 
 function initProgramSettingsTabListenersOnce() {
@@ -814,6 +815,7 @@ function restoreAdminUiFromSession() {
 function finishTopBarSessionWidgets() {
   syncEmergencyModeCheckbox();
   bindEmergencyModeToggleOnce();
+  renderEmergencyTemplateBar();
   persistAdminUiToSession();
 }
 
@@ -848,8 +850,347 @@ function emergencyWidgetTemplate() {
       backdrop: true,
       soundEnabled: false,
       soundUrl: "",
+      imageUrl: "",
+      imageCaption: "",
     },
   };
+}
+
+/** Совпадает с _default_emergency_templates() на сервере (для «вернуть стандарт» в UI). */
+const CLIENT_EMERGENCY_DEFAULTS = [
+  {
+    id: "preset_fire",
+    title: "Пожар",
+    settings: {
+      text: "ПОЖАР!\nЭвакуация по сигналу. Следуйте указаниям персонала.",
+      fontSize: 44,
+      color: "#ffffff",
+      background: "#b91c1c",
+      bold: true,
+      backdrop: true,
+      soundEnabled: true,
+      soundUrl: "",
+      byScreenName: {},
+    },
+  },
+  {
+    id: "preset_terror",
+    title: "Антитеррор",
+    settings: {
+      text: "ВНИМАНИЕ!\nРежим повышенной готовности.\nСохраняйте спокойствие, действуйте по указаниям.",
+      fontSize: 40,
+      color: "#f8fafc",
+      background: "#1e3a8a",
+      bold: true,
+      backdrop: true,
+      soundEnabled: false,
+      soundUrl: "",
+      byScreenName: {},
+    },
+  },
+  {
+    id: "preset_bomb",
+    title: "Заминирование",
+    settings: {
+      text: "СООБЩЕНИЕ ОБ УГРОЗЕ\nОставайтесь на местах. Ожидайте указаний администрации.\nНе паникуйте.",
+      fontSize: 38,
+      color: "#fef3c7",
+      background: "#78350f",
+      bold: true,
+      backdrop: true,
+      soundEnabled: false,
+      soundUrl: "",
+      byScreenName: {},
+    },
+  },
+  {
+    id: "preset_crisis",
+    title: "Чрезвычайная ситуация",
+    settings: {
+      text: "ЧРЕЗВЫЧАЙНАЯ СИТУАЦИЯ\nСледуйте плану действий персонала школы.",
+      fontSize: 40,
+      color: "#ffffff",
+      background: "#7f1d1d",
+      bold: true,
+      backdrop: true,
+      soundEnabled: true,
+      soundUrl: "",
+      byScreenName: {},
+    },
+  },
+];
+
+function ensureEmergencyConfig() {
+  if (!state.config) return;
+  if (!Array.isArray(state.config.emergency_templates)) {
+    state.config.emergency_templates = JSON.parse(JSON.stringify(CLIENT_EMERGENCY_DEFAULTS));
+  }
+  if (typeof state.config.emergency_active_template_id !== "string") {
+    state.config.emergency_active_template_id = "";
+  }
+}
+
+async function persistConfigQuick() {
+  try {
+    readAudioStreamFormIntoState();
+    state.config.templateSystem.grid = GRID;
+    await api("/api/admin/config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(state.config),
+    });
+  } catch (e) {
+    alert(String(e.message || e));
+  }
+  render();
+  fetchPreviewPayloadOnce().catch(() => {});
+}
+
+function renderEmergencyTemplateBar() {
+  const wrap = document.getElementById("emergency-template-bar");
+  if (!wrap || !state.config) return;
+  const list = state.config.emergency_templates || [];
+  const cur = String(state.config.emergency_active_template_id || "").trim();
+  wrap.innerHTML = "";
+  list.forEach((tpl) => {
+    const id = String(tpl.id || "").trim();
+    if (!id) return;
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = `emergency-template-btn${id === cur ? " active" : ""}`;
+    b.textContent = String(tpl.title || id);
+    b.title = String(tpl.title || id);
+    b.onclick = async () => {
+      state.config.emergency_active_template_id = id;
+      await persistConfigQuick();
+    };
+    wrap.appendChild(b);
+  });
+}
+
+function tplByScreen(tpl) {
+  if (!tpl.settings) tpl.settings = {};
+  if (!tpl.settings.byScreenName || typeof tpl.settings.byScreenName !== "object") {
+    tpl.settings.byScreenName = {};
+  }
+  return tpl.settings.byScreenName;
+}
+
+function renderEmergencyTemplatesAdmin() {
+  const root = document.getElementById("emergency-templates-admin-root");
+  if (!root || !state.config) return;
+  const list = state.config.emergency_templates || [];
+  if (!list.length) {
+    root.innerHTML = `<p class="hint">${escapeHtml(t("emergencyTemplates.emptyHint"))}</p>
+      <button type="button" class="secondary-btn compact-btn" id="emergency-restore-empty">${escapeHtml(t("emergencyTemplates.restore"))}</button>`;
+    const rb = document.getElementById("emergency-restore-empty");
+    if (rb) rb.onclick = () => restoreEmergencyTemplatesDefaults();
+    return;
+  }
+  if (!state.emergencyTemplateEditorId || !list.some((x) => x.id === state.emergencyTemplateEditorId)) {
+    state.emergencyTemplateEditorId = list[0].id;
+  }
+  const sel = state.emergencyTemplateEditorId;
+  const tpl = list.find((x) => x.id === sel);
+  if (!tpl) return;
+  const s = tpl.settings || (tpl.settings = {});
+  const opts = list
+    .map((x) => `<option value="${escapeHtmlAttr(x.id)}" ${x.id === sel ? "selected" : ""}>${escapeHtml(x.title || x.id)}</option>`)
+    .join("");
+  const screens = state.config.screens || [];
+  const by = tplByScreen(tpl);
+  const rows = screens
+    .map((sc) => {
+      const nm = String(sc.name || sc.slug || "").trim() || "—";
+      const row = by[nm] || { imageUrl: "", caption: "" };
+      const iu = escapeHtmlAttr(String(row.imageUrl || ""));
+      const cap = escapeHtmlAttr(String(row.caption || ""));
+      return `<div class="emergency-screen-row" style="margin:10px 0;padding:10px;border:1px solid rgba(148,163,184,.25);border-radius:8px">
+        <div style="font-weight:600;margin-bottom:6px">${escapeHtml(nm)}</div>
+        <label class="settings-row"><span>${escapeHtml(t("emergencyTemplates.screenImage"))}</span>
+          <input type="text" class="standard-input wide-input" data-em-screen="${escapeHtmlAttr(nm)}" data-em-part="imageUrl" value="${iu}" placeholder="/uploads/…"></label>
+        <label class="settings-row"><span>${escapeHtml(t("emergencyTemplates.screenCaption"))}</span>
+          <input type="text" class="standard-input wide-input" data-em-screen="${escapeHtmlAttr(nm)}" data-em-part="caption" value="${cap}"></label>
+        <div class="compact-form-row"><label class="bell-file-upload"><span class="bell-file-upload-main">${escapeHtml(t("w.browse"))}</span>
+          <input type="file" accept="image/*" data-em-screen-upload="${escapeHtmlAttr(nm)}" hidden></label></div>
+      </div>`;
+    })
+    .join("");
+  const soundRo = state.meta?.saas_mode ? "readonly" : "";
+  root.innerHTML = `
+    <div class="settings-row settings-btn-row" style="flex-wrap:wrap;gap:8px">
+      <button type="button" class="secondary-btn compact-btn" id="emergency-add-tpl">${escapeHtml(t("emergencyTemplates.add"))}</button>
+      <button type="button" class="secondary-btn compact-btn" id="emergency-del-tpl">${escapeHtml(t("emergencyTemplates.delete"))}</button>
+      <button type="button" class="secondary-btn compact-btn" id="emergency-restore-tpl">${escapeHtml(t("emergencyTemplates.restore"))}</button>
+    </div>
+    <label class="settings-row"><span>${escapeHtml(t("emergencyTemplates.pick"))}</span>
+      <select id="emergency-admin-pick" class="standard-input wide-input">${opts}</select></label>
+    <label class="settings-row"><span>${escapeHtml(t("emergencyTemplates.templateTitle"))}</span>
+      <input type="text" id="emergency-f-title" class="standard-input wide-input" value="${escapeHtmlAttr(String(tpl.title || ""))}"></label>
+    <label class="settings-row"><span>${escapeHtml(t("w.textLines"))}</span>
+      <textarea id="emergency-f-text" class="wide-input" rows="5">${escapeHtml(String(s.text || ""))}</textarea></label>
+    <div class="settings-row" style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <label><span>${escapeHtml(t("w.fontSize"))}</span><input type="number" id="emergency-f-fs" class="standard-input" min="10" max="200" value="${Number(s.fontSize) || 42}"></label>
+      <label><span>${escapeHtml(t("w.color"))}</span><input type="color" id="emergency-f-color" value="${escapeHtmlAttr(/^#[0-9a-fA-F]{6}$/.test(String(s.color || "").trim()) ? String(s.color).trim() : "#ffffff")}"></label>
+      <label><span>${escapeHtml(t("w.blockBg"))}</span><input type="text" id="emergency-f-bg" class="standard-input" value="${escapeHtmlAttr(String(s.background || "#b91c1c"))}"></label>
+      <label class="toggle-label"><input type="checkbox" id="emergency-f-bold" ${s.bold !== false ? "checked" : ""}> ${escapeHtml(t("w.bold"))}</label>
+      <label class="toggle-label"><input type="checkbox" id="emergency-f-backdrop" ${s.backdrop !== false ? "checked" : ""}> ${escapeHtml(t("w.backdrop"))}</label>
+      <label class="toggle-label"><input type="checkbox" id="emergency-f-sound" ${s.soundEnabled === true ? "checked" : ""}> ${escapeHtml(t("emergencyTemplates.globalSound"))}</label>
+    </div>
+    <label class="settings-row"><span>${escapeHtml(t("w.emergencySoundFile"))}</span>
+      <input type="text" id="emergency-f-surl" class="standard-input wide-input" value="${escapeHtmlAttr(String(s.soundUrl || ""))}" ${soundRo}></label>
+    <div class="compact-form-row">${state.meta?.saas_mode ? "" : `<label class="bell-file-upload"><span class="bell-file-upload-main">${escapeHtml(t("w.browse"))}</span>
+      <input type="file" accept="audio/*" id="emergency-f-sound-file" hidden></label>`}</div>
+    <h4 class="settings-popover-subhead" style="margin-top:14px">${escapeHtml(t("emergencyTemplates.perScreenBlock"))}</h4>
+    ${rows || `<p class="hint">${escapeHtml(t("emergencyTemplates.noScreens"))}</p>`}
+    <div class="settings-row settings-btn-row" style="margin-top:12px">
+      <button type="button" class="primary-btn compact-btn" id="emergency-save-editor">${escapeHtml(t("emergencyTemplates.saveTemplate"))}</button>
+    </div>`;
+
+  document.getElementById("emergency-admin-pick").onchange = (e) => {
+    flushEmergencyEditorToState();
+    state.emergencyTemplateEditorId = String(e.target.value || "");
+    renderEmergencyTemplatesAdmin();
+  };
+  document.getElementById("emergency-add-tpl").onclick = () => {
+    flushEmergencyEditorToState();
+    const nid = `tpl_${Math.random().toString(16).slice(2, 10)}`;
+    list.push({
+      id: nid,
+      title: t("emergencyTemplates.newTitle"),
+      settings: {
+        text: t("emergencyTemplates.newText"),
+        fontSize: 40,
+        color: "#ffffff",
+        background: "#991b1b",
+        bold: true,
+        backdrop: true,
+        soundEnabled: false,
+        soundUrl: "",
+        byScreenName: {},
+      },
+    });
+    state.emergencyTemplateEditorId = nid;
+    renderEmergencyTemplatesAdmin();
+  };
+  document.getElementById("emergency-del-tpl").onclick = () => {
+    if (!confirm(t("emergencyTemplates.confirmDelete"))) return;
+    flushEmergencyEditorToState();
+    const i = list.findIndex((x) => x.id === sel);
+    if (i >= 0) list.splice(i, 1);
+    if (state.config.emergency_active_template_id === sel) state.config.emergency_active_template_id = "";
+    state.emergencyTemplateEditorId = list[0]?.id || null;
+    renderEmergencyTemplatesAdmin();
+    renderEmergencyTemplateBar();
+  };
+  document.getElementById("emergency-restore-tpl").onclick = () => restoreEmergencyTemplatesDefaults();
+  document.getElementById("emergency-save-editor").onclick = async () => {
+    flushEmergencyEditorToState();
+    await persistConfigQuick();
+  };
+  root.querySelectorAll("[data-em-screen]").forEach((inp) => {
+    inp.addEventListener("change", () => {
+      const nm = inp.getAttribute("data-em-screen");
+      const part = inp.getAttribute("data-em-part");
+      if (!nm || !part) return;
+      const b = tplByScreen(tpl);
+      if (!b[nm]) b[nm] = { imageUrl: "", caption: "" };
+      b[nm][part] = String(inp.value || "").trim();
+    });
+  });
+  root.querySelectorAll("[data-em-screen-upload]").forEach((inp) => {
+    inp.addEventListener("change", async (ev) => {
+      const nm = inp.getAttribute("data-em-screen-upload");
+      const f = ev.target.files && ev.target.files[0];
+      if (!nm || !f || state.meta?.saas_mode) return;
+      const formData = new FormData();
+      formData.append("file", f);
+      try {
+        const payload = await api("/api/admin/upload-widget-image", { method: "POST", body: formData });
+        const b = tplByScreen(tpl);
+        if (!b[nm]) b[nm] = { imageUrl: "", caption: "" };
+        b[nm].imageUrl = payload.path || "";
+        ev.target.value = "";
+        renderEmergencyTemplatesAdmin();
+      } catch (err) {
+        alert(String(err.message || err));
+      }
+    });
+  });
+  const sf = document.getElementById("emergency-f-sound-file");
+  if (sf) {
+    sf.addEventListener("change", async (ev) => {
+      const f = ev.target.files && ev.target.files[0];
+      if (!f) return;
+      const formData = new FormData();
+      formData.append("file", f);
+      try {
+        const payload = await api("/api/admin/upload-emergency-sound", { method: "POST", body: formData });
+        s.soundUrl = payload.url || "";
+        ev.target.value = "";
+        renderEmergencyTemplatesAdmin();
+      } catch (err) {
+        alert(String(err.message || err));
+      }
+    });
+  }
+}
+
+function flushEmergencyEditorToState() {
+  const list = state.config?.emergency_templates;
+  if (!Array.isArray(list)) return;
+  const sel = state.emergencyTemplateEditorId;
+  const tpl = list.find((x) => x.id === sel);
+  if (!tpl) return;
+  const titleEl = document.getElementById("emergency-f-title");
+  const textEl = document.getElementById("emergency-f-text");
+  if (titleEl) tpl.title = String(titleEl.value || "").trim() || tpl.id;
+  if (textEl) {
+    if (!tpl.settings) tpl.settings = {};
+    tpl.settings.text = String(textEl.value || "");
+  }
+  const fs = document.getElementById("emergency-f-fs");
+  const col = document.getElementById("emergency-f-color");
+  const bg = document.getElementById("emergency-f-bg");
+  const bd = document.getElementById("emergency-f-bold");
+  const bk = document.getElementById("emergency-f-backdrop");
+  const snd = document.getElementById("emergency-f-sound");
+  const surl = document.getElementById("emergency-f-surl");
+  if (!tpl.settings) tpl.settings = {};
+  if (fs) {
+    const n = Number(fs.value);
+    tpl.settings.fontSize = Number.isFinite(n) ? Math.max(10, Math.min(200, Math.round(n))) : 42;
+  }
+  if (col) {
+    const cv = String(col.value || "#ffffff").trim();
+    tpl.settings.color = /^#[0-9a-fA-F]{6}$/.test(cv) ? cv : "#ffffff";
+  }
+  if (bg) tpl.settings.background = String(bg.value || "").trim();
+  if (bd) tpl.settings.bold = Boolean(bd.checked);
+  if (bk) tpl.settings.backdrop = Boolean(bk.checked);
+  if (snd) tpl.settings.soundEnabled = Boolean(snd.checked);
+  if (surl) tpl.settings.soundUrl = String(surl.value || "").trim();
+  const root = document.getElementById("emergency-templates-admin-root");
+  if (root) {
+    root.querySelectorAll("[data-em-screen]").forEach((inp) => {
+      const nm = inp.getAttribute("data-em-screen");
+      const part = inp.getAttribute("data-em-part");
+      if (!nm || !part) return;
+      const b = tplByScreen(tpl);
+      if (!b[nm]) b[nm] = { imageUrl: "", caption: "" };
+      b[nm][part] = String(inp.value || "").trim();
+    });
+  }
+}
+
+function restoreEmergencyTemplatesDefaults() {
+  if (!confirm(t("emergencyTemplates.confirmRestore"))) return;
+  state.config.emergency_templates = JSON.parse(JSON.stringify(CLIENT_EMERGENCY_DEFAULTS));
+  state.config.emergency_active_template_id = "";
+  state.emergencyTemplateEditorId = CLIENT_EMERGENCY_DEFAULTS[0].id;
+  renderEmergencyTemplatesAdmin();
+  renderEmergencyTemplateBar();
+  persistConfigQuick().catch(() => {});
 }
 
 function ensureEmergencyWidgetOnScreen(screen) {
@@ -892,18 +1233,7 @@ function bindEmergencyModeToggleOnce() {
         if (!w.settings) w.settings = {};
       }
     });
-    try {
-      readAudioStreamFormIntoState();
-      state.config.templateSystem.grid = GRID;
-      await api("/api/admin/config", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(state.config),
-      });
-    } catch (e) {
-      alert(String(e.message || e));
-    }
-    render();
+    await persistConfigQuick();
   });
 }
 
@@ -1236,6 +1566,7 @@ function render() {
       programPanel.setAttribute("aria-hidden", "false");
     }
     window.GuardSchoolScreen?.clearAllTimers();
+    if (getStoredProgramSettingsTab() === "emergency") renderEmergencyTemplatesAdmin();
     finishTopBarSessionWidgets();
     return;
   }
@@ -1524,6 +1855,9 @@ function renderLessonImportStats() {
 }
 
 async function saveAll() {
+  if (state.programSettingsPanelActive && getStoredProgramSettingsTab() === "emergency") {
+    flushEmergencyEditorToState();
+  }
   readAudioStreamFormIntoState();
   state.config.templateSystem.grid = GRID;
   if (!state.audioStreamPanelActive) saveBellEditorToState();
@@ -1571,6 +1905,7 @@ async function init() {
   state.meta = config?._meta || state.meta;
   if (config && typeof config === "object") delete config._meta;
   state.config = config;
+  ensureEmergencyConfig();
   const demoBanner = document.getElementById("demo-session-banner");
   if (demoBanner) {
     if (state.meta?.demo_session) {

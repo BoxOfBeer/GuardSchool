@@ -3,6 +3,7 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 
 import calendar
+import copy
 import hashlib
 import hmac
 import html
@@ -420,6 +421,10 @@ def default_screen(name: str, slug: str) -> dict[str, Any]:
                     "background": "#b91c1c",
                     "bold": True,
                     "backdrop": False,
+                    "soundEnabled": False,
+                    "soundUrl": "",
+                    "imageUrl": "",
+                    "imageCaption": "",
                 },
             },
             {
@@ -443,6 +448,203 @@ def default_screen(name: str, slug: str) -> dict[str, Any]:
         "template": "default_schedule",
         "is_active": True,
     }
+
+
+def _default_emergency_templates() -> list[dict[str, Any]]:
+    """Встроенные шаблоны аварийки (кнопка «вернуть стандарт» и первичная установка)."""
+    return [
+        {
+            "id": "preset_fire",
+            "title": "Пожар",
+            "settings": {
+                "text": "ПОЖАР!\nЭвакуация по сигналу. Следуйте указаниям персонала.",
+                "fontSize": 44,
+                "color": "#ffffff",
+                "background": "#b91c1c",
+                "bold": True,
+                "backdrop": True,
+                "soundEnabled": True,
+                "soundUrl": "",
+                "byScreenName": {},
+            },
+        },
+        {
+            "id": "preset_terror",
+            "title": "Антитеррор",
+            "settings": {
+                "text": "ВНИМАНИЕ!\nРежим повышенной готовности.\nСохраняйте спокойствие, действуйте по указаниям.",
+                "fontSize": 40,
+                "color": "#f8fafc",
+                "background": "#1e3a8a",
+                "bold": True,
+                "backdrop": True,
+                "soundEnabled": False,
+                "soundUrl": "",
+                "byScreenName": {},
+            },
+        },
+        {
+            "id": "preset_bomb",
+            "title": "Заминирование",
+            "settings": {
+                "text": "СООБЩЕНИЕ ОБ УГРОЗЕ\nОставайтесь на местах. Ожидайте указаний администрации.\nНе паникуйте.",
+                "fontSize": 38,
+                "color": "#fef3c7",
+                "background": "#78350f",
+                "bold": True,
+                "backdrop": True,
+                "soundEnabled": False,
+                "soundUrl": "",
+                "byScreenName": {},
+            },
+        },
+        {
+            "id": "preset_crisis",
+            "title": "Чрезвычайная ситуация",
+            "settings": {
+                "text": "ЧРЕЗВЫЧАЙНАЯ СИТУАЦИЯ\nСледуйте плану действий персонала школы.",
+                "fontSize": 40,
+                "color": "#ffffff",
+                "background": "#7f1d1d",
+                "bold": True,
+                "backdrop": True,
+                "soundEnabled": True,
+                "soundUrl": "",
+                "byScreenName": {},
+            },
+        },
+    ]
+
+
+def _sanitize_emergency_by_screen_name(raw: Any) -> dict[str, dict[str, str]]:
+    out: dict[str, dict[str, str]] = {}
+    if not isinstance(raw, dict):
+        return out
+    for k, v in list(raw.items())[:80]:
+        key = str(k or "").strip()[:200]
+        if not key:
+            continue
+        if not isinstance(v, dict):
+            continue
+        url = str(v.get("imageUrl") or v.get("url") or "").strip()[:512]
+        if url and not url.startswith("/uploads/"):
+            url = ""
+        cap = str(v.get("caption") or v.get("imageCaption") or "").strip()[:500]
+        out[key] = {"imageUrl": url, "caption": cap}
+    return out
+
+
+def _sanitize_emergency_templates_list(raw: Any) -> list[dict[str, Any]]:
+    if not isinstance(raw, list):
+        return []
+    out: list[dict[str, Any]] = []
+    for t in raw[:40]:
+        if not isinstance(t, dict):
+            continue
+        tid = str(t.get("id") or "").strip()[:64]
+        if not tid or not re.match(r"^[a-zA-Z0-9_-]+$", tid):
+            continue
+        title = str(t.get("title") or tid).strip()[:200]
+        st = t.get("settings") if isinstance(t.get("settings"), dict) else {}
+        try:
+            fs = int(st.get("fontSize", 42))
+        except (TypeError, ValueError):
+            fs = 42
+        fs = max(10, min(200, fs))
+        bd = st.get("backdrop", True)
+        if isinstance(bd, str):
+            bd = bd.strip().lower() in ("true", "1", "yes", "on")
+        else:
+            bd = bool(bd)
+        se = st.get("soundEnabled", False)
+        if isinstance(se, str):
+            se = se.strip().lower() in ("true", "1", "yes", "on")
+        else:
+            se = bool(se)
+        surl = str(st.get("soundUrl") or "").strip()[:512]
+        if surl and not (surl.startswith("/uploads/") or surl.startswith("http://") or surl.startswith("https://")):
+            surl = ""
+        out.append(
+            {
+                "id": tid,
+                "title": title,
+                "settings": {
+                    "text": str(st.get("text", ""))[:5000],
+                    "fontSize": fs,
+                    "color": str(st.get("color") or "#ffffff").strip()[:64],
+                    "background": str(st.get("background") or "#b91c1c").strip()[:64],
+                    "bold": bool(st.get("bold", True)),
+                    "backdrop": bd,
+                    "soundEnabled": se,
+                    "soundUrl": surl,
+                    "byScreenName": _sanitize_emergency_by_screen_name(st.get("byScreenName")),
+                },
+            }
+        )
+    return out
+
+
+def apply_emergency_template_to_screen(screen: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]:
+    """
+    Для ТВ/API: при включённом аварийном виджете и выбранном шаблоне подставляет настройки шаблона
+    (приоритет над локальными полями виджета). Картинка/подпись — из byScreenName по имени экрана.
+    """
+    out = dict(screen)
+    # Глубокая копия виджетов, чтобы не портить кэш load_config() в памяти при подстановке шаблона.
+    widgets = copy.deepcopy(out.get("widgets") or [])
+    idx = next((i for i, w in enumerate(widgets) if isinstance(w, dict) and w.get("type") == "emergency"), None)
+    if idx is None:
+        return out
+    w = dict(widgets[idx])
+    if w.get("enabled") is False:
+        return out
+    tid = str(config.get("emergency_active_template_id") or "").strip()
+    if not tid:
+        return out
+    templates = config.get("emergency_templates")
+    if not isinstance(templates, list):
+        return out
+    tpl = next((x for x in templates if isinstance(x, dict) and str(x.get("id") or "") == tid), None)
+    if not tpl:
+        return out
+    ts = tpl.get("settings") if isinstance(tpl.get("settings"), dict) else {}
+    try:
+        fs = int(ts.get("fontSize", 42))
+    except (TypeError, ValueError):
+        fs = 42
+    fs = max(10, min(200, fs))
+    bd = ts.get("backdrop", True)
+    if isinstance(bd, str):
+        bd = bd.strip().lower() in ("true", "1", "yes", "on")
+    else:
+        bd = bool(bd)
+    sn = str(out.get("name") or "").strip()
+    byn = _sanitize_emergency_by_screen_name(ts.get("byScreenName"))
+    row = byn.get(sn) or {}
+    img = str(row.get("imageUrl") or "").strip()[:512]
+    if img and not img.startswith("/uploads/"):
+        img = ""
+    cap = str(row.get("caption") or "").strip()[:500]
+    surl = str(ts.get("soundUrl") or "").strip()[:512]
+    if surl and not (surl.startswith("/uploads/") or surl.startswith("http://") or surl.startswith("https://")):
+        surl = ""
+    new_s = {
+        "text": str(ts.get("text", ""))[:5000],
+        "fontSize": fs,
+        "color": str(ts.get("color") or "#ffffff").strip()[:64],
+        "background": str(ts.get("background") or "#b91c1c").strip()[:64],
+        "bold": bool(ts.get("bold", True)),
+        "backdrop": bd,
+        "soundEnabled": bool(ts.get("soundEnabled")),
+        "soundUrl": surl,
+        "imageUrl": img,
+        "imageCaption": cap,
+    }
+    w["settings"] = new_s
+    w = normalize_widget(w)
+    widgets[idx] = w
+    out["widgets"] = widgets
+    return out
 
 
 def normalize_multicast_ip_value(raw: str | None, *, fallback: str) -> str:
@@ -601,6 +803,8 @@ def default_config() -> dict[str, Any]:
         "screen_poll_timeout_sec": 5,
         # SaaS: при true — PIN не проверяется; GET /t/код/экран сразу редиректит на экран с токеном в query.
         "tv_pair_pin_bypass": False,
+        "emergency_templates": copy.deepcopy(_default_emergency_templates()),
+        "emergency_active_template_id": "",
     }
 
 
@@ -1049,6 +1253,13 @@ def normalize_widget(widget: dict[str, Any]) -> dict[str, Any]:
         widget["settings"].setdefault("background", "#b91c1c")
         widget["settings"].setdefault("bold", True)
         widget["settings"].setdefault("backdrop", False)
+        widget["settings"].setdefault("soundEnabled", False)
+        widget["settings"].setdefault("soundUrl", "")
+        iu = str(widget["settings"].get("imageUrl") or "").strip()
+        if iu and not iu.startswith("/uploads/"):
+            iu = ""
+        widget["settings"]["imageUrl"] = iu[:512]
+        widget["settings"]["imageCaption"] = str(widget["settings"].get("imageCaption") or "").strip()[:500]
     if widget["type"] == "image":
         try:
             op = int(widget["settings"].get("opacity", 85))
@@ -1232,6 +1443,12 @@ def load_config() -> dict[str, Any]:
     config["cloud_sync_token"] = str(config.get("cloud_sync_token") or "").strip()[:500]
     config["cloud_sync_enabled"] = bool(config.get("cloud_sync_enabled", True))
     config["screen_fallback_enabled"] = bool(config.get("screen_fallback_enabled", False))
+    _et = config.get("emergency_templates")
+    if _et is None:
+        config["emergency_templates"] = copy.deepcopy(_default_emergency_templates())
+    else:
+        config["emergency_templates"] = _sanitize_emergency_templates_list(_et)
+    config["emergency_active_template_id"] = str(config.get("emergency_active_template_id") or "").strip()[:64]
     return config
 
 
@@ -1373,6 +1590,12 @@ def sanitize_config(config: dict[str, Any]) -> dict[str, Any]:
     config["cloud_sync_enabled"] = bool(config.get("cloud_sync_enabled", True))
     config["screen_fallback_enabled"] = bool(config.get("screen_fallback_enabled", False))
     config["tv_pair_pin_bypass"] = bool(config.get("tv_pair_pin_bypass", False))
+    raw_et = config.get("emergency_templates")
+    if raw_et is None:
+        config["emergency_templates"] = copy.deepcopy(_default_emergency_templates())
+    else:
+        config["emergency_templates"] = _sanitize_emergency_templates_list(raw_et)
+    config["emergency_active_template_id"] = str(config.get("emergency_active_template_id") or "").strip()[:64]
     return config
 
 
@@ -4419,6 +4642,13 @@ def post_preview_payload(request: Request, payload: dict[str, Any] = Body(...)) 
     screen.setdefault("weekday_bell_templates", {})
     screen.setdefault("widgets", [])
     cfg = load_config()
+    if isinstance(payload.get("emergency_templates"), list):
+        cfg = dict(cfg)
+        cfg["emergency_templates"] = _sanitize_emergency_templates_list(payload.get("emergency_templates"))
+    if payload.get("emergency_active_template_id") is not None:
+        cfg = dict(cfg)
+        cfg["emergency_active_template_id"] = str(payload.get("emergency_active_template_id") or "").strip()[:64]
+    screen_eff = apply_emergency_template_to_screen(dict(screen), cfg)
     today = calendar_today_for_config(cfg)
     audio = sanitize_audio_stream(cfg.get("audio_stream"))
     from . import local_audio_worker
@@ -4441,6 +4671,7 @@ def post_preview_payload(request: Request, payload: dict[str, Any] = Body(...)) 
         "display": display_settings_dict(cfg),
         "revision": compute_data_revision(),
         "app_version": APP_VERSION,
+        "screen": screen_eff,
     }
     return JSONResponse(content=body)
 
@@ -4513,8 +4744,9 @@ def get_screen(request: Request, slug: str) -> JSONResponse:
     audio = sanitize_audio_stream(config.get("audio_stream"))
     sched_body = build_schedule_payload(screen, today, config)
     tr = len((sched_body.get("today_rows") or [])) if isinstance(sched_body, dict) else 0
+    screen_out = apply_emergency_template_to_screen(screen, config)
     payload = {
-        "screen": screen,
+        "screen": screen_out,
         "pickable_classes": pickable,
         "serverTime": datetime.now().isoformat(),
         "schedule": sched_body,

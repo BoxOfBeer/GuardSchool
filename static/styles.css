@@ -173,6 +173,47 @@ body {
   cursor: pointer;
 }
 
+.top-bar-emergency-block {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-width: min(100%, 720px);
+}
+
+.emergency-template-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.emergency-template-btn {
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(248, 113, 113, 0.45);
+  background: rgba(30, 41, 59, 0.9);
+  color: #fecaca;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.emergency-template-btn:hover {
+  border-color: #f87171;
+  color: #fff;
+}
+
+.emergency-template-btn.active {
+  background: rgba(185, 28, 28, 0.85);
+  border-color: #fca5a5;
+  color: #fff;
+}
+
 .top-bar-lang {
   display: inline-flex;
   align-items: center;
@@ -2202,6 +2243,7 @@ label.bell-file-upload:hover {
   min-height: 0;
   width: 100%;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   text-align: center;
@@ -2209,9 +2251,43 @@ label.bell-file-upload:hover {
   box-sizing: border-box;
   border-radius: 14px;
   padding: clamp(8px, 2vw, 24px);
+  gap: 8px;
+}
+
+.screen-widget--emergency .emergency-overlay-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  max-width: 100%;
+  max-height: 100%;
+  overflow: auto;
+  gap: 4px;
 }
 
 .screen-widget--emergency .emergency-overlay-text {
+  max-width: 96%;
+  word-break: break-word;
+  text-shadow: var(--gs-tv-text-shadow, none);
+}
+
+.screen-widget--emergency .emergency-overlay-image-wrap {
+  max-width: min(96%, 720px);
+  max-height: min(38vh, 320px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.screen-widget--emergency .emergency-overlay-image {
+  max-width: 100%;
+  max-height: min(38vh, 320px);
+  object-fit: contain;
+  border-radius: 8px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.35);
+}
+
+.screen-widget--emergency .emergency-overlay-caption {
   max-width: 96%;
   word-break: break-word;
   text-shadow: var(--gs-tv-text-shadow, none);

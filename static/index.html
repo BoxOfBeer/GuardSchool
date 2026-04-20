@@ -32,10 +32,13 @@
       </div>
       <div class="top-bar-nav-wrap">
         <div id="tabs" class="top-nav-tabs"></div>
-        <label class="top-bar-emergency">
-          <input type="checkbox" id="admin-emergency-mode" />
-          <span data-i18n="top.emergencyMode">Аварийный режим</span>
-        </label>
+        <div class="top-bar-emergency-block">
+          <label class="top-bar-emergency">
+            <input type="checkbox" id="admin-emergency-mode" />
+            <span data-i18n="top.emergencyMode">Аварийный режим</span>
+          </label>
+          <div id="emergency-template-bar" class="emergency-template-bar" role="group" aria-label="Шаблоны аварийки"></div>
+        </div>
         <button type="button" id="program-settings-open-btn" class="top-nav-btn top-settings-open-btn" data-i18n="top.settings">Настройки</button>
       </div>
     </header>
@@ -321,6 +324,7 @@
               <nav class="section-tabs program-settings-subtabs" role="tablist" aria-label="Разделы настроек">
                 <button type="button" class="section-tab-btn program-settings-subtab active" role="tab" data-ps-tab="general" aria-selected="true" data-i18n="programSettings.tabGeneral">Общее</button>
                 <button type="button" class="section-tab-btn program-settings-subtab" role="tab" data-ps-tab="tv" aria-selected="false" data-i18n="programSettings.tabTv">ТВ (SaaS)</button>
+                <button type="button" class="section-tab-btn program-settings-subtab" role="tab" data-ps-tab="emergency" aria-selected="false" data-i18n="programSettings.tabEmergency">Аварийные шаблоны</button>
                 <button type="button" class="section-tab-btn program-settings-subtab" role="tab" data-ps-tab="changelog" aria-selected="false" data-i18n="programSettings.tabChangelog">Изменения</button>
               </nav>
             </div>
@@ -398,6 +402,14 @@
                   <input id="background-input" type="file" accept="image/*">
                 </label>
                 <p class="hint settings-file-input-hint" data-i18n="top.filePickerHint">Подпись кнопки выбора файла задаётся браузером/ОС и может не совпадать с языком интерфейса.</p>
+              </div>
+            </div>
+
+            <div id="program-settings-pane-emergency" class="program-settings-pane" data-ps-pane="emergency" role="tabpanel" hidden>
+              <div class="settings-popover-grid program-settings-pane-grid">
+                <h4 class="settings-popover-subhead" style="margin-top: 0" data-i18n="emergencyTemplates.title">Шаблоны при глобальном аварийном режиме</h4>
+                <p class="hint" data-i18n="emergencyTemplates.intro">При включённой галочке «Аварийный режим» на всех ТВ показывается выбранный шаблон (текст, цвета, звук для всех, картинка по имени экрана). Кнопки шаблонов у галочки сохраняют выбор сразу.</p>
+                <div id="emergency-templates-admin-root"></div>
               </div>
             </div>
 

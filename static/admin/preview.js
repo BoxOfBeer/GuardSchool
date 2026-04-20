@@ -77,10 +77,15 @@ export async function fetchPreviewPayloadOnce() {
   const screen = getScreen();
   if (!screen || !window.GuardSchoolScreen) return;
   try {
+    const body = { screen };
+    if (state.config && Array.isArray(state.config.emergency_templates)) {
+      body.emergency_templates = state.config.emergency_templates;
+      body.emergency_active_template_id = state.config.emergency_active_template_id ?? "";
+    }
     const res = await api("/api/admin/preview-payload", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ screen }),
+      body: JSON.stringify(body),
     });
     state.previewCache = {
       schedule: res.schedule,
@@ -90,6 +95,7 @@ export async function fetchPreviewPayloadOnce() {
       marquee: res.marquee || [],
       pc_audio_preview: res.pc_audio_preview || null,
       display: res.display || null,
+      displayScreen: res.screen && typeof res.screen === "object" ? res.screen : null,
     };
     state.previewCacheScreenId = screen.id;
     if (state.activeSection === "preview") {
@@ -155,8 +161,14 @@ export function formatPreviewPcAudioLines(soundDiag) {
 export function renderPreview() {
   const getScreen = d()?.selectedScreen;
   if (!getScreen) return;
-  const screen = getScreen();
-  if (!screen) return;
+  const screenBase = getScreen();
+  if (!screenBase) return;
+  const screen =
+    state.previewCache?.displayScreen &&
+    state.previewCache.displayScreen.id === screenBase.id &&
+    state.previewCacheScreenId === screenBase.id
+      ? state.previewCache.displayScreen
+      : screenBase;
   const G = window.GuardSchoolScreen;
   if (!G) {
     if (state.activeSection === "preview" && elements.preview) {

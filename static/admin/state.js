@@ -19,6 +19,8 @@ export const state = {
   drag: null,
   previewCache: null,
   previewCacheScreenId: null,
+  /** Редактор шаблонов аварийки (настройки программы): id выбранного шаблона. */
+  emergencyTemplateEditorId: null,
   widgetModalWidgetId: null,
   /** TV: на сервере задан GUARDSCHOOL_TV_PAIR_BYPASS_PIN — чекбокс обхода PIN в UI отключён. */
   tvPinBypassEnv: false,

@@ -631,7 +631,16 @@
         .join("<br>") || "&nbsp;";
       const fs = Math.max(10, Math.min(200, Number(s.fontSize) || 42));
       const color = String(s.color || "#ffffff").trim();
-      return `<div class="emergency-overlay-inner" style="background:${bg};color:${color};font-size:${fs}px;${weight}"><div class="emergency-overlay-text">${htmlBody}</div></div>`;
+      const imgUrl = String(s.imageUrl || "").trim();
+      const cap = String(s.imageCaption || "").trim();
+      const capHtml = cap
+        ? `<div class="emergency-overlay-caption" style="font-size:${Math.max(10, Math.round(fs * 0.35))}px;opacity:0.95;margin-top:12px;">${escapeHtml(cap)}</div>`
+        : "";
+      const imgBlock =
+        imgUrl && /^\/uploads\//.test(imgUrl)
+          ? `<div class="emergency-overlay-image-wrap"><img class="emergency-overlay-image" src="${escapeHtmlAttr(imgUrl)}" alt="" /></div>`
+          : "";
+      return `<div class="emergency-overlay-inner" style="background:${bg};color:${color};font-size:${fs}px;${weight}"><div class="emergency-overlay-stack"><div class="emergency-overlay-text">${htmlBody}</div>${imgBlock}${capHtml}</div></div>`;
     }
     if (widget.type === "image") {
       const s = widget.settings || {};
