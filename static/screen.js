@@ -426,6 +426,47 @@ function screenPollUrl(base, slug, cid, lab, dev, _mobileMode) {
   return `${String(base).replace(/\/$/, "")}${path}`;
 }
 
+/** Порядок опроса: LAN → этот origin → fallback. HTTP-LAN с HTTPS-страницы не используем (браузер блокирует). */
+function buildScreenPollBases(primaryRaw, fallbackRaw) {
+  let primary = String(primaryRaw || "").trim().replace(/\/$/, "");
+  const fallback = String(fallbackRaw || "").trim().replace(/\/$/, "");
+  try {
+    if (
+      typeof window !== "undefined" &&
+      window.location &&
+      window.location.protocol === "https:" &&
+      primary.toLowerCase().startsWith("http:")
+    ) {
+      primary = "";
+    }
+  } catch (_) {}
+  const bases = [];
+  if (primary) bases.push(primary);
+  bases.push("");
+  if (fallback && !bases.includes(fallback)) bases.push(fallback);
+  return bases;
+}
+
+function gsFormatScreenPollFailureMessage(rawMsg, retrySec) {
+  const m = String(rawMsg || "");
+  const base = m ? `Сервер не отдал экран: ${m}.` : "Сервер не отдал экран.";
+  if (/\bHTTP\s+403\b/i.test(m)) {
+    return (
+      `${base} Это не из‑за «5 запросов»: 403 — доступ к API экрана запрещён. Чаще всего неверный/отключённый токен ТВ (Bearer) для этого slug, или запрос ушёл не на тот хост. Откройте снова ссылку из админки с ?gs_tv_token=… Если в гибриде сохранён LAN по http, с https-страницы он не работает — очистите primary в localStorage или откройте экран только по облаку. Повтор через ${retrySec} с.`
+    );
+  }
+  if (/\bHTTP\s+401\b/i.test(m)) {
+    return `${base} Нет или неверный Bearer. Снова откройте ссылку экрана с ?gs_tv_token=… Повтор через ${retrySec} с.`;
+  }
+  if (/\bHTTP\s+50[234]\b/i.test(m)) {
+    return `${base} Часто после перезапуска сервера или при сбое прокси. Повтор через ${retrySec} с.`;
+  }
+  if (/failed to fetch|networkerror|load failed|mixed content/i.test(m)) {
+    return `${base} Сеть или блокировка запроса (в т.ч. http-LAN с https-страницы). Повтор через ${retrySec} с.`;
+  }
+  return `${base} Повтор через ${retrySec} с.`;
+}
+
 /** На этом устройстве показать сетку, даже если в веб-конфиге включён mobile_mode (?gs_grid=1 сохраняется в localStorage). */
 /** Подписи типов виджетов в панели «Настройки для этого устройства» (value остаётся англ. ключом для gs_mw). */
 const GS_DEVICE_WIDGET_TYPE_LABELS = {
@@ -609,7 +650,7 @@ function showCrashBanner(msg) {
   try {
     const el = document.getElementById("gs-crash-banner");
     if (!el) return;
-    el.textContent = String(msg || "Ошибка на экране").slice(0, 600);
+    el.textContent = String(msg || "Ошибка на экране").slice(0, 1200);
     el.hidden = false;
   } catch (_) {}
 }
@@ -1501,11 +1542,7 @@ async function refresh() {
     };
     if (bearer) hdr.Authorization = `Bearer ${bearer}`;
 
-    /** Порядок: primary (LAN) → этот же origin → fallback (облако). */
-    const bases = [];
-    if (primary) bases.push(primary);
-    bases.push("");
-    if (fallbackBase && !bases.includes(fallbackBase)) bases.push(fallbackBase);
+    const bases = buildScreenPollBases(primary, fallbackBase);
 
     let lastErr = null;
     const mobilePoll = Boolean(
@@ -1570,9 +1607,7 @@ async function refresh() {
     try {
       const msg = (e && e.message) ? String(e.message) : String(e || "poll failed");
       const sec = Math.max(5, Math.round(nextDelay / 1000));
-      showCrashBanner(
-        `Сервер не отдал экран (${msg}). Часто это 502 при перезапуске или нагрузке — повтор через ${sec} с.`
-      );
+      showCrashBanner(gsFormatScreenPollFailureMessage(msg, sec));
     } catch (_) {}
   } finally {
     __gsRefreshInFlight = false;
