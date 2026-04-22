@@ -462,14 +462,6 @@ function ensureFeedbackUi(options) {
         if (st) st.textContent = String(e && e.message || e || "Ошибка");
       }
     });
-    // Если есть кнопка внутри панели настроек устройства — привязываем её.
-    try {
-      const inner = document.getElementById("gs-feedback-open-in-settings");
-      if (inner && !inner.dataset.bound) {
-        inner.dataset.bound = "1";
-        inner.addEventListener("click", () => toggle(true));
-      }
-    } catch (_) {}
   } catch (_) {}
 }
 
@@ -1148,30 +1140,10 @@ function render(screenPayload) {
   const screenForUi = (screenPayload && screenPayload.screen) || {};
   const deviceUiAllowed = gsShowScreenDeviceGear(screenForUi);
   const feedbackEnabled = Boolean(screenForUi && screenForUi.enable_feedback);
-  const feedbackFloating = Boolean(screenForUi && screenForUi.feedback_floating_button);
   const feedbackUiAllowed = deviceUiAllowed && feedbackEnabled;
   if (deviceUiAllowed) {
     ensureDeviceSettingsUi();
     syncDeviceSettingsFromPayload(screenPayload);
-    // Кнопка открытия feedback внутри панели настроек — если feedback разрешён, но плавающую кнопку не показываем.
-    try {
-      const panel = document.getElementById("gs-device-settings-panel");
-      if (panel) {
-        let wrap = panel.querySelector("#gs-feedback-open-wrap");
-        if (!wrap) {
-          wrap = document.createElement("div");
-          wrap.id = "gs-feedback-open-wrap";
-          wrap.className = "gs-device-settings-row";
-          wrap.style.marginTop = "8px";
-          panel.appendChild(wrap);
-        }
-        if (feedbackEnabled && !feedbackFloating) {
-          wrap.innerHTML = `<button type="button" class="gs-device-btn-secondary" id="gs-feedback-open-in-settings">Обратная связь</button>`;
-        } else {
-          wrap.innerHTML = "";
-        }
-      }
-    } catch (_) {}
   } else {
     try {
       const panel = document.getElementById("gs-device-settings-panel");
@@ -1181,7 +1153,8 @@ function render(screenPayload) {
     } catch (_) {}
   }
   if (feedbackUiAllowed) {
-    ensureFeedbackUi({ floating: feedbackFloating });
+    // Всегда оставляем отдельную кнопку 💬 рядом с шестерёнкой (не внутри панели).
+    ensureFeedbackUi({ floating: true });
   } else {
     try {
       const panel = document.getElementById("gs-feedback-panel");

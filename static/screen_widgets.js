@@ -1019,6 +1019,21 @@
 
   function applyTvScreenBackground(el, screen, gallery) {
     if (!el) return;
+    // В мобильном режиме оставляем дефолтный градиент страницы (без подстановки фоновых изображений).
+    // Это проще для читаемости и не ломает вертикальную ленту.
+    if (screen && screen.mobile_mode) {
+      const prev = el.dataset.gsBgApplied || "";
+      if (prev) {
+        try {
+          el.dataset.gsBgApplied = "";
+          const under = el.querySelector(".gs-tv-bg-under");
+          const over = el.querySelector(".gs-tv-bg-over");
+          if (under) under.style.opacity = "0";
+          if (over) over.style.opacity = "0";
+        } catch (_) {}
+      }
+      return;
+    }
     const u = resolveBackgroundImageUrl(screen, gallery);
     const prev = el.dataset.gsBgApplied || "";
     /** После root.innerHTML = "" слои .gs-tv-bg-under/over уничтожены, а dataset остаётся — иначе u===prev даёт ранний return без фона (тёмная заглушка). */

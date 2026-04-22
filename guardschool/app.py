@@ -265,7 +265,6 @@ def default_screen(name: str, slug: str) -> dict[str, Any]:
         "orientation": "landscape",  # landscape|portrait
         "poll_interval_sec": 10,
         "enable_feedback": False,
-        "feedback_floating_button": False,
         "background_image": "",
         "background_rotate_enabled": False,
         "background_rotate_interval_sec": 3600,
@@ -1481,10 +1480,6 @@ def load_config() -> dict[str, Any]:
         screen.setdefault("poll_interval_sec", 10)
         screen.setdefault("enable_feedback", False)
         screen["enable_feedback"] = bool(screen.get("enable_feedback", False))
-        screen.setdefault("feedback_floating_button", False)
-        screen["feedback_floating_button"] = bool(screen.get("feedback_floating_button", False))
-        if not bool(screen.get("enable_feedback")):
-            screen["feedback_floating_button"] = False
         screen.setdefault("bell_schedule_template", "standard")
         screen.setdefault("weekday_bell_templates", {})
     config["templateSystem"]["version"] = 2
@@ -1603,10 +1598,6 @@ def sanitize_config(config: dict[str, Any]) -> dict[str, Any]:
         screen.setdefault("poll_interval_sec", 10)
         screen.setdefault("enable_feedback", False)
         screen["enable_feedback"] = bool(screen.get("enable_feedback", False))
-        screen.setdefault("feedback_floating_button", False)
-        screen["feedback_floating_button"] = bool(screen.get("feedback_floating_button", False))
-        if not bool(screen.get("enable_feedback")):
-            screen["feedback_floating_button"] = False
         screen.setdefault("bell_schedule_template", "standard")
         screen.setdefault("weekday_bell_templates", {})
         dedupe_widgets(screen)
