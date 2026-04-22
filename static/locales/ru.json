@@ -31,6 +31,7 @@
   "programSettings.title": "Настройки программы",
   "programSettings.tabGeneral": "Общее",
   "programSettings.tabTv": "ТВ (SaaS)",
+  "programSettings.tabFeedback": "Обратная связь",
   "programSettings.tabChangelog": "Изменения",
   "programSettings.tabEmergency": "Аварийные шаблоны",
   "emergencyTemplates.title": "Шаблоны при глобальном аварийном режиме",

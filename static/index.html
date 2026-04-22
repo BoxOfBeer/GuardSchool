@@ -227,7 +227,7 @@
               <label class="override-field"><span class="override-field-label">Дата</span><input id="school-news-date" class="standard-input" type="date"></label>
               <label class="override-field"><span class="override-field-label">Обложка (URL из /uploads/...)</span><input id="school-news-cover" class="standard-input" type="text" placeholder="/uploads/..."></label>
               <label class="override-field toggle-label"><input id="school-news-active" type="checkbox" checked><span>Активна</span></label>
-              <label class="override-field override-field-wide"><span class="override-field-label">Текст (HTML, TinyMCE можно подключить позже)</span><textarea id="school-news-content" class="standard-input wide-input" rows="6" placeholder="Текст новости"></textarea></label>
+              <label class="override-field override-field-wide"><span class="override-field-label">Текст новости (TinyMCE)</span><textarea id="school-news-content" class="standard-input wide-input" rows="6" placeholder="Текст новости"></textarea></label>
               <div class="override-form-actions">
                 <button id="school-news-save-btn" type="button" class="primary-btn">Сохранить новость</button>
                 <button id="school-news-reset-btn" type="button" class="secondary-btn">Очистить форму</button>
@@ -347,6 +347,7 @@
                 <button type="button" class="section-tab-btn program-settings-subtab active" role="tab" data-ps-tab="general" aria-selected="true" data-i18n="programSettings.tabGeneral">Общее</button>
                 <button type="button" class="section-tab-btn program-settings-subtab" role="tab" data-ps-tab="tv" aria-selected="false" data-i18n="programSettings.tabTv">ТВ (SaaS)</button>
                 <button type="button" class="section-tab-btn program-settings-subtab" role="tab" data-ps-tab="emergency" aria-selected="false" data-i18n="programSettings.tabEmergency">Аварийные шаблоны</button>
+                <button type="button" class="section-tab-btn program-settings-subtab" role="tab" data-ps-tab="feedback" aria-selected="false" data-i18n="programSettings.tabFeedback">Обратная связь</button>
                 <button type="button" class="section-tab-btn program-settings-subtab" role="tab" data-ps-tab="changelog" aria-selected="false" data-i18n="programSettings.tabChangelog">Изменения</button>
               </nav>
             </div>
@@ -477,6 +478,13 @@
                 <div id="history-list" class="history-list"></div>
               </div>
             </div>
+            <div id="program-settings-pane-feedback" class="program-settings-pane" data-ps-pane="feedback" role="tabpanel" hidden>
+              <div class="settings-popover-grid program-settings-pane-grid">
+                <h3 class="program-settings-changelog-title">Обратная связь</h3>
+                <p class="hint">Список сообщений с мобильных экранов. Действия: отметить прочитанным, скрыть, заблокировать hash устройства.</p>
+                <div id="feedback-admin-body" class="stats-panel-body"></div>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -591,12 +599,6 @@
             </div>
           </details>
           <div id="stats-panel-body" class="stats-panel-body"></div>
-        </div>
-        <div class="card span-2 stats-card">
-          <div class="card-header">
-            <h2>Обратная связь</h2>
-          </div>
-          <div id="feedback-admin-body" class="stats-panel-body"></div>
         </div>
       </section>
     </main>

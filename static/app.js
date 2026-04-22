@@ -22,7 +22,7 @@ import {
   bindPcPlayerOnce,
   bindSettingsSoundTestsOnce,
 } from "./admin/audio-stream.js";
-import { enterStatsPanel, leaveStatsPanel } from "./admin/stats.js";
+import { enterStatsPanel, leaveStatsPanel, refreshFeedbackAdminPanel, bindFeedbackAdminPanelOnce } from "./admin/stats.js";
 import {
   setDataImportDeps,
   uploadBackground,
@@ -319,7 +319,7 @@ async function refreshTvAccessUi() {
 function getStoredProgramSettingsTab() {
   try {
     const t = sessionStorage.getItem(GS_ADMIN_PROGRAM_SETTINGS_TAB);
-    if (t === "general" || t === "tv" || t === "changelog" || t === "emergency") return t;
+    if (t === "general" || t === "tv" || t === "feedback" || t === "changelog" || t === "emergency") return t;
   } catch (_) {}
   return "general";
 }
@@ -364,6 +364,10 @@ function setProgramSettingsTab(tab) {
   });
   if (tab === "changelog") refreshProgramHistoryFromApi();
   if (tab === "emergency") renderEmergencyTemplatesAdmin();
+  if (tab === "feedback") {
+    bindFeedbackAdminPanelOnce();
+    refreshFeedbackAdminPanel();
+  }
 }
 
 function initProgramSettingsTabListenersOnce() {
@@ -1640,8 +1644,70 @@ function resetSchoolNewsForm() {
   if (elements.schoolNewsDate) elements.schoolNewsDate.value = new Date().toISOString().slice(0, 10);
   if (elements.schoolNewsCover) elements.schoolNewsCover.value = "";
   if (elements.schoolNewsActive) elements.schoolNewsActive.checked = true;
-  if (elements.schoolNewsContent) elements.schoolNewsContent.value = "";
+  setSchoolNewsEditorContent("");
   state.editingSchoolNewsId = "";
+}
+
+function getSchoolNewsEditorContent() {
+  try {
+    const ed = window.tinymce && typeof window.tinymce.get === "function" ? window.tinymce.get("school-news-content") : null;
+    if (ed && typeof ed.getContent === "function") return String(ed.getContent() || "").trim();
+  } catch (_) {}
+  return String(elements.schoolNewsContent?.value || "").trim();
+}
+
+function setSchoolNewsEditorContent(html) {
+  const text = String(html || "");
+  try {
+    const ed = window.tinymce && typeof window.tinymce.get === "function" ? window.tinymce.get("school-news-content") : null;
+    if (ed && typeof ed.setContent === "function") {
+      ed.setContent(text);
+      return;
+    }
+  } catch (_) {}
+  if (elements.schoolNewsContent) elements.schoolNewsContent.value = text;
+}
+
+async function ensureSchoolNewsTinyMce() {
+  if (!elements.schoolNewsContent) return;
+  if (window.__gsSchoolNewsEditorInitDone) return;
+  const setupEditor = async () => {
+    if (!window.tinymce || typeof window.tinymce.init !== "function") return;
+    if (window.tinymce.get("school-news-content")) {
+      window.__gsSchoolNewsEditorInitDone = true;
+      return;
+    }
+    await window.tinymce.init({
+      selector: "#school-news-content",
+      menubar: false,
+      height: 280,
+      plugins: "lists link image table code autoresize",
+      toolbar: "undo redo | styles | bold italic underline | alignleft aligncenter alignright | bullist numlist | link image table | code",
+      branding: false,
+      promotion: false,
+      convert_urls: false,
+      content_style: "body { font-family: Inter, Arial, sans-serif; font-size: 14px; }",
+    });
+    window.__gsSchoolNewsEditorInitDone = true;
+  };
+  try {
+    await setupEditor();
+    if (window.__gsSchoolNewsEditorInitDone) return;
+    if (!window.__gsTinyScriptLoading) {
+      window.__gsTinyScriptLoading = new Promise((resolve, reject) => {
+        const s = document.createElement("script");
+        s.src = "https://cdn.tiny.cloud/1/no-api-key/tinymce/6/tinymce.min.js";
+        s.referrerPolicy = "origin";
+        s.onload = resolve;
+        s.onerror = reject;
+        document.head.appendChild(s);
+      });
+    }
+    await window.__gsTinyScriptLoading;
+    await setupEditor();
+  } catch (_) {
+    // fallback: оставляем обычный textarea без блокировки работы формы
+  }
 }
 
 function renderSchoolNewsList() {
@@ -2007,7 +2073,7 @@ function bindForm() {
         created_at: String(elements.schoolNewsDate?.value || "").trim(),
         cover_image: String(elements.schoolNewsCover?.value || "").trim(),
         is_active: Boolean(elements.schoolNewsActive?.checked),
-        content: String(elements.schoolNewsContent?.value || "").trim(),
+        content: getSchoolNewsEditorContent(),
       };
       if (!payload.title || !payload.content) {
         alert("Укажите заголовок и текст новости.");
@@ -2040,7 +2106,7 @@ function bindForm() {
         elements.schoolNewsDate.value = String(row.created_at || "");
         elements.schoolNewsCover.value = String(row.cover_image || "");
         elements.schoolNewsActive.checked = row.is_active !== false;
-        elements.schoolNewsContent.value = String(row.content || "");
+        setSchoolNewsEditorContent(String(row.content || ""));
         return;
       }
       if (delBtn) {
@@ -2180,6 +2246,7 @@ async function init() {
   bindSettingsSoundTestsOnce();
   bindWidgetModalOnce();
   bindProgramSettingsModalOnce();
+  await ensureSchoolNewsTinyMce();
   resetSchoolNewsForm();
   render();
   setInterval(() => {

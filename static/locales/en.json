@@ -31,6 +31,7 @@
   "programSettings.title": "Program settings",
   "programSettings.tabGeneral": "General",
   "programSettings.tabTv": "TV (SaaS)",
+  "programSettings.tabFeedback": "Feedback",
   "programSettings.tabChangelog": "Changelog",
   "programSettings.tabEmergency": "Emergency templates",
   "emergencyTemplates.title": "Templates when global emergency mode is on",
