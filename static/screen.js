@@ -440,7 +440,13 @@ function ensureFeedbackUi(options) {
     }
     panel.querySelector("#gs-feedback-close")?.addEventListener("click", () => toggle(false));
     panel.querySelector("#gs-feedback-send")?.addEventListener("click", async () => {
-      const slug = getSlug();
+      const payloadSlug =
+        window.__lastScreenPayload &&
+        window.__lastScreenPayload.screen &&
+        window.__lastScreenPayload.screen.slug != null
+          ? String(window.__lastScreenPayload.screen.slug)
+          : "";
+      const slug = (payloadSlug || getSlug()).trim().toLowerCase();
       const inp = panel.querySelector("#gs-feedback-message");
       const st = panel.querySelector("#gs-feedback-status");
       const msg = String(inp && inp.value || "").trim();
