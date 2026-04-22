@@ -367,6 +367,7 @@
   "widget.type.carousel": "Carousel",
   "widget.type.holidays": "Events",
   "widget.type.announcements": "Announcements",
+  "widget.type.rss_news": "World News",
   "widget.type.marquee": "Marquee",
   "widget.type.emergency": "Emergency",
   "widget.type.image": "Image",

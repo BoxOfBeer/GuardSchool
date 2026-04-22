@@ -1242,6 +1242,19 @@ button {
   align-items: flex-start;
 }
 
+.rss-sources-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rss-source-row {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) minmax(260px, 2fr) auto auto;
+  gap: 8px;
+  align-items: center;
+}
+
 .widget-editor-modal-body .settings-grid {
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
 }

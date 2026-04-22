@@ -367,6 +367,7 @@
   "widget.type.carousel": "Карусель",
   "widget.type.holidays": "События",
   "widget.type.announcements": "Объявления",
+  "widget.type.rss_news": "Мировые новости",
   "widget.type.marquee": "Бегущая строка",
   "widget.type.emergency": "Аварийный",
   "widget.type.image": "Изображение",
