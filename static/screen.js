@@ -457,9 +457,16 @@ function ensureFeedbackUi(options) {
       try {
         const base = String(window.__lastScreenPollBase || "").trim().replace(/\/$/, "");
         const url = `${base}/api/screen/${encodeURIComponent(slug)}/feedback`;
+        const bearer = getGsTvBearer();
+        const hdr = {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-cache",
+          Pragma: "no-cache",
+        };
+        if (bearer) hdr.Authorization = `Bearer ${bearer}`;
         const r = await fetch(url, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: hdr,
           body: JSON.stringify({ device_hash: getGsDeviceHash(), message: msg }),
         });
         const j = await r.json().catch(() => ({}));
