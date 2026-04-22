@@ -455,7 +455,9 @@ function ensureFeedbackUi(options) {
         return;
       }
       try {
-        const r = await fetch(`/api/screen/${encodeURIComponent(slug)}/feedback`, {
+        const base = String(window.__lastScreenPollBase || "").trim().replace(/\/$/, "");
+        const url = `${base}/api/screen/${encodeURIComponent(slug)}/feedback`;
+        const r = await fetch(url, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ device_hash: getGsDeviceHash(), message: msg }),
@@ -1734,6 +1736,8 @@ async function refresh() {
     /** Не останавливаться на первом 200 с пустым расписанием (LAN без данных, облако полное). */
     let payload = null;
     let lastOkPayload = null;
+    let payloadBase = "";
+    let lastOkBase = "";
     for (const b of bases) {
       const url = screenPollUrl(b, slug, cid, lab, dev, mobilePoll);
       try {
@@ -1741,8 +1745,10 @@ async function refresh() {
         if (r.ok) {
           const p = await r.json();
           lastOkPayload = p;
+          lastOkBase = b;
           if (schedulePayloadRowScore(p) > 0) {
             payload = p;
+            payloadBase = b;
             break;
           }
         } else {
@@ -1753,9 +1759,14 @@ async function refresh() {
       }
     }
     if (!payload) {
-      if (lastOkPayload) payload = lastOkPayload;
+      if (lastOkPayload) {
+        payload = lastOkPayload;
+        payloadBase = lastOkBase;
+      }
       else throw lastErr || new Error("poll failed");
     }
+    // Используем тот же base для побочных запросов (обратная связь и т.п.).
+    window.__lastScreenPollBase = payloadBase || "";
     if (gsRepairToxicGsClasses(slug, payload.pickable_classes || [])) {
       let bestRepair = null;
       let bestScoreR = -1;
