@@ -156,10 +156,11 @@ SINGLETON_WIDGET_IDS = {
     "announcements": "announcements",
     "school_news": "school_news",
     "rss_news": "rss_news",
+    "rss_feed": "rss_news",
+    "external_news": "rss_news",
     "marquee": "marquee",
     "emergency": "emergency",
     "image": "image",
-    "rss_news": "rss_news",
 }
 
 # Типы виджетов, которые можно скрыть из списка в админке (не влияет на ТВ и на сетку превью).
@@ -176,10 +177,11 @@ ADMIN_PALETTE_WIDGET_TYPES = frozenset(
         "announcements",
         "school_news",
         "rss_news",
+        "rss_feed",
+        "external_news",
         "marquee",
         "emergency",
         "image",
-        "rss_news",
     }
 )
 
@@ -444,7 +446,7 @@ def default_screen(name: str, slug: str) -> dict[str, Any]:
             {
                 "id": "rss_news",
                 "type": "rss_news",
-                "title": "Мировые новости",
+                "title": "RSS-лента",
                 "enabled": False,
                 "x": 24,
                 "y": 14,
@@ -1270,6 +1272,9 @@ def default_bell_schedules() -> dict[str, Any]:
 
 
 def normalize_widget(widget: dict[str, Any]) -> dict[str, Any]:
+    wtype = str(widget.get("type") or "").strip()
+    if wtype in {"rss_feed", "external_news"}:
+        widget["type"] = "rss_news"
     widget["id"] = widget.get("id") or SINGLETON_WIDGET_IDS.get(widget.get("type"), secrets.token_hex(4))
     widget.setdefault("enabled", True)
     widget.setdefault("settings", {})

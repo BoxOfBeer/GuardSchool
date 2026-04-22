@@ -75,7 +75,6 @@ const WIDGET_TYPE_KEYS = new Set([
   "school_news",
   "rss_news",
   "marquee",
-  "rss_news",
   "emergency",
   "image",
 ]);
@@ -94,7 +93,6 @@ const PALETTE_TYPES_ORDER = [
   "school_news",
   "rss_news",
   "marquee",
-  "rss_news",
   "emergency",
   "image",
 ];
@@ -700,7 +698,7 @@ function createDefaultScreen(index) {
       {
         id: "rss_news",
         type: "rss_news",
-        title: "Мировые новости",
+        title: "RSS-лента",
         enabled: false,
         x: 24, y: 14, w: 8, h: 10,
         settings: {

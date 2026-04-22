@@ -570,7 +570,7 @@ const GS_DEVICE_WIDGET_TYPE_LABELS = {
   carousel: "Карусель",
   holidays: "Праздники",
   announcements: "Объявления",
-  rss_news: "Мировые новости",
+  rss_news: "RSS-лента",
   marquee: "Бегущая строка",
   image: "Фон / картинка",
 };
