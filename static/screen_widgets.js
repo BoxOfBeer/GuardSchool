@@ -587,7 +587,12 @@
         <div style="font-size:${settings.titleFontSize || 20}px;${settings.bold ? "font-weight:700;" : ""};flex:1 1 auto;min-width:0;white-space:normal;overflow:visible;overflow-wrap:anywhere;word-break:break-word;">${title || L.schoolNews}</div>
         <div style="font-size:12px;opacity:.85;white-space:nowrap;flex:0 0 auto;">${createdLabel}</div>
       </div>
-      ${cover ? `<img src="${escapeHtmlAttr(cover)}" alt="${title}" style="float:left;width:30%;max-width:240px;margin:0 10px 6px 0;border-radius:8px;object-fit:contain;height:auto;max-height:none;">` : ""}
+      ${cover ? (() => {
+        const v = encodeURIComponent(String(item.id || item.created_at || "")).slice(0, 80);
+        const sep = cover.indexOf("?") >= 0 ? "&" : "?";
+        const src = v ? `${cover}${sep}v=${v}` : cover;
+        return `<img src="${escapeHtmlAttr(src)}" alt="${title}" style="float:left;width:30%;max-width:240px;margin:0 10px 6px 0;border-radius:8px;object-fit:contain;height:auto;max-height:none;">`;
+      })() : ""}
       <div style="font-size:${settings.fontSize || 18}px;line-height:1.35;white-space:normal;overflow:visible;overflow-wrap:anywhere;word-break:break-word;">${summary || L.noSchoolNews}</div>
       <div style="clear:both;"></div>
       <div style="margin-top:6px;font-size:12px;opacity:.85;">${idx + 1}/${rows.length}</div>
