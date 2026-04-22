@@ -111,7 +111,6 @@ function renderWatch(data, root) {
                 return (
                   `<li><span class="stats-client-line">` +
                   `${devHtml}` +
-                  ` · ${escapeHtml(c.ip || "—")}` +
                   ` · <span class="stats-connected-dur">${escapeHtml(dur)}</span>` +
                   `</span>` +
                   (c.label ? ` <span class="stats-client-label">(${escapeHtml(c.label)})</span>` : "") +
