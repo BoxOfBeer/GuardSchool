@@ -190,6 +190,15 @@ function sanitizeGsTvBearerToken(raw) {
   return s;
 }
 
+function getGsTvBearerFromUrl() {
+  try {
+    const q = gsQueryParams(window.location.search || "");
+    return sanitizeGsTvBearerToken(q.get("gs_tv_token") || "");
+  } catch (_) {
+    return "";
+  }
+}
+
 /** Параметры гибрида: primary/fallback API и токен ТВ (из URL один раз → localStorage). */
 function initGsHybridFromUrl() {
   try {
@@ -215,14 +224,11 @@ function initGsHybridFromUrl() {
       if (Number.isFinite(sec)) window.__GS_POLL_TIMEOUT_MS = Math.max(2000, Math.min(120000, sec * 1000));
     }
     if (tok && tok.trim()) {
+      const clean = sanitizeGsTvBearerToken(tok);
+      if (clean) window.__GS_TV_BEARER_URL = clean;
       try {
-        const clean = sanitizeGsTvBearerToken(tok);
         if (clean) localStorage.setItem("gs_tv_bearer", clean);
       } catch (_) {}
-      q.delete("gs_tv_token");
-      const ns = q.toString();
-      const url = window.location.pathname + (ns ? `?${ns}` : "") + window.location.hash;
-      window.history.replaceState({}, "", url);
     }
   } catch (_) {}
   try {
@@ -290,6 +296,16 @@ initGsHybridFromUrl();
 
 function getGsTvBearer() {
   try {
+    const fromUrlMem = sanitizeGsTvBearerToken(window.__GS_TV_BEARER_URL || "");
+    if (fromUrlMem) return fromUrlMem;
+    const fromUrl = getGsTvBearerFromUrl();
+    if (fromUrl) {
+      window.__GS_TV_BEARER_URL = fromUrl;
+      try {
+        localStorage.setItem("gs_tv_bearer", fromUrl);
+      } catch (_) {}
+      return fromUrl;
+    }
     const raw = localStorage.getItem("gs_tv_bearer") || "";
     const clean = sanitizeGsTvBearerToken(raw);
     if (!clean && raw.trim()) {
