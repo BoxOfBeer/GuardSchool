@@ -73,6 +73,7 @@ const WIDGET_TYPE_KEYS = new Set([
   "holidays",
   "announcements",
   "marquee",
+  "rss_news",
   "emergency",
   "image",
 ]);
@@ -89,6 +90,7 @@ const PALETTE_TYPES_ORDER = [
   "holidays",
   "announcements",
   "marquee",
+  "rss_news",
   "emergency",
   "image",
 ];
@@ -144,6 +146,52 @@ function syncProgramSettingsFieldsFromState() {
     const pt = Number(state.config.screen_poll_timeout_sec);
     elements.screenPollTimeout.value = String(Number.isFinite(pt) ? pt : 5);
   }
+  if (elements.rssRefreshMinutes) {
+    const rm = Number(state.config.rss_refresh_minutes);
+    elements.rssRefreshMinutes.value = String(Number.isFinite(rm) ? rm : 45);
+  }
+  renderRssSourcesEditor();
+}
+
+function renderRssSourcesEditor() {
+  const wrap = elements.rssSourcesList;
+  if (!wrap || !state.config) return;
+  if (!Array.isArray(state.config.rss_sources)) state.config.rss_sources = [];
+  wrap.innerHTML = state.config.rss_sources
+    .map((src, index) => {
+      const name = escapeHtmlAttr(String(src?.name || ""));
+      const rssUrl = escapeHtmlAttr(String(src?.rss_url || ""));
+      const enabled = src?.enabled !== false;
+      return `<div class="settings-row rss-source-row" data-rss-index="${index}">
+        <input type="text" class="standard-input" data-rss-key="name" value="${name}" placeholder="Название">
+        <input type="url" class="standard-input wide-input" data-rss-key="rss_url" value="${rssUrl}" placeholder="https://example.com/rss.xml">
+        <label class="toggle-label"><input type="checkbox" data-rss-key="enabled" ${enabled ? "checked" : ""}><span>Включено</span></label>
+        <button type="button" class="secondary-btn compact-btn" data-rss-remove="${index}">Удалить</button>
+      </div>`;
+    })
+    .join("");
+  wrap.querySelectorAll("[data-rss-remove]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const i = Number(btn.getAttribute("data-rss-remove"));
+      if (!Number.isFinite(i)) return;
+      state.config.rss_sources.splice(i, 1);
+      renderRssSourcesEditor();
+    });
+  });
+  wrap.querySelectorAll(".rss-source-row").forEach((row) => {
+    const i = Number(row.getAttribute("data-rss-index"));
+    row.querySelectorAll("[data-rss-key]").forEach((input) => {
+      input.addEventListener("input", () => {
+        const key = input.getAttribute("data-rss-key");
+        if (!key) return;
+        const src = state.config.rss_sources[i] || { name: "", rss_url: "", enabled: true };
+        if (key === "enabled") src.enabled = Boolean(input.checked);
+        else src[key] = String(input.value || "").trim();
+        state.config.rss_sources[i] = src;
+      });
+      input.addEventListener("change", () => input.dispatchEvent(new Event("input")));
+    });
+  });
 }
 
 function renderProgramPaletteCheckboxes() {
@@ -626,6 +674,20 @@ function createDefaultScreen(index) {
           background: "rgba(15,23,42,0.7)",
           charsPerMin: 180,
           speedSec: 18,
+          bold: false,
+        },
+      },
+      {
+        id: "rss_news",
+        type: "rss_news",
+        title: "Мировые новости",
+        enabled: false,
+        x: 24, y: 14, w: 8, h: 10,
+        settings: {
+          fontSize: 16,
+          titleFontSize: 18,
+          color: "#ffffff",
+          background: "rgba(15,23,42,0.55)",
           bold: false,
         },
       },
@@ -1822,6 +1884,30 @@ function bindForm() {
     elements.screenPollTimeout.oninput = (e) => {
       const n = Number(e.target.value);
       state.config.screen_poll_timeout_sec = Number.isFinite(n) ? Math.max(2, Math.min(60, Math.round(n))) : 5;
+    };
+  }
+  if (elements.rssRefreshMinutes) {
+    elements.rssRefreshMinutes.oninput = (e) => {
+      const n = Number(e.target.value);
+      state.config.rss_refresh_minutes = Number.isFinite(n) ? Math.max(30, Math.min(60, Math.round(n))) : 45;
+    };
+  }
+  if (elements.rssSourceAddBtn) {
+    elements.rssSourceAddBtn.onclick = () => {
+      if (!Array.isArray(state.config.rss_sources)) state.config.rss_sources = [];
+      state.config.rss_sources.push({ name: "", rss_url: "", enabled: true });
+      renderRssSourcesEditor();
+    };
+  }
+  if (elements.rssRefreshNowBtn) {
+    elements.rssRefreshNowBtn.onclick = async () => {
+      try {
+        const result = await api("/api/admin/rss-news/refresh", { method: "POST" });
+        const count = Number(result?.count || 0);
+        alert(`RSS обновлены. Новостей в кэше: ${count}.`);
+      } catch (e) {
+        alert(e.message || String(e));
+      }
     };
   }
   if (elements.syncNowBtn) {
