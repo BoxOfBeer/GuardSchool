@@ -1720,8 +1720,19 @@ def load_announcements() -> list[dict[str, Any]]:
 
 def _school_news_text_preview(raw_html: str) -> str:
     """Текст для виджета школьных новостей: без ограничения длины."""
-    text = re.sub(r"<[^>]+>", " ", str(raw_html or ""))
-    return re.sub(r"\s+", " ", text).strip()
+    s = str(raw_html or "")
+    # Сохраняем структуру: блоки/переносы превращаем в \n, потом чистим теги.
+    s = re.sub(r"(?i)<\s*br\s*/?\s*>", "\n", s)
+    s = re.sub(r"(?i)</\s*p\s*>", "\n\n", s)
+    s = re.sub(r"(?i)</\s*div\s*>", "\n\n", s)
+    s = re.sub(r"(?i)</\s*li\s*>", "\n", s)
+    s = re.sub(r"<[^>]+>", " ", s)
+    # Нормализация: пробелы схлопываем, но переносы сохраняем.
+    s = re.sub(r"[ \t\f\v]+", " ", s)
+    s = re.sub(r"\n[ \t]+", "\n", s)
+    s = re.sub(r"\n{3,}", "\n\n", s)
+    s = re.sub(r" +\n", "\n", s)
+    return s.strip()
 
 
 def sanitize_school_news_item(item: dict[str, Any], fallback_id: str = "") -> dict[str, Any]:

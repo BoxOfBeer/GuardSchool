@@ -576,7 +576,8 @@
     const idx = Math.floor(Date.now() / (sec * 1000)) % rows.length;
     const item = rows[idx];
     const title = escapeHtml(String(item.title || ""));
-    const summary = escapeHtml(String(item.summary || ""));
+    const summaryText = String(item.summary || "");
+    const summaryHtml = escapeHtml(summaryText).replace(/\n/g, "<br>");
     const cover = String(item.cover_image || "").trim();
     const created = String(item.created_at || "").trim();
     const createdLabel = created ? formatDateLabel(created) : "";
@@ -593,7 +594,7 @@
         const src = v ? `${cover}${sep}v=${v}` : cover;
         return `<img src="${escapeHtmlAttr(src)}" alt="${title}" style="float:left;width:30%;max-width:240px;margin:0 10px 6px 0;border-radius:8px;object-fit:contain;height:auto;max-height:none;">`;
       })() : ""}
-      <div style="font-size:${settings.fontSize || 18}px;line-height:1.35;white-space:normal;overflow:visible;overflow-wrap:anywhere;word-break:break-word;">${summary || L.noSchoolNews}</div>
+      <div style="font-size:${settings.fontSize || 18}px;line-height:1.35;white-space:normal;overflow:visible;overflow-wrap:anywhere;word-break:break-word;">${summaryHtml || escapeHtml(L.noSchoolNews)}</div>
       <div style="clear:both;"></div>
       <div style="margin-top:6px;font-size:12px;opacity:.85;">${idx + 1}/${rows.length}</div>
     </article>`;
