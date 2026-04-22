@@ -80,7 +80,7 @@ from .gs_import_bundle import (
 )
 from .gs_import_state import load_import_state
 from .gs_jsonio import read_json, write_json
-from .gs_rss_news import load_rss_news, sanitize_rss_refresh_minutes, sanitize_rss_sources
+from .gs_rss_news import load_rss_news as load_rss_news_feed, sanitize_rss_refresh_minutes, sanitize_rss_sources
 from .gs_uploads_bg import (
     list_background_images_from_uploads,
     list_background_subdirs_from_uploads,
@@ -1764,9 +1764,14 @@ def load_school_news() -> list[dict[str, Any]]:
     return out
 
 
-def load_rss_news() -> list[dict[str, Any]]:
-    """Совместимость с ветками, где есть виджет rss_news. Пока источник не настроен — возвращаем пусто."""
-    return []
+def load_rss_news(config: dict[str, Any] | None = None, *, force_refresh: bool = False) -> list[dict[str, Any]]:
+    """
+    Обёртка совместимости для rss_news:
+    - принимает старые/новые вызовы (с config и без),
+    - делегирует загрузку в gs_rss_news.
+    """
+    cfg = config if isinstance(config, dict) else load_config()
+    return load_rss_news_feed(cfg, force_refresh=force_refresh)
 
 
 def load_marquee_items() -> list[str]:
@@ -4614,6 +4619,7 @@ def list_bell_sounds(request: Request) -> dict[str, Any]:
 @app.get("/api/admin/schedule")
 async def get_schedule_snapshot(request: Request) -> dict[str, Any]:
     require_auth(request)
+    cfg = load_config()
     schedule_rows = load_schedule()
     full_rows = load_full_schedule()
     sample_rows = load_schedule_sample()
@@ -4622,7 +4628,7 @@ async def get_schedule_snapshot(request: Request) -> dict[str, Any]:
         "holidays": load_holidays(),
         "announcements": load_announcements(),
         "school_news": load_school_news()[:20],
-        "rss_news": load_rss_news(),
+        "rss_news": load_rss_news(cfg),
         "marquee": load_marquee_items(),
         "overrides": load_overrides(),
         "bells": load_bell_schedules(),
@@ -4889,7 +4895,6 @@ def post_preview_payload(request: Request, payload: dict[str, Any] = Body(...)) 
         "holidays": load_holidays(),
         "announcements": load_announcements(),
         "school_news": load_school_news()[:20],
-        "rss_news": load_rss_news(),
         "marquee": load_marquee_items(),
         "rss_news": load_rss_news(cfg),
         "background_gallery": list_background_images_from_uploads(screen.get("background_rotate_folder")),
@@ -4987,7 +4992,6 @@ def get_screen(request: Request, slug: str) -> JSONResponse:
         "holidays": load_holidays(),
         "announcements": load_announcements(),
         "school_news": load_school_news(),
-        "rss_news": load_rss_news(),
         "marquee": load_marquee_items(),
         "rss_news": load_rss_news(config),
         "background_gallery": list_background_images_from_uploads(screen.get("background_rotate_folder")),
