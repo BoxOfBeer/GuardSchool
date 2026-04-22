@@ -80,12 +80,15 @@
       events: "События",
       announcements: "Объявления",
       noAnnouncements: "Нет объявлений",
+      rssNews: "Мировые новости",
+      noRssNews: "Нет новостей",
       scheduleDefault: "Расписание",
       nextSchoolDay: "Следующий учебный день:",
       carouselBlank: "Пауза (фон)",
       imageEmpty: "Нет изображения (добавьте файл или URL)",
       imageAlt: "изображение",
       carouselNoSlides: "Слайды не выбраны",
+      emergencyTimeLeft: "Осталось времени:",
     },
     en: {
       noData: "No data",
@@ -95,12 +98,15 @@
       events: "Events",
       announcements: "Announcements",
       noAnnouncements: "No announcements",
+      rssNews: "World News",
+      noRssNews: "No news",
       scheduleDefault: "Schedule",
       nextSchoolDay: "Next school day:",
       carouselBlank: "Pause (background)",
       imageEmpty: "No image (add a file or URL)",
       imageAlt: "image",
       carouselNoSlides: "No slides selected",
+      emergencyTimeLeft: "Time left:",
     },
   };
 
@@ -551,6 +557,33 @@
   `;
   }
 
+  function buildRssNews(settings, rssNewsData = []) {
+    const L = tvUiStrings();
+    const rows = Array.isArray(rssNewsData) ? rssNewsData.slice(0, 5) : [];
+    const header = `<div style="font-size:${settings.titleFontSize || 18}px;${settings.bold ? "font-weight:700;" : ""}">${L.rssNews}</div>`;
+    if (!rows.length) {
+      return `<div class="info-widget-box" style="background:${settings.background};color:${settings.color};">${header}<div style="font-size:${settings.fontSize || 16}px;">${L.noRssNews}</div></div>`;
+    }
+    const body = rows
+      .map((item) => {
+        const title = escapeHtml(String(item?.title || ""));
+        const source = escapeHtml(String(item?.source || ""));
+        const link = String(item?.link || "").trim();
+        const qrSrc = link
+          ? `https://api.qrserver.com/v1/create-qr-code/?size=96x96&data=${encodeURIComponent(link)}`
+          : "";
+        return `<div class="rss-news-item" style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;margin-top:8px;">
+          <div>
+            <div>${title || "&nbsp;"}</div>
+            <div class="widget-meta">${source || "&nbsp;"}</div>
+          </div>
+          ${qrSrc ? `<a href="${escapeHtmlAttr(link)}" target="_blank" rel="noopener noreferrer"><img src="${escapeHtmlAttr(qrSrc)}" alt="QR" width="64" height="64" loading="lazy"></a>` : ""}
+        </div>`;
+      })
+      .join("");
+    return `<div class="info-widget-box" style="background:${settings.background};color:${settings.color};font-size:${settings.fontSize || 16}px;${settings.bold ? "font-weight:700;" : ""}">${header}${body}</div>`;
+  }
+
   function widgetIdsHiddenByCarousel(screen) {
     const sw = (screen && screen.widgets) || [];
     return new Set(sw
@@ -618,7 +651,7 @@
     return Math.max(3000, 180 * 1000);
   }
 
-  function renderWidgetHtml(widget, schedule, screen, holidays = [], announcements = [], marquee = [], ctx = null) {
+  function renderWidgetHtml(widget, schedule, screen, holidays = [], announcements = [], marquee = [], rssNews = [], ctx = null) {
     const L = tvUiStrings();
     const weight = widget.settings.bold ? "font-weight:700;" : "";
     if (widget.type === "emergency") {
@@ -640,7 +673,12 @@
         imgUrl && /^\/uploads\//.test(imgUrl)
           ? `<div class="emergency-overlay-image-wrap"><img class="emergency-overlay-image" src="${escapeHtmlAttr(imgUrl)}" alt="" /></div>`
           : "";
-      return `<div class="emergency-overlay-inner" style="background:${bg};color:${color};font-size:${fs}px;${weight}"><div class="emergency-overlay-stack"><div class="emergency-overlay-text">${htmlBody}</div>${imgBlock}${capHtml}</div></div>`;
+      const timerRaw = Number(s.timerRemainingSec != null ? s.timerRemainingSec : (s.timer_seconds != null ? s.timer_seconds : s.timerSeconds));
+      const timerSec = Number.isFinite(timerRaw) ? Math.max(0, Math.round(timerRaw)) : 0;
+      const timerLabel = timerSec > 0 || s.timerShowZero === true
+        ? `<div class="emergency-overlay-timer-wrap"><div class="emergency-overlay-timer-title">${escapeHtml(L.emergencyTimeLeft || "Осталось времени:")}</div><div class="emergency-overlay-timer" data-emergency-countdown="1" data-seconds-left="${timerSec}">${escapeHtml(formatEmergencyCountdown(timerSec))}</div></div>`
+        : "";
+      return `<div class="emergency-overlay-inner" style="background:${bg};color:${color};font-size:${fs}px;${weight}"><div class="emergency-overlay-stack"><div class="emergency-overlay-text">${htmlBody}</div>${timerLabel}${imgBlock}${capHtml}</div></div>`;
     }
     if (widget.type === "image") {
       const s = widget.settings || {};
@@ -724,10 +762,13 @@
     if (widget.type === "marquee") {
       return buildMarquee(widget, marquee);
     }
+    if (widget.type === "rss_news") {
+      return buildRssNews(widget.settings || {}, rssNews);
+    }
     return "";
   }
 
-  function startCarousel(block, widget, childWidgets, schedule, screen, holidays, announcements, marquee) {
+  function startCarousel(block, widget, childWidgets, schedule, screen, holidays, announcements, marquee, rssNews) {
     if (!childWidgets.length) {
       block.innerHTML = `<div class="widget-meta">${tvUiStrings().carouselNoSlides}</div>`;
       return;
@@ -763,6 +804,7 @@
         holidays,
         announcements,
         marquee,
+        rssNews,
         { mode: index === st.index ? "carousel_show" : "carousel_init" }
       );
       block.appendChild(slide);
@@ -778,11 +820,12 @@
             holidays: p.holidays || [],
             announcements: p.announcements || [],
             marquee: p.marquee || [],
+            rss_news: p.rss_news || [],
             display: p.display || {},
           };
         }
       } catch (_) {}
-      return { screen, schedule, holidays, announcements, marquee, display: getDisplayFromPayload() };
+      return { screen, schedule, holidays, announcements, marquee, rss_news: rssNews || [], display: getDisplayFromPayload() };
     };
     const advance = () => {
       const current = slides[st.index];
@@ -801,6 +844,7 @@
           d.holidays,
           d.announcements,
           d.marquee,
+          d.rss_news || [],
           { mode: "carousel_show" }
         );
       } catch (_) {}
@@ -832,6 +876,23 @@
     const text = formatClockTimeString();
     scope.querySelectorAll(".gs-screen-clock").forEach((el) => {
       el.textContent = text;
+    });
+  }
+
+  function formatEmergencyCountdown(totalSec) {
+    const safe = Math.max(0, Math.round(Number(totalSec) || 0));
+    const mm = Math.floor(safe / 60);
+    const ss = safe % 60;
+    return `${String(mm).padStart(2, "0")}:${String(ss).padStart(2, "0")}`;
+  }
+
+  function updateAllEmergencyCountdowns(root) {
+    const scope = root && root.querySelectorAll ? root : document;
+    if (!scope.querySelectorAll) return;
+    scope.querySelectorAll("[data-emergency-countdown='1']").forEach((el) => {
+      const raw = Number(el.getAttribute("data-seconds-left"));
+      const sec = Number.isFinite(raw) ? Math.max(0, Math.round(raw)) : 0;
+      el.textContent = formatEmergencyCountdown(sec);
     });
   }
 
@@ -1022,6 +1083,7 @@
     pruneStaleCarouselState,
     pruneStaleWidgetState,
     renderWidgetHtml,
+    updateAllEmergencyCountdowns,
     widgetIdsHiddenByCarousel,
     sortWidgetsForDom,
     sortWidgetsForMobileStack,

@@ -373,6 +373,16 @@
                 <label class="settings-row"><span>Таймаут опроса ТВ (сек)</span>
                   <input type="number" id="screen-poll-timeout" class="standard-input" min="2" max="60" value="5">
                 </label>
+                <h4 class="settings-popover-subhead">RSS источники</h4>
+                <p class="hint">Внешние образовательные/научные/юридические новости для виджета «Мировые новости».</p>
+                <label class="settings-row"><span>Интервал обновления (мин)</span>
+                  <input type="number" id="rss-refresh-minutes" class="standard-input" min="30" max="60" value="45">
+                </label>
+                <div id="rss-sources-list" class="rss-sources-list"></div>
+                <div class="settings-row settings-btn-row program-settings-footer-actions">
+                  <button type="button" id="rss-source-add-btn" class="secondary-btn compact-btn">+ Источник</button>
+                  <button type="button" id="rss-refresh-now-btn" class="secondary-btn compact-btn">Обновить RSS сейчас</button>
+                </div>
                 <p class="hint" id="sync-status-line">Синхронизация: —</p>
                 <div class="settings-row settings-btn-row program-settings-footer-actions">
                   <button type="button" id="sync-now-btn" class="secondary-btn compact-btn">Синхронизировать сейчас</button>

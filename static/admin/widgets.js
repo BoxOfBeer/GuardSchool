@@ -17,6 +17,7 @@ const WIDGET_TYPE_KEYS = new Set([
   "holidays",
   "announcements",
   "marquee",
+  "rss_news",
   "emergency",
   "image",
 ]);
@@ -116,12 +117,12 @@ function settingInputs(widget, index) {
   parts.push(widgetToggle(t("w.enabled"), widget.enabled, `widget:${index}:enabled`));
   parts.push(widgetToggle(t("w.backdrop"), widget.settings.backdrop !== false, `widget:${index}:settings.backdrop`));
   parts.push(widgetToggle("Только в меню", widget.menu_only === true, `widget:${index}:menu_only`));
-  if (["date", "time", "text", "bell_status", "holidays", "announcements", "marquee", "emergency"].includes(widget.type)) {
+  if (["date", "time", "text", "bell_status", "holidays", "announcements", "marquee", "rss_news", "emergency"].includes(widget.type)) {
     parts.push(widgetInput(t("w.fontSize"), widget.settings.fontSize, `widget:${index}:settings.fontSize`, "number", "standard-input"));
     parts.push(widgetInput(t("w.color"), widget.settings.color, `widget:${index}:settings.color`, "color", "standard-input"));
     parts.push(widgetToggle(t("w.bold"), widget.settings.bold, `widget:${index}:settings.bold`));
   }
-  if (["text", "bell_status", "bell_countdown", "holidays", "announcements", "marquee", "emergency"].includes(widget.type)) {
+  if (["text", "bell_status", "bell_countdown", "holidays", "announcements", "marquee", "rss_news", "emergency"].includes(widget.type)) {
     parts.push(widgetInput(t("w.blockBg"), widget.settings.background, `widget:${index}:settings.background`, "text", "wide-input"));
   }
   if (widget.type === "text") {
@@ -202,7 +203,7 @@ function settingInputs(widget, index) {
   if (widget.type === "bell_status" || widget.type === "bell_countdown") {
     parts.push(widgetInput(t("w.titleFont"), widget.settings.titleFontSize, `widget:${index}:settings.titleFontSize`, "number", "standard-input"));
   }
-  if (widget.type === "holidays" || widget.type === "announcements") {
+  if (widget.type === "holidays" || widget.type === "announcements" || widget.type === "rss_news") {
     parts.push(widgetInput(t("w.titleFont"), widget.settings.titleFontSize, `widget:${index}:settings.titleFontSize`, "number", "standard-input"));
   }
   if (widget.type === "bell_countdown") {

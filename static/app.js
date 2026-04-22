@@ -73,6 +73,7 @@ const WIDGET_TYPE_KEYS = new Set([
   "holidays",
   "announcements",
   "marquee",
+  "rss_news",
   "emergency",
   "image",
 ]);
@@ -89,6 +90,7 @@ const PALETTE_TYPES_ORDER = [
   "holidays",
   "announcements",
   "marquee",
+  "rss_news",
   "emergency",
   "image",
 ];
@@ -144,6 +146,52 @@ function syncProgramSettingsFieldsFromState() {
     const pt = Number(state.config.screen_poll_timeout_sec);
     elements.screenPollTimeout.value = String(Number.isFinite(pt) ? pt : 5);
   }
+  if (elements.rssRefreshMinutes) {
+    const rm = Number(state.config.rss_refresh_minutes);
+    elements.rssRefreshMinutes.value = String(Number.isFinite(rm) ? rm : 45);
+  }
+  renderRssSourcesEditor();
+}
+
+function renderRssSourcesEditor() {
+  const wrap = elements.rssSourcesList;
+  if (!wrap || !state.config) return;
+  if (!Array.isArray(state.config.rss_sources)) state.config.rss_sources = [];
+  wrap.innerHTML = state.config.rss_sources
+    .map((src, index) => {
+      const name = escapeHtmlAttr(String(src?.name || ""));
+      const rssUrl = escapeHtmlAttr(String(src?.rss_url || ""));
+      const enabled = src?.enabled !== false;
+      return `<div class="settings-row rss-source-row" data-rss-index="${index}">
+        <input type="text" class="standard-input" data-rss-key="name" value="${name}" placeholder="Название">
+        <input type="url" class="standard-input wide-input" data-rss-key="rss_url" value="${rssUrl}" placeholder="https://example.com/rss.xml">
+        <label class="toggle-label"><input type="checkbox" data-rss-key="enabled" ${enabled ? "checked" : ""}><span>Включено</span></label>
+        <button type="button" class="secondary-btn compact-btn" data-rss-remove="${index}">Удалить</button>
+      </div>`;
+    })
+    .join("");
+  wrap.querySelectorAll("[data-rss-remove]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const i = Number(btn.getAttribute("data-rss-remove"));
+      if (!Number.isFinite(i)) return;
+      state.config.rss_sources.splice(i, 1);
+      renderRssSourcesEditor();
+    });
+  });
+  wrap.querySelectorAll(".rss-source-row").forEach((row) => {
+    const i = Number(row.getAttribute("data-rss-index"));
+    row.querySelectorAll("[data-rss-key]").forEach((input) => {
+      input.addEventListener("input", () => {
+        const key = input.getAttribute("data-rss-key");
+        if (!key) return;
+        const src = state.config.rss_sources[i] || { name: "", rss_url: "", enabled: true };
+        if (key === "enabled") src.enabled = Boolean(input.checked);
+        else src[key] = String(input.value || "").trim();
+        state.config.rss_sources[i] = src;
+      });
+      input.addEventListener("change", () => input.dispatchEvent(new Event("input")));
+    });
+  });
 }
 
 function renderProgramPaletteCheckboxes() {
@@ -631,6 +679,20 @@ function createDefaultScreen(index) {
         },
       },
       {
+        id: "rss_news",
+        type: "rss_news",
+        title: "Мировые новости",
+        enabled: false,
+        x: 24, y: 14, w: 8, h: 10,
+        settings: {
+          fontSize: 16,
+          titleFontSize: 18,
+          color: "#ffffff",
+          background: "rgba(15,23,42,0.55)",
+          bold: false,
+        },
+      },
+      {
         id: "emergency",
         type: "emergency",
         title: "Аварийный",
@@ -871,6 +933,7 @@ const CLIENT_EMERGENCY_DEFAULTS = [
       backdrop: true,
       soundEnabled: true,
       soundUrl: "",
+      timer_seconds: 0,
       byScreenName: {},
     },
   },
@@ -886,6 +949,7 @@ const CLIENT_EMERGENCY_DEFAULTS = [
       backdrop: true,
       soundEnabled: false,
       soundUrl: "",
+      timer_seconds: 0,
       byScreenName: {},
     },
   },
@@ -901,6 +965,7 @@ const CLIENT_EMERGENCY_DEFAULTS = [
       backdrop: true,
       soundEnabled: false,
       soundUrl: "",
+      timer_seconds: 0,
       byScreenName: {},
     },
   },
@@ -916,6 +981,7 @@ const CLIENT_EMERGENCY_DEFAULTS = [
       backdrop: true,
       soundEnabled: true,
       soundUrl: "",
+      timer_seconds: 0,
       byScreenName: {},
     },
   },
@@ -1037,10 +1103,12 @@ function renderEmergencyTemplatesAdmin() {
         <label><span>${escapeHtml(t("w.fontSize"))}</span><input type="number" id="emergency-f-fs" class="standard-input" min="10" max="200" value="${Number(s.fontSize) || 42}"></label>
         <label><span>${escapeHtml(t("w.color"))}</span><input type="color" id="emergency-f-color" value="${escapeHtmlAttr(/^#[0-9a-fA-F]{6}$/.test(String(s.color || "").trim()) ? String(s.color).trim() : "#ffffff")}"></label>
         <label><span>${escapeHtml(t("w.blockBg"))}</span><input type="text" id="emergency-f-bg" class="standard-input" value="${escapeHtmlAttr(String(s.background || "#b91c1c"))}"></label>
+        <label><span>${escapeHtml(t("emergencyTemplates.timerSeconds"))}</span><input type="number" id="emergency-f-timer" class="standard-input" min="0" max="86400" step="1" value="${Math.max(0, Math.round(Number(s.timer_seconds) || 0))}" placeholder="${escapeHtmlAttr(t("emergencyTemplates.timerHint"))}"></label>
         <label class="toggle-label"><input type="checkbox" id="emergency-f-bold" ${s.bold !== false ? "checked" : ""}> ${escapeHtml(t("w.bold"))}</label>
         <label class="toggle-label"><input type="checkbox" id="emergency-f-backdrop" ${s.backdrop !== false ? "checked" : ""}> ${escapeHtml(t("w.backdrop"))}</label>
         <label class="toggle-label"><input type="checkbox" id="emergency-f-sound" ${s.soundEnabled === true ? "checked" : ""}> ${escapeHtml(t("emergencyTemplates.globalSound"))}</label>
       </div>
+      <p class="hint">${escapeHtml(t("emergencyTemplates.timerHintValues"))}</p>
       <label class="settings-row"><span>${escapeHtml(t("w.emergencySoundFile"))}</span>
         <input type="text" id="emergency-f-surl" class="standard-input wide-input" value="${escapeHtmlAttr(String(s.soundUrl || ""))}" ${soundRo}></label>
       <div class="compact-form-row">${state.meta?.saas_mode ? "" : `<label class="bell-file-upload"><span class="bell-file-upload-main">${escapeHtml(t("w.browse"))}</span>
@@ -1072,6 +1140,7 @@ function renderEmergencyTemplatesAdmin() {
         backdrop: true,
         soundEnabled: false,
         soundUrl: "",
+        timer_seconds: 0,
         byScreenName: {},
       },
     });
@@ -1161,6 +1230,7 @@ function flushEmergencyEditorToState() {
   const bk = document.getElementById("emergency-f-backdrop");
   const snd = document.getElementById("emergency-f-sound");
   const surl = document.getElementById("emergency-f-surl");
+  const timer = document.getElementById("emergency-f-timer");
   if (!tpl.settings) tpl.settings = {};
   if (fs) {
     const n = Number(fs.value);
@@ -1175,6 +1245,10 @@ function flushEmergencyEditorToState() {
   if (bk) tpl.settings.backdrop = Boolean(bk.checked);
   if (snd) tpl.settings.soundEnabled = Boolean(snd.checked);
   if (surl) tpl.settings.soundUrl = String(surl.value || "").trim();
+  if (timer) {
+    const n = Number(timer.value);
+    tpl.settings.timer_seconds = Number.isFinite(n) ? Math.max(0, Math.min(86400, Math.round(n))) : 0;
+  }
   const root = document.getElementById("emergency-templates-admin-root");
   if (root) {
     root.querySelectorAll("[data-em-screen]").forEach((inp) => {
@@ -1829,6 +1903,30 @@ function bindForm() {
     elements.screenPollTimeout.oninput = (e) => {
       const n = Number(e.target.value);
       state.config.screen_poll_timeout_sec = Number.isFinite(n) ? Math.max(2, Math.min(60, Math.round(n))) : 5;
+    };
+  }
+  if (elements.rssRefreshMinutes) {
+    elements.rssRefreshMinutes.oninput = (e) => {
+      const n = Number(e.target.value);
+      state.config.rss_refresh_minutes = Number.isFinite(n) ? Math.max(30, Math.min(60, Math.round(n))) : 45;
+    };
+  }
+  if (elements.rssSourceAddBtn) {
+    elements.rssSourceAddBtn.onclick = () => {
+      if (!Array.isArray(state.config.rss_sources)) state.config.rss_sources = [];
+      state.config.rss_sources.push({ name: "", rss_url: "", enabled: true });
+      renderRssSourcesEditor();
+    };
+  }
+  if (elements.rssRefreshNowBtn) {
+    elements.rssRefreshNowBtn.onclick = async () => {
+      try {
+        const result = await api("/api/admin/rss-news/refresh", { method: "POST" });
+        const count = Number(result?.count || 0);
+        alert(`RSS обновлены. Новостей в кэше: ${count}.`);
+      } catch (e) {
+        alert(e.message || String(e));
+      }
     };
   }
   if (elements.syncNowBtn) {

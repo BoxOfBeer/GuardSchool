@@ -554,6 +554,7 @@ const GS_DEVICE_WIDGET_TYPE_LABELS = {
   carousel: "Карусель",
   holidays: "Праздники",
   announcements: "Объявления",
+  rss_news: "Мировые новости",
   marquee: "Бегущая строка",
   image: "Фон / картинка",
 };
@@ -715,6 +716,8 @@ let bellAudioDay = null;
 let screenAudioUnlocked = false;
 let emergencyAudioEl = null;
 let emergencyAudioUrl = "";
+let emergencyCountdownKey = "";
+let emergencyCountdownDeadlineMs = 0;
 
 let lastRenderOkAt = Date.now();
 
@@ -991,6 +994,65 @@ function tickEmergencyAudio(payload) {
   } catch (_) {}
 }
 
+function resolveEmergencyTimerState(payload) {
+  try {
+    const screen = payload && payload.screen;
+    const widgets = (screen && screen.widgets) || [];
+    const w = widgets.find((x) => x && x.type === "emergency" && x.enabled !== false);
+    if (!w) return { active: false };
+    const s = w.settings || {};
+    const raw = Number(s.timer_seconds != null ? s.timer_seconds : s.timerSeconds);
+    const timerSeconds = Number.isFinite(raw) ? Math.max(0, Math.round(raw)) : 0;
+    if (timerSeconds <= 0) return { active: false };
+    const key = JSON.stringify({
+      screen: String(screen && (screen.id || screen.slug || screen.name) || ""),
+      widget: String(w.id || "emergency"),
+      timer: timerSeconds,
+      text: String(s.text || ""),
+      color: String(s.color || ""),
+      background: String(s.background || ""),
+    });
+    return { active: true, timerSeconds, key };
+  } catch (_) {
+    return { active: false };
+  }
+}
+
+function tickEmergencyTimerState(payload) {
+  const st = resolveEmergencyTimerState(payload);
+  if (!st.active) {
+    emergencyCountdownKey = "";
+    emergencyCountdownDeadlineMs = 0;
+    return;
+  }
+  if (emergencyCountdownKey !== st.key || !emergencyCountdownDeadlineMs) {
+    emergencyCountdownKey = st.key;
+    emergencyCountdownDeadlineMs = Date.now() + st.timerSeconds * 1000;
+  }
+  const screen = payload && payload.screen;
+  const widgets = (screen && screen.widgets) || [];
+  const w = widgets.find((x) => x && x.type === "emergency" && x.enabled !== false);
+  if (!w) return;
+  const s = w.settings || (w.settings = {});
+  const remain = Math.max(0, Math.ceil((emergencyCountdownDeadlineMs - Date.now()) / 1000));
+  s.timerRemainingSec = remain;
+  s.timerShowZero = true;
+}
+
+function tickEmergencyCountdownUi() {
+  const root = document.getElementById("screen-root");
+  if (!root) return;
+  if (!root.querySelector("[data-emergency-countdown='1']")) return;
+  root.querySelectorAll("[data-emergency-countdown='1']").forEach((el) => {
+    const cur = Number(el.getAttribute("data-seconds-left"));
+    const now = Number.isFinite(cur) ? Math.max(0, Math.round(cur)) : 0;
+    const next = Math.max(0, now - 1);
+    el.setAttribute("data-seconds-left", String(next));
+  });
+  const g = window.GuardSchoolScreen;
+  if (g && g.updateAllEmergencyCountdowns) g.updateAllEmergencyCountdowns(root);
+}
+
 function screenPayloadScheduleSig(p) {
   if (!p || typeof p !== "object") return "";
   try {
@@ -1053,6 +1115,7 @@ function shouldSoftRefreshWidget(widget, scheduleChanged, staticChanged) {
 
 function render(screenPayload) {
   window.__lastScreenPayload = screenPayload;
+  tickEmergencyTimerState(screenPayload);
   const screenForUi = (screenPayload && screenPayload.screen) || {};
   const deviceUiAllowed = gsShowScreenDeviceGear(screenForUi);
   const feedbackUiAllowed = deviceUiAllowed && Boolean(screenForUi && screenForUi.enable_feedback);
@@ -1088,7 +1151,7 @@ function render(screenPayload) {
 
   const GRef = window.GuardSchoolScreen;
   if (!GRef) return;
-  const { screen, schedule, holidays, announcements, marquee } = screenPayload;
+  const { screen, schedule, holidays, announcements, marquee, rss_news: rssNews } = screenPayload;
   const root = document.getElementById("screen-root");
   if (!root) return;
   const menuMode = gsQueryParams(window.location.search || "").get("gs_menu") === "1";
@@ -1152,7 +1215,7 @@ function render(screenPayload) {
       item.className = "screen-widget";
       item.dataset.widgetId = String(widget.id);
       item.dataset.widgetType = String(widget.type);
-      item.innerHTML = GRef.renderWidgetHtml(widget, schedule, screen, holidays, announcements || [], marquee || []);
+      item.innerHTML = GRef.renderWidgetHtml(widget, schedule, screen, holidays, announcements || [], marquee || [], rssNews || []);
       if (GRef.applyWidgetBackdropClass) GRef.applyWidgetBackdropClass(item, widget);
       list.appendChild(item);
     });
@@ -1219,9 +1282,9 @@ function render(screenPayload) {
           const childWidgets = GRef.orderedCarouselChildWidgets
             ? GRef.orderedCarouselChildWidgets(screen, widget)
             : (screen.widgets || []).filter((it) => (widget.settings.childWidgetIds || []).includes(it.id));
-          GRef.startCarousel(item, widget, childWidgets, schedule, screen, holidays, announcements || [], marquee || []);
+          GRef.startCarousel(item, widget, childWidgets, schedule, screen, holidays, announcements || [], marquee || [], rssNews || []);
         } else {
-          item.innerHTML = GRef.renderWidgetHtml(widget, schedule, screen, holidays, announcements || [], marquee || []);
+          item.innerHTML = GRef.renderWidgetHtml(widget, schedule, screen, holidays, announcements || [], marquee || [], rssNews || []);
         }
         if (GRef.applyWidgetBackdropClass) GRef.applyWidgetBackdropClass(item, widget);
         list.appendChild(item);
@@ -1294,15 +1357,15 @@ function render(screenPayload) {
 
       if (widget.type === "text") {
         block.style.background = widget.settings.background;
-        block.innerHTML = GRef.renderWidgetHtml(widget, schedule, screen, holidays, announcements || [], marquee || []);
+        block.innerHTML = GRef.renderWidgetHtml(widget, schedule, screen, holidays, announcements || [], marquee || [], rssNews || []);
       } else if (widget.type === "carousel") {
         block.classList.add("carousel-widget");
         const childWidgets = GRef.orderedCarouselChildWidgets
           ? GRef.orderedCarouselChildWidgets(screen, widget)
           : (screen.widgets || []).filter((item) => (widget.settings.childWidgetIds || []).includes(item.id));
-        GRef.startCarousel(block, widget, childWidgets, schedule, screen, holidays, announcements || [], marquee || []);
+        GRef.startCarousel(block, widget, childWidgets, schedule, screen, holidays, announcements || [], marquee || [], rssNews || []);
       } else {
-        block.innerHTML = GRef.renderWidgetHtml(widget, schedule, screen, holidays, announcements || [], marquee || []);
+        block.innerHTML = GRef.renderWidgetHtml(widget, schedule, screen, holidays, announcements || [], marquee || [], rssNews || []);
       }
 
       if (GRef.applyWidgetBackdropClass) GRef.applyWidgetBackdropClass(block, widget);
@@ -1325,7 +1388,7 @@ function render(screenPayload) {
       if (widget.type === "text") {
         el.style.background = widget.settings.background;
       }
-      el.innerHTML = GRef.renderWidgetHtml(widget, schedule, screen, holidays, announcements || [], marquee || []);
+      el.innerHTML = GRef.renderWidgetHtml(widget, schedule, screen, holidays, announcements || [], marquee || [], rssNews || []);
       if (GRef.applyWidgetBackdropClass) GRef.applyWidgetBackdropClass(el, widget);
       else if (widget.settings && widget.settings.backdrop === false) el.classList.add("no-backdrop");
       else el.classList.remove("no-backdrop");
@@ -1716,6 +1779,9 @@ window.setInterval(() => {
 }, 1000);
 window.setInterval(() => {
   if (window.__lastScreenPayload) tickBellAudio(window.__lastScreenPayload);
+}, 1000);
+window.setInterval(() => {
+  tickEmergencyCountdownUi();
 }, 1000);
 /** Смена фона по интервалу без полного poll (картинки уже известны с сервера). */
 window.setInterval(() => {

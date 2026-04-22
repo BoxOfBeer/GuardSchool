@@ -80,6 +80,7 @@ from .gs_import_bundle import (
 )
 from .gs_import_state import load_import_state
 from .gs_jsonio import read_json, write_json
+from .gs_rss_news import load_rss_news, sanitize_rss_refresh_minutes, sanitize_rss_sources
 from .gs_uploads_bg import (
     list_background_images_from_uploads,
     list_background_subdirs_from_uploads,
@@ -155,6 +156,7 @@ SINGLETON_WIDGET_IDS = {
     "marquee": "marquee",
     "emergency": "emergency",
     "image": "image",
+    "rss_news": "rss_news",
 }
 
 # Типы виджетов, которые можно скрыть из списка в админке (не влияет на ТВ и на сетку превью).
@@ -172,6 +174,7 @@ ADMIN_PALETTE_WIDGET_TYPES = frozenset(
         "marquee",
         "emergency",
         "image",
+        "rss_news",
     }
 )
 
@@ -416,6 +419,23 @@ def default_screen(name: str, slug: str) -> dict[str, Any]:
                 },
             },
             {
+                "id": "rss_news",
+                "type": "rss_news",
+                "title": "Мировые новости",
+                "enabled": False,
+                "x": 24,
+                "y": 14,
+                "w": 8,
+                "h": 10,
+                "settings": {
+                    "fontSize": 16,
+                    "titleFontSize": 18,
+                    "color": "#ffffff",
+                    "background": "rgba(15,23,42,0.55)",
+                    "bold": False,
+                },
+            },
+            {
                 "id": "emergency",
                 "type": "emergency",
                 "title": "Аварийный",
@@ -475,6 +495,7 @@ def _default_emergency_templates() -> list[dict[str, Any]]:
                 "backdrop": True,
                 "soundEnabled": True,
                 "soundUrl": "",
+                "timer_seconds": 0,
                 "byScreenName": {},
             },
         },
@@ -490,6 +511,7 @@ def _default_emergency_templates() -> list[dict[str, Any]]:
                 "backdrop": True,
                 "soundEnabled": False,
                 "soundUrl": "",
+                "timer_seconds": 0,
                 "byScreenName": {},
             },
         },
@@ -505,6 +527,7 @@ def _default_emergency_templates() -> list[dict[str, Any]]:
                 "backdrop": True,
                 "soundEnabled": False,
                 "soundUrl": "",
+                "timer_seconds": 0,
                 "byScreenName": {},
             },
         },
@@ -520,6 +543,7 @@ def _default_emergency_templates() -> list[dict[str, Any]]:
                 "backdrop": True,
                 "soundEnabled": True,
                 "soundUrl": "",
+                "timer_seconds": 0,
                 "byScreenName": {},
             },
         },
@@ -574,6 +598,11 @@ def _sanitize_emergency_templates_list(raw: Any) -> list[dict[str, Any]]:
         surl = str(st.get("soundUrl") or "").strip()[:512]
         if surl and not (surl.startswith("/uploads/") or surl.startswith("http://") or surl.startswith("https://")):
             surl = ""
+        try:
+            timer_seconds = int(st.get("timer_seconds", st.get("timerSeconds", 0)) or 0)
+        except (TypeError, ValueError):
+            timer_seconds = 0
+        timer_seconds = max(0, min(24 * 60 * 60, timer_seconds))
         out.append(
             {
                 "id": tid,
@@ -587,6 +616,7 @@ def _sanitize_emergency_templates_list(raw: Any) -> list[dict[str, Any]]:
                     "backdrop": bd,
                     "soundEnabled": se,
                     "soundUrl": surl,
+                    "timer_seconds": timer_seconds,
                     "byScreenName": _sanitize_emergency_by_screen_name(st.get("byScreenName")),
                 },
             }
@@ -638,6 +668,11 @@ def apply_emergency_template_to_screen(screen: dict[str, Any], config: dict[str,
     surl = str(ts.get("soundUrl") or "").strip()[:512]
     if surl and not (surl.startswith("/uploads/") or surl.startswith("http://") or surl.startswith("https://")):
         surl = ""
+    try:
+        timer_seconds = int(ts.get("timer_seconds", ts.get("timerSeconds", 0)) or 0)
+    except (TypeError, ValueError):
+        timer_seconds = 0
+    timer_seconds = max(0, min(24 * 60 * 60, timer_seconds))
     new_s = {
         "text": str(ts.get("text", ""))[:5000],
         "fontSize": fs,
@@ -647,6 +682,7 @@ def apply_emergency_template_to_screen(screen: dict[str, Any], config: dict[str,
         "backdrop": bd,
         "soundEnabled": bool(ts.get("soundEnabled")),
         "soundUrl": surl,
+        "timer_seconds": timer_seconds,
         "imageUrl": img,
         "imageCaption": cap,
     }
@@ -815,6 +851,8 @@ def default_config() -> dict[str, Any]:
         "tv_pair_pin_bypass": False,
         "emergency_templates": copy.deepcopy(_default_emergency_templates()),
         "emergency_active_template_id": "",
+        "rss_sources": [],
+        "rss_refresh_minutes": 45,
     }
 
 
@@ -1211,11 +1249,11 @@ def normalize_widget(widget: dict[str, Any]) -> dict[str, Any]:
     widget["id"] = widget.get("id") or SINGLETON_WIDGET_IDS.get(widget.get("type"), secrets.token_hex(4))
     widget.setdefault("enabled", True)
     widget.setdefault("settings", {})
-    if widget["type"] in {"date", "time", "text", "bell_status", "bell_countdown"}:
+    if widget["type"] in {"date", "time", "text", "bell_status", "bell_countdown", "rss_news"}:
         widget["settings"].setdefault("fontSize", 24)
         widget["settings"].setdefault("color", "#ffffff")
         widget["settings"].setdefault("bold", False)
-    if widget["type"] in {"holidays", "announcements", "marquee"}:
+    if widget["type"] in {"holidays", "announcements", "marquee", "rss_news"}:
         widget["settings"].setdefault("fontSize", 18)
         widget["settings"].setdefault("color", "#ffffff")
         widget["settings"].setdefault("background", "rgba(15,23,42,0.55)")
@@ -1301,6 +1339,8 @@ def normalize_widget(widget: dict[str, Any]) -> dict[str, Any]:
         except (TypeError, ValueError):
             irs = 0
         widget["settings"]["imagesRotateSec"] = max(0, min(600, irs))
+    if widget["type"] == "rss_news":
+        widget["settings"].setdefault("titleFontSize", 18)
     widget["settings"].setdefault("backdrop", True)
     return widget
 
@@ -1461,6 +1501,8 @@ def load_config() -> dict[str, Any]:
     else:
         config["emergency_templates"] = _sanitize_emergency_templates_list(_et)
     config["emergency_active_template_id"] = str(config.get("emergency_active_template_id") or "").strip()[:64]
+    config["rss_sources"] = sanitize_rss_sources(config.get("rss_sources"))
+    config["rss_refresh_minutes"] = sanitize_rss_refresh_minutes(config.get("rss_refresh_minutes", 45))
     return config
 
 
@@ -1610,6 +1652,8 @@ def sanitize_config(config: dict[str, Any]) -> dict[str, Any]:
     else:
         config["emergency_templates"] = _sanitize_emergency_templates_list(raw_et)
     config["emergency_active_template_id"] = str(config.get("emergency_active_template_id") or "").strip()[:64]
+    config["rss_sources"] = sanitize_rss_sources(config.get("rss_sources"))
+    config["rss_refresh_minutes"] = sanitize_rss_refresh_minutes(config.get("rss_refresh_minutes", 45))
     return config
 
 
@@ -4108,6 +4152,14 @@ async def get_admin_config(request: Request) -> Response:
     return JSONResponse(cfg, headers={"Cache-Control": "no-store"})
 
 
+@app.post("/api/admin/rss-news/refresh")
+def post_admin_rss_news_refresh(request: Request) -> dict[str, Any]:
+    require_auth(request)
+    cfg = load_config()
+    items = load_rss_news(cfg, force_refresh=True)
+    return {"items": items, "count": len(items)}
+
+
 @app.post("/api/admin/config")
 async def save_admin_config(request: Request) -> dict[str, str]:
     require_auth(request)
@@ -4673,6 +4725,7 @@ def post_preview_payload(request: Request, payload: dict[str, Any] = Body(...)) 
         "holidays": load_holidays(),
         "announcements": load_announcements(),
         "marquee": load_marquee_items(),
+        "rss_news": load_rss_news(cfg),
         "background_gallery": list_background_images_from_uploads(screen.get("background_rotate_folder")),
         "bell_audio": build_bell_audio_payload(
             screen,
@@ -4768,6 +4821,7 @@ def get_screen(request: Request, slug: str) -> JSONResponse:
         "holidays": load_holidays(),
         "announcements": load_announcements(),
         "marquee": load_marquee_items(),
+        "rss_news": load_rss_news(config),
         "background_gallery": list_background_images_from_uploads(screen.get("background_rotate_folder")),
         "bell_audio": build_bell_audio_payload(
             screen,
