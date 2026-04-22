@@ -401,17 +401,12 @@ function ensureDeviceSettingsUi() {
   } catch (_) {}
 }
 
-function ensureFeedbackUi() {
+function ensureFeedbackUi(options) {
   try {
-    if (document.getElementById("gs-feedback-btn")) return;
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.id = "gs-feedback-btn";
-    btn.className = "gs-device-settings-btn";
-    btn.setAttribute("aria-label", "Обратная связь");
-    btn.textContent = "💬";
-    btn.style.right = "78px";
-    btn.style.fontSize = "22px";
+    options = options || {};
+    const floating = options.floating !== false;
+    if (floating && document.getElementById("gs-feedback-btn")) return;
+    // Панель одна на страницу, независимо от того, где кнопка открытия.
     const panel = document.createElement("div");
     panel.id = "gs-feedback-panel";
     panel.className = "gs-device-settings-panel";
@@ -429,10 +424,20 @@ function ensureFeedbackUi() {
         <span id="gs-feedback-status" class="hint"></span>
       </div>
     `;
-    document.body.appendChild(btn);
     document.body.appendChild(panel);
     const toggle = (show) => { panel.hidden = !show; };
-    btn.addEventListener("click", () => toggle(panel.hidden));
+    if (floating) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.id = "gs-feedback-btn";
+      btn.className = "gs-device-settings-btn";
+      btn.setAttribute("aria-label", "Обратная связь");
+      btn.textContent = "💬";
+      btn.style.right = "78px";
+      btn.style.fontSize = "22px";
+      document.body.appendChild(btn);
+      btn.addEventListener("click", () => toggle(panel.hidden));
+    }
     panel.querySelector("#gs-feedback-close")?.addEventListener("click", () => toggle(false));
     panel.querySelector("#gs-feedback-send")?.addEventListener("click", async () => {
       const slug = getSlug();
@@ -457,6 +462,14 @@ function ensureFeedbackUi() {
         if (st) st.textContent = String(e && e.message || e || "Ошибка");
       }
     });
+    // Если есть кнопка внутри панели настроек устройства — привязываем её.
+    try {
+      const inner = document.getElementById("gs-feedback-open-in-settings");
+      if (inner && !inner.dataset.bound) {
+        inner.dataset.bound = "1";
+        inner.addEventListener("click", () => toggle(true));
+      }
+    } catch (_) {}
   } catch (_) {}
 }
 
@@ -1134,10 +1147,31 @@ function render(screenPayload) {
   tickEmergencyTimerState(screenPayload);
   const screenForUi = (screenPayload && screenPayload.screen) || {};
   const deviceUiAllowed = gsShowScreenDeviceGear(screenForUi);
-  const feedbackUiAllowed = deviceUiAllowed && Boolean(screenForUi && screenForUi.enable_feedback);
+  const feedbackEnabled = Boolean(screenForUi && screenForUi.enable_feedback);
+  const feedbackFloating = Boolean(screenForUi && screenForUi.feedback_floating_button);
+  const feedbackUiAllowed = deviceUiAllowed && feedbackEnabled;
   if (deviceUiAllowed) {
     ensureDeviceSettingsUi();
     syncDeviceSettingsFromPayload(screenPayload);
+    // Кнопка открытия feedback внутри панели настроек — если feedback разрешён, но плавающую кнопку не показываем.
+    try {
+      const panel = document.getElementById("gs-device-settings-panel");
+      if (panel) {
+        let wrap = panel.querySelector("#gs-feedback-open-wrap");
+        if (!wrap) {
+          wrap = document.createElement("div");
+          wrap.id = "gs-feedback-open-wrap";
+          wrap.className = "gs-device-settings-row";
+          wrap.style.marginTop = "8px";
+          panel.appendChild(wrap);
+        }
+        if (feedbackEnabled && !feedbackFloating) {
+          wrap.innerHTML = `<button type="button" class="gs-device-btn-secondary" id="gs-feedback-open-in-settings">Обратная связь</button>`;
+        } else {
+          wrap.innerHTML = "";
+        }
+      }
+    } catch (_) {}
   } else {
     try {
       const panel = document.getElementById("gs-device-settings-panel");
@@ -1147,7 +1181,7 @@ function render(screenPayload) {
     } catch (_) {}
   }
   if (feedbackUiAllowed) {
-    ensureFeedbackUi();
+    ensureFeedbackUi({ floating: feedbackFloating });
   } else {
     try {
       const panel = document.getElementById("gs-feedback-panel");

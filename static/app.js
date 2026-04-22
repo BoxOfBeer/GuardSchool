@@ -570,6 +570,7 @@ function createDefaultScreen(index) {
     selected_classes: ["5", "6", "7", "8"],
     mobile_mode: false,
     enable_feedback: false,
+    feedback_floating_button: false,
     /** Список id виджетов, которые рендерить в мобильном режиме (вертикальная лента). */
     mobile_widget_ids: [],
     bell_schedule_template: "standard",
@@ -1041,6 +1042,17 @@ function renderEmergencyTemplateBar() {
   const list = state.config.emergency_templates || [];
   const cur = String(state.config.emergency_active_template_id || "").trim();
   wrap.innerHTML = "";
+  // Важно: можно "снять" глобальный шаблон, вернувшись к индивидуальным настройкам emergency-виджета на экранах.
+  const clearBtn = document.createElement("button");
+  clearBtn.type = "button";
+  clearBtn.className = `emergency-template-btn${!cur ? " active" : ""}`;
+  clearBtn.textContent = t("emergencyTemplates.defaultBtn");
+  clearBtn.title = t("emergencyTemplates.defaultHint");
+  clearBtn.onclick = async () => {
+    state.config.emergency_active_template_id = "";
+    await persistConfigQuick();
+  };
+  wrap.appendChild(clearBtn);
   list.forEach((tpl) => {
     const id = String(tpl.id || "").trim();
     if (!id) return;
@@ -1050,7 +1062,8 @@ function renderEmergencyTemplateBar() {
     b.textContent = String(tpl.title || id);
     b.title = String(tpl.title || id);
     b.onclick = async () => {
-      state.config.emergency_active_template_id = id;
+      // Повторный клик по активному — снимает шаблон.
+      state.config.emergency_active_template_id = id === cur ? "" : id;
       await persistConfigQuick();
     };
     wrap.appendChild(b);
@@ -1433,6 +1446,10 @@ function renderForm() {
   if (elements.screenOrientation) elements.screenOrientation.value = screen.orientation === "portrait" ? "portrait" : "landscape";
   if (elements.screenMobileMode) elements.screenMobileMode.checked = Boolean(screen.mobile_mode);
   if (elements.screenEnableFeedback) elements.screenEnableFeedback.checked = Boolean(screen.enable_feedback);
+  if (elements.screenFeedbackFloating) {
+    elements.screenFeedbackFloating.checked = Boolean(screen.feedback_floating_button);
+    elements.screenFeedbackFloating.disabled = !Boolean(screen.enable_feedback);
+  }
   elements.screenIpNote.value = screen.ip_note;
   elements.screenPollInterval.value = screen.poll_interval_sec;
   elements.screenBackground.value = screen.background_image || "";
@@ -1671,6 +1688,12 @@ function setSchoolNewsEditorContent(html) {
 async function ensureSchoolNewsTinyMce() {
   if (!elements.schoolNewsContent) return;
   if (window.__gsSchoolNewsEditorInitDone) return;
+  // Без ключа Tiny Cloud показывает баннер "A valid API key..." — не грузим редактор вообще.
+  const apiKey = String(state.config?.tinymce_api_key || "").trim();
+  if (!apiKey) {
+    window.__gsSchoolNewsEditorInitDone = true;
+    return;
+  }
   const setupEditor = async () => {
     if (!window.tinymce || typeof window.tinymce.init !== "function") return;
     if (window.tinymce.get("school-news-content")) {
@@ -1696,7 +1719,7 @@ async function ensureSchoolNewsTinyMce() {
     if (!window.__gsTinyScriptLoading) {
       window.__gsTinyScriptLoading = new Promise((resolve, reject) => {
         const s = document.createElement("script");
-        s.src = "https://cdn.tiny.cloud/1/no-api-key/tinymce/6/tinymce.min.js";
+        s.src = `https://cdn.tiny.cloud/1/${encodeURIComponent(apiKey)}/tinymce/6/tinymce.min.js`;
         s.referrerPolicy = "origin";
         s.onload = resolve;
         s.onerror = reject;
@@ -1708,6 +1731,44 @@ async function ensureSchoolNewsTinyMce() {
   } catch (_) {
     // fallback: оставляем обычный textarea без блокировки работы формы
   }
+}
+
+function ensureSchoolNewsId() {
+  let id = String(elements.schoolNewsId?.value || "").trim();
+  if (id) return id;
+  id = `news_${crypto.randomUUID().slice(0, 8)}`;
+  if (elements.schoolNewsId) elements.schoolNewsId.value = id;
+  state.editingSchoolNewsId = id;
+  return id;
+}
+
+async function uploadSchoolNewsCoverFromPc(file) {
+  if (!file) return;
+  if (file.size > 1024 * 1024) {
+    alert("Файл обложки слишком большой (максимум 1 МБ).");
+    return;
+  }
+  const nid = ensureSchoolNewsId();
+  const fd = new FormData();
+  fd.append("file", file);
+  fd.append("news_id", nid);
+  const r = await api("/api/admin/school-news/cover-upload", { method: "POST", body: fd });
+  if (elements.schoolNewsCover) elements.schoolNewsCover.value = String(r.url || "");
+}
+
+async function fetchSchoolNewsCoverFromUrl(url) {
+  const u = String(url || "").trim();
+  if (!/^https?:\/\//i.test(u)) {
+    alert("Нужна ссылка вида http(s)://...");
+    return;
+  }
+  const nid = ensureSchoolNewsId();
+  const r = await api("/api/admin/school-news/cover-fetch", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url: u, news_id: nid }),
+  });
+  if (elements.schoolNewsCover) elements.schoolNewsCover.value = String(r.url || "");
 }
 
 function renderSchoolNewsList() {
@@ -1866,6 +1927,16 @@ function bindForm() {
   if (elements.screenEnableFeedback) {
     elements.screenEnableFeedback.onchange = () => {
       selectedScreen().enable_feedback = Boolean(elements.screenEnableFeedback.checked);
+      if (!selectedScreen().enable_feedback) selectedScreen().feedback_floating_button = false;
+      if (elements.screenFeedbackFloating) {
+        elements.screenFeedbackFloating.checked = Boolean(selectedScreen().feedback_floating_button);
+        elements.screenFeedbackFloating.disabled = !Boolean(selectedScreen().enable_feedback);
+      }
+    };
+  }
+  if (elements.screenFeedbackFloating) {
+    elements.screenFeedbackFloating.onchange = () => {
+      selectedScreen().feedback_floating_button = Boolean(elements.screenFeedbackFloating.checked);
     };
   }
   elements.screenIpNote.oninput = (event) => { selectedScreen().ip_note = event.target.value; };
@@ -2233,6 +2304,7 @@ async function init() {
   state.bellSoundFiles = sounds.files || [];
   state.history = schedule.history || [];
   state.appVersion = schedule.app_version || "";
+  state.schoolNews = schedule.school_news || [];
   state.selectedScreenId = config.screens[0].id;
   restoreAdminUiFromSession();
   try {
@@ -2371,6 +2443,29 @@ async function adminLogoutThenNavigate(href) {
 }
 
 if (elements.logoutBtn) elements.logoutBtn.onclick = () => adminLogoutThenNavigate("/login");
+
+if (elements.schoolNewsCoverPickBtn && elements.schoolNewsCoverFile) {
+  elements.schoolNewsCoverPickBtn.onclick = () => elements.schoolNewsCoverFile.click();
+  elements.schoolNewsCoverFile.onchange = async (ev) => {
+    const f = ev.target.files?.[0];
+    try {
+      if (f) await uploadSchoolNewsCoverFromPc(f);
+    } catch (e) {
+      alert(String(e.message || e));
+    }
+    ev.target.value = "";
+  };
+}
+
+if (elements.schoolNewsCoverFetchBtn) {
+  elements.schoolNewsCoverFetchBtn.onclick = async () => {
+    try {
+      await fetchSchoolNewsCoverFromUrl(elements.schoolNewsCover?.value || "");
+    } catch (e) {
+      alert(String(e.message || e));
+    }
+  };
+}
 
 const demoLogoutBtn = document.getElementById("demo-session-logout-btn");
 if (demoLogoutBtn) {

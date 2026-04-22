@@ -12,7 +12,8 @@ import xml.etree.ElementTree as ET
 from .gs_jsonio import read_json, write_json
 from .gs_paths import RSS_NEWS_CACHE_PATH
 
-MAX_WIDGET_ITEMS = 5
+# Храним в кэше до 10, на экране — 1 с ротацией (как объявления) уже на клиенте.
+MAX_CACHE_ITEMS = 10
 HTTP_TIMEOUT_SEC = 8
 USER_AGENT = "GuardSchoolRSS/1.0 (+https://guarddoc.ru)"
 
@@ -162,7 +163,7 @@ def load_rss_news(config: dict[str, Any], *, force_refresh: bool = False) -> lis
         and (now - fetched_at).total_seconds() < refresh_minutes * 60
         and str(cache.get("sources_hash") or "") == sig
     ):
-        return cache_items[:MAX_WIDGET_ITEMS]
+        return cache_items[:MAX_CACHE_ITEMS]
 
     merged: list[dict[str, Any]] = []
     for src in sources:
@@ -174,7 +175,7 @@ def load_rss_news(config: dict[str, Any], *, force_refresh: bool = False) -> lis
             continue
     merged.sort(key=lambda x: x.get("_sort_dt") or datetime(1970, 1, 1, tzinfo=timezone.utc), reverse=True)
     out = []
-    for item in merged[:MAX_WIDGET_ITEMS]:
+    for item in merged[:MAX_CACHE_ITEMS]:
         out.append(
             {
                 "title": str(item.get("title") or "").strip()[:300],

@@ -80,7 +80,11 @@
               </label>
               <label class="compact-field toggle-label" style="align-items:center; gap: 10px">
                 <input id="screen-enable-feedback" type="checkbox">
-                <span>Обратная связь (💬 рядом с шестерёнкой)</span>
+                <span>Обратная связь (разрешить отправку)</span>
+              </label>
+              <label class="compact-field toggle-label" style="align-items:center; gap: 10px">
+                <input id="screen-feedback-floating" type="checkbox">
+                <span>Показывать кнопку 💬 рядом с шестерёнкой</span>
               </label>
               <label class="compact-field"><span data-i18n="screen.ipNote">Подпись к этому ТВ</span>
                 <input id="screen-ip-note" type="text" data-i18n-placeholder="screen.ipNotePh" placeholder="Место установки экрана (не IP стрима)">
@@ -225,9 +229,18 @@
               <input id="school-news-id" type="hidden">
               <label class="override-field override-field-wide"><span class="override-field-label">Заголовок</span><input id="school-news-title-input" class="standard-input" type="text" placeholder="Название новости"></label>
               <label class="override-field"><span class="override-field-label">Дата</span><input id="school-news-date" class="standard-input" type="date"></label>
-              <label class="override-field"><span class="override-field-label">Обложка (URL из /uploads/...)</span><input id="school-news-cover" class="standard-input" type="text" placeholder="/uploads/..."></label>
+              <label class="override-field override-field-wide">
+                <span class="override-field-label">Обложка (URL или загрузка)</span>
+                <input id="school-news-cover" class="standard-input wide-input" type="text" placeholder="/uploads/... или https://...">
+              </label>
+              <div class="override-form-actions" style="margin-top:-6px">
+                <button id="school-news-cover-pick-btn" type="button" class="secondary-btn compact-btn">Загрузить обложку с ПК</button>
+                <button id="school-news-cover-fetch-btn" type="button" class="secondary-btn compact-btn">Подтянуть обложку по ссылке</button>
+                <input id="school-news-cover-file" type="file" accept="image/*" hidden>
+                <span class="hint" style="align-self:center">до 1 МБ; при удалении новости локальные картинки удаляются.</span>
+              </div>
               <label class="override-field toggle-label"><input id="school-news-active" type="checkbox" checked><span>Активна</span></label>
-              <label class="override-field override-field-wide"><span class="override-field-label">Текст новости (TinyMCE)</span><textarea id="school-news-content" class="standard-input wide-input" rows="6" placeholder="Текст новости"></textarea></label>
+              <label class="override-field override-field-wide"><span class="override-field-label">Текст новости</span><textarea id="school-news-content" class="standard-input wide-input" rows="6" placeholder="Текст новости"></textarea></label>
               <div class="override-form-actions">
                 <button id="school-news-save-btn" type="button" class="primary-btn">Сохранить новость</button>
                 <button id="school-news-reset-btn" type="button" class="secondary-btn">Очистить форму</button>

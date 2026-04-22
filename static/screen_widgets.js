@@ -566,7 +566,9 @@
   function buildSchoolNews(widget, schoolNews = [], screen = null) {
     const L = tvUiStrings();
     const settings = widget.settings || {};
-    const rows = Array.isArray(schoolNews) ? schoolNews.filter((x) => x && x.is_active !== false) : [];
+    // Берём 3 последних активных — и ротируем их (а не весь список целиком).
+    const rowsAll = Array.isArray(schoolNews) ? schoolNews.filter((x) => x && x.is_active !== false) : [];
+    const rows = rowsAll.slice(0, 3);
     if (!rows.length) {
       return `<div class="info-widget-box" style="background:${settings.background};color:${settings.color};"><div style="font-size:${settings.titleFontSize || 18}px;">${L.schoolNews}</div><div>${L.noSchoolNews}</div></div>`;
     }
@@ -576,6 +578,8 @@
     const title = escapeHtml(String(item.title || ""));
     const summary = escapeHtml(String(item.summary || ""));
     const cover = String(item.cover_image || "").trim();
+    const created = String(item.created_at || "").trim();
+    const createdLabel = created ? formatDateLabel(created) : "";
     const base = global.location?.origin || "";
     const path = `/school-news/${encodeURIComponent(String(item.id || ""))}`;
     const fullUrl = `${base}${path}`;
@@ -583,9 +587,13 @@
     const screenSlug = screen && screen.slug ? `?from_screen=${encodeURIComponent(String(screen.slug))}` : "";
     return `<article style="background:${settings.background};color:${settings.color};padding:10px;border-radius:10px;height:100%;display:grid;grid-template-columns:1fr auto;gap:8px;overflow:hidden;">
       <div style="min-width:0;">
-        <div style="font-size:${settings.titleFontSize || 20}px;${settings.bold ? "font-weight:700;" : ""};margin-bottom:6px;">${title || L.schoolNews}</div>
+        <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:6px;">
+          <div style="font-size:${settings.titleFontSize || 20}px;${settings.bold ? "font-weight:700;" : ""};min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${title || L.schoolNews}</div>
+          <div style="font-size:12px;opacity:.85;white-space:nowrap;">${createdLabel}</div>
+        </div>
         ${cover ? `<img src="${escapeHtmlAttr(cover)}" alt="${title}" style="width:100%;max-height:130px;object-fit:cover;border-radius:8px;margin-bottom:8px;">` : ""}
         <div style="font-size:${settings.fontSize || 18}px;line-height:1.3;">${summary || L.noSchoolNews}</div>
+        <div style="margin-top:6px;font-size:12px;opacity:.85;">${idx + 1}/${rows.length}</div>
       </div>
       <div style="display:flex;flex-direction:column;align-items:center;gap:6px;">
         <a href="${escapeHtmlAttr(path + screenSlug)}" style="color:${settings.color};font-size:12px;text-decoration:none">${L.qr}</a>

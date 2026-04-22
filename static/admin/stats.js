@@ -68,10 +68,23 @@ function renderWatch(data, root) {
   const online = screens.filter((s) => s.status === "ok").length;
   const total = screens.length;
   const devicesTotal = screens.reduce((acc, s) => acc + (Array.isArray(s.clients) ? s.clients.length : 0), 0);
+  const visits = data && typeof data.visits === "object" ? data.visits : {};
+  const todayMap = visits.today_unique_by_device && typeof visits.today_unique_by_device === "object"
+    ? visits.today_unique_by_device
+    : {};
+  const todayParts = Object.keys(todayMap)
+    .sort()
+    .map((k) => `${escapeHtml(k)} — <strong>${escapeHtml(String(todayMap[k]))}</strong>`)
+    .join(", ");
+  const monthUsers = Number.isFinite(Number(visits.month_unique_users)) ? Number(visits.month_unique_users) : 0;
+  const totalConn = Number.isFinite(Number(visits.total_connections)) ? Number(visits.total_connections) : 0;
   const summaryHtml =
     `<div class="stats-summary-bar" role="status">` +
     `<p class="stats-summary-main">${tf("stats.onlineScreens", { online, total })}</p>` +
     `<p class="stats-summary-sub hint">${tf("stats.devicesOnline", { n: devicesTotal })}</p>` +
+    `<p class="hint stats-ago-legend">${escapeHtml(t("stats.visitsToday"))} ${todayParts || "—"}</p>` +
+    `<p class="hint stats-ago-legend">${tf("stats.monthUnique", { n: monthUsers })}</p>` +
+    `<p class="hint stats-ago-legend">${tf("stats.totalConnections", { n: totalConn })} <button type="button" class="secondary-btn compact-btn" id="stats-reset-counters-btn">${escapeHtml(t("stats.resetCounters"))}</button></p>` +
     `<p class="hint stats-ago-legend">${escapeHtml(t("stats.agoLegendShort"))}</p>` +
     `</div>`;
 
@@ -117,29 +130,6 @@ function renderWatch(data, root) {
     })
     .join("");
 
-  const log = Array.isArray(data.connection_log) ? data.connection_log : [];
-  const logHtml =
-    log.length === 0
-      ? `<p class="hint stats-history-empty">${escapeHtml(t("stats.historyEmpty"))}</p>`
-      : `<ol class="stats-history-list">${log
-          .map((e) => {
-            const dev = (e.device || "").trim();
-            const devPart = dev
-              ? escapeHtml(dev)
-              : escapeHtml(t("stats.deviceUnknown"));
-            const lab = e.label ? ` · (${escapeHtml(e.label)})` : "";
-            const dur = formatApproxConnected(e.connected_sec);
-            return (
-              `<li><span class="stats-connected-dur">${escapeHtml(dur)}</span>` +
-              ` — <strong>${escapeHtml(String(e.screen_name || e.slug || ""))}</strong>` +
-              ` <span class="stats-history-slug">(${escapeHtml(String(e.slug || ""))})</span>` +
-              ` · ${devPart}` +
-              ` · ${escapeHtml(e.ip || "—")}${lab}` +
-              ` · <span class="stats-history-cid" title="${escapeHtml(String(e.client_id || ""))}">${escapeHtml(String(e.client_id_short || ""))}</span></li>`
-            );
-          })
-          .join("")}</ol>`;
-
   root.innerHTML =
     `${summaryHtml}` +
     `<table class="stats-table"><thead><tr>` +
@@ -147,11 +137,20 @@ function renderWatch(data, root) {
     `<th>${escapeHtml(t("stats.colNote"))}</th>` +
     `<th>${escapeHtml(t("stats.colPoll"))}</th>` +
     `<th>${escapeHtml(t("stats.colAgo"))}</th>` +
-    `</tr></thead><tbody>${rows}</tbody></table>` +
-    `<div class="stats-history-wrap">` +
-    `<h3 class="stats-history-title">${escapeHtml(t("stats.historyTitle"))}</h3>` +
-    `<p class="hint stats-history-lead">${escapeHtml(t("stats.historyLead"))}</p>` +
-    `${logHtml}</div>`;
+    `</tr></thead><tbody>${rows}</tbody></table>`;
+
+  const resetBtn = root.querySelector("#stats-reset-counters-btn");
+  if (resetBtn) {
+    resetBtn.onclick = async () => {
+      if (!confirm(t("stats.resetConfirm"))) return;
+      try {
+        await api("/api/admin/screen-watch/reset-counters", { method: "POST" });
+        await fetchAndRender();
+      } catch (e) {
+        window.alert(String(e.message || e));
+      }
+    };
+  }
 }
 
 function renderFeedback(items, root) {
@@ -160,12 +159,23 @@ function renderFeedback(items, root) {
     root.innerHTML = `<p class="hint">Пока нет сообщений.</p>`;
     return;
   }
+  const escapeThenLinkify = (raw) => {
+    const text = escapeHtml(String(raw || ""));
+    // linkify простых URL (http/https) + "www."
+    return text.replace(
+      /((https?:\/\/|www\.)[^\s<>"']{6,})/gi,
+      (m) => {
+        const href = m.toLowerCase().startsWith("http") ? m : `https://${m}`;
+        return `<a href="${escapeHtmlAttr(href)}" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline">${escapeHtml(m)}</a>`;
+      },
+    );
+  };
   root.innerHTML = `<div class="stats-feedback-list">${
     rows
       .map(
         (it) => `<div class="stats-feedback-item" data-feedback-id="${Number(it.id)}" data-feedback-hash="${escapeHtmlAttr(String(it.device_hash || ""))}">
           <div><strong>${escapeHtml(String(it.created_at || ""))}</strong> · <code>${escapeHtml(String(it.device_hash || ""))}</code></div>
-          <div style="white-space:pre-wrap">${escapeHtml(String(it.message || ""))}</div>
+          <div style="white-space:pre-wrap">${escapeThenLinkify(it.message || "")}</div>
           <div class="stats-feedback-actions">
             <button type="button" class="secondary-btn compact-btn" data-fb-act="read">Отметить прочитанным</button>
             <button type="button" class="secondary-btn compact-btn" data-fb-act="hide">Скрыть</button>

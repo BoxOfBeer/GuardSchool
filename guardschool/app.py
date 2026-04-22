@@ -26,6 +26,7 @@ try:
 except ImportError:  # Python < 3.9 (например shared-хостинг 3.8)
     from backports.zoneinfo import ZoneInfo
 from urllib.parse import quote, urlparse
+from urllib.request import Request as UrlRequest, urlopen
 
 from fastapi import Body, FastAPI, File, Form, HTTPException, Query, Request, Response, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
@@ -120,7 +121,7 @@ from .gs_paths import (
 )
 from .gs_import_sample_xlsx import import_excel_sample_bytes
 from .gs_weekly_template import ensure_weekly_schedule_template_file
-from .gs_screen_watch import record_screen_poll, screen_watch_snapshot
+from .gs_screen_watch import record_screen_poll, reset_stats_counters, screen_watch_snapshot
 from .gs_feedback import (
     block_feedback_hash,
     can_send_feedback,
@@ -264,6 +265,7 @@ def default_screen(name: str, slug: str) -> dict[str, Any]:
         "orientation": "landscape",  # landscape|portrait
         "poll_interval_sec": 10,
         "enable_feedback": False,
+        "feedback_floating_button": False,
         "background_image": "",
         "background_rotate_enabled": False,
         "background_rotate_interval_sec": 3600,
@@ -1479,6 +1481,10 @@ def load_config() -> dict[str, Any]:
         screen.setdefault("poll_interval_sec", 10)
         screen.setdefault("enable_feedback", False)
         screen["enable_feedback"] = bool(screen.get("enable_feedback", False))
+        screen.setdefault("feedback_floating_button", False)
+        screen["feedback_floating_button"] = bool(screen.get("feedback_floating_button", False))
+        if not bool(screen.get("enable_feedback")):
+            screen["feedback_floating_button"] = False
         screen.setdefault("bell_schedule_template", "standard")
         screen.setdefault("weekday_bell_templates", {})
     config["templateSystem"]["version"] = 2
@@ -1597,6 +1603,10 @@ def sanitize_config(config: dict[str, Any]) -> dict[str, Any]:
         screen.setdefault("poll_interval_sec", 10)
         screen.setdefault("enable_feedback", False)
         screen["enable_feedback"] = bool(screen.get("enable_feedback", False))
+        screen.setdefault("feedback_floating_button", False)
+        screen["feedback_floating_button"] = bool(screen.get("feedback_floating_button", False))
+        if not bool(screen.get("enable_feedback")):
+            screen["feedback_floating_button"] = False
         screen.setdefault("bell_schedule_template", "standard")
         screen.setdefault("weekday_bell_templates", {})
         dedupe_widgets(screen)
@@ -1741,8 +1751,14 @@ def sanitize_school_news_item(item: dict[str, Any], fallback_id: str = "") -> di
     content = re.sub(r"(?is)on[a-z]+\s*=\s*\"[^\"]*\"", "", content)
     content = re.sub(r"(?is)on[a-z]+\s*=\s*'[^']*'", "", content)
     cover = str(item.get("cover_image") or "").strip()[:500]
-    if cover and not cover.startswith("/uploads/"):
-        cover = ""
+    if cover:
+        if cover.startswith("/uploads/"):
+            pass
+        elif re.fullmatch(r"(?i)https?://.{6,500}", cover):
+            # внешняя картинка (не управляем локальным файлом)
+            pass
+        else:
+            cover = ""
     created = schedule_date_iso(item.get("created_at")) or date.today().isoformat()
     active = bool(item.get("is_active", True))
     out = {
@@ -1767,6 +1783,105 @@ def load_school_news() -> list[dict[str, Any]]:
                 out.append(sanitize_school_news_item(item, fallback_id=f"news_{idx + 1}"))
     out.sort(key=lambda x: (str(x.get("created_at") or ""), str(x.get("id") or "")), reverse=True)
     return out
+
+
+def _school_news_uploads_dir() -> Path:
+    from .tenant_ctx import map_data_path
+
+    return map_data_path(UPLOADS_DIR / "school_news")
+
+
+def _safe_unlink_upload_url(url: str) -> None:
+    """
+    Удаляем только локальные файлы в data/uploads/school_news/*.
+    URL должен быть вида /uploads/school_news/<name>.
+    """
+    u = str(url or "").strip()
+    if not u.startswith("/uploads/school_news/"):
+        return
+    name = u.split("/uploads/school_news/", 1)[1].strip().lstrip("/").split("?", 1)[0]
+    if not name or "/" in name or "\\" in name:
+        return
+    base = _school_news_uploads_dir()
+    try:
+        p = (base / name).resolve()
+        if base.resolve() in p.parents and p.is_file():
+            p.unlink(missing_ok=True)
+    except Exception:
+        return
+
+
+def _extract_school_news_local_upload_urls(content_html: str) -> set[str]:
+    s = str(content_html or "")
+    out: set[str] = set()
+    for m in re.finditer(r"(/uploads/school_news/[A-Za-z0-9._-]{1,180})", s):
+        out.add(m.group(1))
+    return out
+
+
+def _save_school_news_image_bytes(news_id: str, data: bytes, content_type: str | None = None, source_name: str = "") -> str:
+    if not data:
+        raise HTTPException(status_code=400, detail="Пустой файл.")
+    if len(data) > 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Файл слишком большой (макс. 1 МБ).")
+    ensure_dirs()
+    base = _school_news_uploads_dir()
+    base.mkdir(parents=True, exist_ok=True)
+    nid = re.sub(r"[^A-Za-z0-9_-]+", "_", str(news_id or "").strip())[:64] or secrets.token_hex(6)
+    ext = ""
+    ct = (content_type or "").lower().strip()
+    if "png" in ct:
+        ext = ".png"
+    elif "jpeg" in ct or "jpg" in ct:
+        ext = ".jpg"
+    elif "webp" in ct:
+        ext = ".webp"
+    elif "gif" in ct:
+        ext = ".gif"
+    if not ext:
+        sn = str(source_name or "").lower()
+        m = re.search(r"\.(png|jpg|jpeg|webp|gif)(?:\?|$)", sn)
+        if m:
+            ext = ".jpg" if m.group(1) in ("jpg", "jpeg") else f".{m.group(1)}"
+    if not ext:
+        ext = ".jpg"
+    fn = f"{nid}_{secrets.token_hex(4)}{ext}"
+    (base / fn).write_bytes(data)
+    return f"/uploads/school_news/{fn}"
+
+
+@app.post("/api/admin/school-news/cover-upload")
+async def admin_school_news_cover_upload(
+    request: Request,
+    file: UploadFile = File(...),
+    news_id: str = Form(default=""),
+) -> dict[str, Any]:
+    require_auth(request)
+    nid = str(news_id or "").strip()[:64] or secrets.token_hex(6)
+    raw = await file.read()
+    url = _save_school_news_image_bytes(nid, raw, content_type=file.content_type, source_name=file.filename or "")
+    return {"status": "ok", "news_id": nid, "url": url}
+
+
+@app.post("/api/admin/school-news/cover-fetch")
+async def admin_school_news_cover_fetch(
+    request: Request,
+    payload: dict[str, Any] = Body(...),
+) -> dict[str, Any]:
+    require_auth(request)
+    url_raw = str(payload.get("url") or "").strip()
+    if not re.fullmatch(r"(?i)https?://.{6,500}", url_raw):
+        raise HTTPException(status_code=400, detail="Неверный URL (нужен http/https).")
+    nid = str(payload.get("news_id") or "").strip()[:64] or secrets.token_hex(6)
+    try:
+        req = UrlRequest(url_raw, headers={"User-Agent": "GuardSchool/1.0"})
+        with urlopen(req, timeout=8) as resp:
+            ct = str(resp.headers.get("Content-Type") or "").strip()
+            data = resp.read(1024 * 1024 + 1)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Не удалось загрузить картинку: {e}")
+    url = _save_school_news_image_bytes(nid, data, content_type=ct, source_name=url_raw)
+    return {"status": "ok", "news_id": nid, "url": url}
 
 
 def load_rss_news(config: dict[str, Any] | None = None, *, force_refresh: bool = False) -> list[dict[str, Any]]:
@@ -4694,8 +4809,18 @@ def delete_admin_school_news(request: Request, news_id: str) -> dict[str, Any]:
     nid = str(news_id or "").strip()
     if not nid:
         raise HTTPException(status_code=400, detail="Не указан id новости.")
-    rows = [item for item in load_school_news() if str(item.get("id") or "") != nid]
+    existing = load_school_news()
+    deleted = next((x for x in existing if str(x.get("id") or "") == nid), None)
+    rows = [item for item in existing if str(item.get("id") or "") != nid]
     write_json(SCHOOL_NEWS_PATH, rows)
+    # Удаляем локальные картинки новости (обложка и ссылки из HTML)
+    try:
+        if deleted:
+            _safe_unlink_upload_url(str(deleted.get("cover_image") or ""))
+            for u in _extract_school_news_local_upload_urls(str(deleted.get("content") or "")):
+                _safe_unlink_upload_url(u)
+    except Exception:
+        pass
     return {"status": "ok", "items": rows}
 
 
@@ -4729,12 +4854,22 @@ def school_news_page(news_id: str) -> HTMLResponse:
         return HTMLResponse("<h1>Новость не найдена</h1>", status_code=404)
     title = html.escape(str(row.get("title") or "Новость школы"))
     content = str(row.get("content") or "")
+    # Делает ссылки кликабельными/безопаснее в выдаче страницы новости.
+    # (TinyMCE сам генерит <a>, но target/rel полезны на телефонах.)
+    try:
+        content = re.sub(
+            r'(?is)<a\s+(?![^>]*\btarget=)([^>]*href\s*=\s*["\'][^"\']+["\'][^>]*)>',
+            r'<a target="_blank" rel="noopener" \1>',
+            content,
+        )
+    except Exception:
+        pass
     cover = str(row.get("cover_image") or "").strip()
     cover_html = f'<img src="{html.escape(cover)}" alt="" style="max-width:100%;border-radius:14px;margin:0 0 16px;">' if cover else ""
     dt = html.escape(str(row.get("created_at") or ""))
     body = (
         "<!doctype html><html lang=\"ru\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
-        f"<title>{title}</title><style>body{{margin:0;background:#0b1220;color:#e2e8f0;font:16px/1.5 Arial,sans-serif}}main{{max-width:900px;margin:0 auto;padding:20px}}h1{{margin:0 0 8px}}.meta{{opacity:.8;margin:0 0 12px}}</style></head>"
+        f"<title>{title}</title><style>body{{margin:0;background:#0b1220;color:#e2e8f0;font:16px/1.5 Arial,sans-serif}}main{{max-width:900px;margin:0 auto;padding:20px}}h1{{margin:0 0 8px}}.meta{{opacity:.8;margin:0 0 12px}}a{{color:#38bdf8}}a:visited{{color:#60a5fa}}</style></head>"
         f"<body><main><h1>{title}</h1><p class=\"meta\">{dt}</p>{cover_html}<article>{content}</article></main></body></html>"
     )
     return HTMLResponse(body)
@@ -5489,3 +5624,9 @@ def get_admin_screen_watch(request: Request) -> dict[str, Any]:
     require_auth(request)
     config = load_config()
     return screen_watch_snapshot(list(config.get("screens") or []))
+
+
+@app.post("/api/admin/screen-watch/reset-counters")
+def admin_reset_screen_watch_counters(request: Request) -> dict[str, Any]:
+    require_auth(request)
+    return {"status": "ok", "visits": reset_stats_counters()}
