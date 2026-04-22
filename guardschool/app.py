@@ -1841,40 +1841,6 @@ def _save_school_news_image_bytes(news_id: str, data: bytes, content_type: str |
     return f"/uploads/school_news/{fn}"
 
 
-@app.post("/api/admin/school-news/cover-upload")
-async def admin_school_news_cover_upload(
-    request: Request,
-    file: UploadFile = File(...),
-    news_id: str = Form(default=""),
-) -> dict[str, Any]:
-    require_auth(request)
-    nid = str(news_id or "").strip()[:64] or secrets.token_hex(6)
-    raw = await file.read()
-    url = _save_school_news_image_bytes(nid, raw, content_type=file.content_type, source_name=file.filename or "")
-    return {"status": "ok", "news_id": nid, "url": url}
-
-
-@app.post("/api/admin/school-news/cover-fetch")
-async def admin_school_news_cover_fetch(
-    request: Request,
-    payload: dict[str, Any] = Body(...),
-) -> dict[str, Any]:
-    require_auth(request)
-    url_raw = str(payload.get("url") or "").strip()
-    if not re.fullmatch(r"(?i)https?://.{6,500}", url_raw):
-        raise HTTPException(status_code=400, detail="Неверный URL (нужен http/https).")
-    nid = str(payload.get("news_id") or "").strip()[:64] or secrets.token_hex(6)
-    try:
-        req = UrlRequest(url_raw, headers={"User-Agent": "GuardSchool/1.0"})
-        with urlopen(req, timeout=8) as resp:
-            ct = str(resp.headers.get("Content-Type") or "").strip()
-            data = resp.read(1024 * 1024 + 1)
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Не удалось загрузить картинку: {e}")
-    url = _save_school_news_image_bytes(nid, data, content_type=ct, source_name=url_raw)
-    return {"status": "ok", "news_id": nid, "url": url}
-
-
 def load_rss_news(config: dict[str, Any] | None = None, *, force_refresh: bool = False) -> list[dict[str, Any]]:
     """
     Обёртка совместимости для rss_news:
@@ -4713,6 +4679,45 @@ async def upload_emergency_sound(request: Request, file: UploadFile = File(...))
     target = sub / name
     target.write_bytes(await file.read())
     return {"filename": name, "url": f"/uploads/emergency_sounds/{name}"}
+
+
+@app.post("/api/admin/school-news/cover-upload")
+async def admin_school_news_cover_upload(
+    request: Request,
+    file: UploadFile = File(...),
+    news_id: str = Form(default=""),
+) -> dict[str, Any]:
+    require_auth(request)
+    nid = str(news_id or "").strip()[:64] or secrets.token_hex(6)
+    raw = await file.read()
+    url = _save_school_news_image_bytes(
+        nid,
+        raw,
+        content_type=file.content_type,
+        source_name=file.filename or "",
+    )
+    return {"status": "ok", "news_id": nid, "url": url}
+
+
+@app.post("/api/admin/school-news/cover-fetch")
+async def admin_school_news_cover_fetch(
+    request: Request,
+    payload: dict[str, Any] = Body(...),
+) -> dict[str, Any]:
+    require_auth(request)
+    url_raw = str(payload.get("url") or "").strip()
+    if not re.fullmatch(r"(?i)https?://.{6,500}", url_raw):
+        raise HTTPException(status_code=400, detail="Неверный URL (нужен http/https).")
+    nid = str(payload.get("news_id") or "").strip()[:64] or secrets.token_hex(6)
+    try:
+        req = UrlRequest(url_raw, headers={"User-Agent": "GuardSchool/1.0"})
+        with urlopen(req, timeout=8) as resp:
+            ct = str(resp.headers.get("Content-Type") or "").strip()
+            data = resp.read(1024 * 1024 + 1)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Не удалось загрузить картинку: {e}")
+    url = _save_school_news_image_bytes(nid, data, content_type=ct, source_name=url_raw)
+    return {"status": "ok", "news_id": nid, "url": url}
 
 
 @app.get("/api/admin/bell-sounds")
