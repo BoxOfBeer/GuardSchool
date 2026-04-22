@@ -4077,14 +4077,66 @@ def brand_logo() -> Response:
 
 
 @app.get("/screen/{slug}", response_class=HTMLResponse)
-def screen_page(slug: str) -> HTMLResponse:
+def screen_page(request: Request, slug: str) -> HTMLResponse:
+    """
+    HTML-страница ТВ. В SaaS обложки/загрузки живут в tenants/<slug>/data, а <img> не шлёт Bearer.
+    Поэтому при заходе на экран с gs_tv_token из URL выставляем cookie тенанта, чтобы /uploads/* резолвился
+    в правильный tenant data/ (иначе на ТВ «битые» картинки из-за 404 на /uploads/...).
+    """
+    if deployment_mode() == "saas" and saas_db_enabled():
+        try:
+            tok = str(request.query_params.get("gs_tv_token") or "").strip()
+            scr = _normalize_screen_slug_for_api(slug) or str(slug or "").strip().lower()
+            if tok and scr:
+                from .tenant_ctx import set_tenant_slug
+
+                th = tv_device_token_hash(tok)
+                now = utcnow()
+                with connect_public() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            """
+                            SELECT tenant_slug, status, expires_at FROM tv_devices
+                            WHERE token_hash=%s AND lower(trim(screen_slug)) = %s
+                            """,
+                            (th, scr),
+                        )
+                        row = cur.fetchone()
+                if row:
+                    tenant_from_device, status, expires_at = row[0], row[1], row[2]
+                    if status == "active" and (expires_at is None or expires_at > now):
+                        ts = str(tenant_from_device or "").strip().lower()
+                        if ts:
+                            set_tenant_slug(ts)
+        except Exception:
+            pass
+
     # ТВ часто кэширует HTML и JS; подставляем версию в URL статики (плейсхолдер в screen.html).
     raw = (STATIC_DIR / "screen.html").read_text(encoding="utf-8")
     html = raw.replace("__GS_ASSETS_VER__", APP_VERSION)
-    return HTMLResponse(
+    resp = HTMLResponse(
         content=html,
         headers={"Cache-Control": "no-cache, must-revalidate"},
     )
+    if deployment_mode() == "saas" and saas_db_enabled():
+        try:
+            from .tenant_ctx import tenant_slug as _tenant_slug
+
+            ts2 = str(_tenant_slug() or "").strip()
+            if ts2 and _saas_tenant_slug_cookie_ok(ts2):
+                sec = session_cookie_secure(request)
+                resp.set_cookie(
+                    SAAS_TENANT_COOKIE,
+                    ts2,
+                    max_age=3600 * 24 * 30,
+                    httponly=True,
+                    samesite="lax",
+                    secure=sec,
+                    path="/",
+                )
+        except Exception:
+            pass
+    return resp
 
 
 @app.get("/screen/{slug}/menu")
