@@ -908,38 +908,56 @@ button {
   flex-wrap: wrap;
 }
 
-.school-news-editor-opt {
-  font-size: 12px;
-  color: var(--muted);
-  user-select: none;
-}
-
-textarea.school-news-editor {
-  min-height: 320px;
-  resize: vertical;
-  line-height: 1.45;
-}
-
-.school-news-preview {
-  margin-top: 8px;
-  padding: 10px 12px;
-  border-radius: 10px;
+.gs-rich-editor {
   border: 1px solid rgba(148, 163, 184, 0.22);
-  background: rgba(0, 0, 0, 0.12);
-  color: var(--text);
-  min-height: 120px;
-  max-height: 380px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.10);
+  overflow: hidden;
+}
+
+.gs-rich-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(15, 23, 42, 0.35);
+}
+
+.gs-rich-toolbar button.compact-btn {
+  width: auto;
+  padding: 6px 10px;
+  min-height: 32px;
+}
+
+.gs-rich-sep {
+  width: 1px;
+  height: 26px;
+  background: rgba(148, 163, 184, 0.18);
+  margin: 0 2px;
+}
+
+.gs-rich-surface {
+  min-height: 380px;
+  max-height: 62vh;
   overflow: auto;
+  padding: 12px 12px 14px;
+  color: var(--text);
+  outline: none;
+  line-height: 1.5;
+  background: rgba(0, 0, 0, 0.06);
 }
 
-.school-news-preview img {
-  max-width: 100%;
-  height: auto;
+.gs-rich-surface:empty::before {
+  content: "Введите текст новости…";
+  color: rgba(148, 163, 184, 0.85);
 }
 
-.school-news-preview a {
-  color: var(--accent);
-}
+.gs-rich-surface p { margin: 0 0 0.75em; }
+.gs-rich-surface p:last-child { margin-bottom: 0; }
+.gs-rich-surface a { color: var(--accent); }
+.gs-rich-surface img { max-width: 100%; height: auto; }
 
 .override-field {
   display: flex;

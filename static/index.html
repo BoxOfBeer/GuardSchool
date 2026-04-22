@@ -239,13 +239,24 @@
               <div class="override-field override-field-wide">
                 <div class="school-news-editor-head">
                   <span class="override-field-label">Текст новости</span>
-                  <label class="toggle-label school-news-editor-opt">
-                    <input id="school-news-format" type="checkbox" checked>
-                    <span>Абзацы из переносов строк</span>
-                  </label>
                 </div>
-                <textarea id="school-news-content" class="standard-input wide-input school-news-editor" rows="14" placeholder="Текст новости"></textarea>
-                <div id="school-news-preview" class="school-news-preview" aria-label="Предпросмотр новости"></div>
+                <div id="school-news-editor-wrap" class="gs-rich-editor">
+                  <div class="gs-rich-toolbar" role="toolbar" aria-label="Редактор новости">
+                    <button type="button" class="secondary-btn compact-btn" data-gs-cmd="bold"><b>B</b></button>
+                    <button type="button" class="secondary-btn compact-btn" data-gs-cmd="italic"><i>I</i></button>
+                    <button type="button" class="secondary-btn compact-btn" data-gs-cmd="underline"><u>U</u></button>
+                    <span class="gs-rich-sep" aria-hidden="true"></span>
+                    <button type="button" class="secondary-btn compact-btn" data-gs-cmd="insertUnorderedList">• список</button>
+                    <button type="button" class="secondary-btn compact-btn" data-gs-cmd="insertOrderedList">1. список</button>
+                    <span class="gs-rich-sep" aria-hidden="true"></span>
+                    <button type="button" class="secondary-btn compact-btn" data-gs-action="link">Ссылка</button>
+                    <button type="button" class="secondary-btn compact-btn" data-gs-action="unlink">Убрать ссылку</button>
+                    <span class="gs-rich-sep" aria-hidden="true"></span>
+                    <button type="button" class="secondary-btn compact-btn" data-gs-action="clear">Очистить формат</button>
+                  </div>
+                  <div id="school-news-editor" class="gs-rich-surface" contenteditable="true" spellcheck="true" aria-label="Текст новости"></div>
+                </div>
+                <textarea id="school-news-content" class="standard-input wide-input" rows="6" placeholder="Текст новости (служебное поле)" style="display:none"></textarea>
               </div>
               <div class="override-form-actions">
                 <button id="school-news-save-btn" type="button" class="primary-btn">Сохранить новость</button>

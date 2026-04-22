@@ -1657,7 +1657,6 @@ function resetSchoolNewsForm() {
   if (elements.schoolNewsCover) elements.schoolNewsCover.value = "";
   if (elements.schoolNewsActive) elements.schoolNewsActive.checked = true;
   setSchoolNewsEditorContent("");
-  if (elements.schoolNewsFormat) elements.schoolNewsFormat.checked = true;
   state.editingSchoolNewsId = "";
 }
 
@@ -1666,23 +1665,7 @@ function getSchoolNewsEditorContent() {
     const ed = window.tinymce && typeof window.tinymce.get === "function" ? window.tinymce.get("school-news-content") : null;
     if (ed && typeof ed.getContent === "function") return String(ed.getContent() || "").trim();
   } catch (_) {}
-  const raw = String(elements.schoolNewsContent?.value || "").trim();
-  const format = elements.schoolNewsFormat ? Boolean(elements.schoolNewsFormat.checked) : true;
-  if (!raw) return "";
-  if (!format) return raw;
-  // Если пользователь ввёл HTML — не трогаем (иначе поломаем теги).
-  if (/<[a-z][\s\S]*>/i.test(raw)) return raw;
-  return schoolNewsPlainToHtml(raw);
-}
-
-function schoolNewsPlainToHtml(text) {
-  const src = String(text || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
-  if (!src) return "";
-  const blocks = src.split(/\n{2,}/g).map((b) => b.trim()).filter(Boolean);
-  const esc = (s) => escapeHtml(String(s || ""));
-  return blocks
-    .map((b) => `<p>${esc(b).replace(/\n/g, "<br>")}</p>`)
-    .join("");
+  return String(elements.schoolNewsContent?.value || "").trim();
 }
 
 function schoolNewsSanitizePreviewHtml(html) {
@@ -1694,11 +1677,17 @@ function schoolNewsSanitizePreviewHtml(html) {
   return s;
 }
 
-function renderSchoolNewsPreview() {
-  const root = elements.schoolNewsPreview;
-  if (!root) return;
-  const html = getSchoolNewsEditorContent();
-  root.innerHTML = html ? schoolNewsSanitizePreviewHtml(html) : '<div class="hint">Предпросмотр появится здесь.</div>';
+function schoolNewsNormalizeEditorHtml(html) {
+  // Предпочитаем <p> блоки, чтобы текст не был "монолитом" после вставки.
+  const s = String(html || "").trim();
+  if (!s) return "";
+  // Если это уже похоже на HTML с блоками — оставляем.
+  if (/<p[\s>]/i.test(s) || /<ul[\s>]/i.test(s) || /<ol[\s>]/i.test(s) || /<br[\s/>]/i.test(s)) return s;
+  // Plain text -> paragraphs.
+  const src = s.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const blocks = src.split(/\n{2,}/g).map((b) => b.trim()).filter(Boolean);
+  const esc = (t) => escapeHtml(String(t || ""));
+  return blocks.map((b) => `<p>${esc(b).replace(/\n/g, "<br>")}</p>`).join("");
 }
 
 function setSchoolNewsEditorContent(html) {
@@ -1707,13 +1696,100 @@ function setSchoolNewsEditorContent(html) {
     const ed = window.tinymce && typeof window.tinymce.get === "function" ? window.tinymce.get("school-news-content") : null;
     if (ed && typeof ed.setContent === "function") {
       ed.setContent(text);
-      // Предпросмотр обновляем отдельно: часть браузеров не шлёт change на setContent.
-      setTimeout(renderSchoolNewsPreview, 0);
       return;
     }
   } catch (_) {}
-  if (elements.schoolNewsContent) elements.schoolNewsContent.value = text;
-  renderSchoolNewsPreview();
+  const normalized = schoolNewsNormalizeEditorHtml(text);
+  if (elements.schoolNewsEditor) elements.schoolNewsEditor.innerHTML = schoolNewsSanitizePreviewHtml(normalized);
+  if (elements.schoolNewsContent) elements.schoolNewsContent.value = normalized;
+}
+
+function getSchoolNewsRichEditorHtml() {
+  try {
+    const el = elements.schoolNewsEditor;
+    if (!el) return "";
+    const raw = el.innerHTML || "";
+    return schoolNewsSanitizePreviewHtml(raw).trim();
+  } catch (_) {
+    return "";
+  }
+}
+
+function syncSchoolNewsRichEditorToTextarea() {
+  if (!elements.schoolNewsContent) return;
+  const html = getSchoolNewsRichEditorHtml();
+  elements.schoolNewsContent.value = html;
+}
+
+function gsRichExec(cmd) {
+  try {
+    document.execCommand(cmd, false, null);
+  } catch (_) {}
+}
+
+function ensureSchoolNewsRichEditor() {
+  if (!elements.schoolNewsEditorWrap || !elements.schoolNewsEditor) return;
+  if (window.__gsSchoolNewsRichInitDone) return;
+  window.__gsSchoolNewsRichInitDone = true;
+
+  const wrap = elements.schoolNewsEditorWrap;
+  const surface = elements.schoolNewsEditor;
+
+  wrap.addEventListener("click", (ev) => {
+    const btn = ev.target && ev.target.closest ? ev.target.closest("[data-gs-cmd],[data-gs-action]") : null;
+    if (!btn) return;
+    ev.preventDefault();
+    surface.focus();
+    const cmd = btn.getAttribute("data-gs-cmd");
+    const action = btn.getAttribute("data-gs-action");
+    if (cmd) {
+      gsRichExec(cmd);
+      syncSchoolNewsRichEditorToTextarea();
+      return;
+    }
+    if (action === "link") {
+      const url = window.prompt("Ссылка (https://...)", "https://");
+      if (!url) return;
+      try {
+        document.execCommand("createLink", false, String(url).trim());
+      } catch (_) {}
+      syncSchoolNewsRichEditorToTextarea();
+      return;
+    }
+    if (action === "unlink") {
+      gsRichExec("unlink");
+      syncSchoolNewsRichEditorToTextarea();
+      return;
+    }
+    if (action === "clear") {
+      gsRichExec("removeFormat");
+      gsRichExec("unlink");
+      syncSchoolNewsRichEditorToTextarea();
+    }
+  });
+
+  surface.addEventListener("input", () => {
+    syncSchoolNewsRichEditorToTextarea();
+  });
+
+  surface.addEventListener("paste", (ev) => {
+    try {
+      const dt = ev.clipboardData;
+      const html = dt ? dt.getData("text/html") : "";
+      const text = dt ? dt.getData("text/plain") : "";
+      // Если вставляют из Word/браузера — оставляем HTML; иначе plain text -> абзацы.
+      if (!html && text) {
+        ev.preventDefault();
+        const converted = schoolNewsNormalizeEditorHtml(text);
+        document.execCommand("insertHTML", false, converted);
+        syncSchoolNewsRichEditorToTextarea();
+      }
+    } catch (_) {}
+  });
+
+  // Инициализируем пустым абзацем, чтобы курсор/ввод на ТВ/старых браузерах был стабильнее.
+  if (!surface.innerHTML.trim()) surface.innerHTML = "<p><br></p>";
+  syncSchoolNewsRichEditorToTextarea();
 }
 
 async function ensureSchoolNewsTinyMce() {
@@ -1723,6 +1799,8 @@ async function ensureSchoolNewsTinyMce() {
   const apiKey = String(state.config?.tinymce_api_key || "").trim();
   if (!apiKey) {
     window.__gsSchoolNewsEditorInitDone = true;
+    // Визуальный редактор без внешних зависимостей.
+    ensureSchoolNewsRichEditor();
     return;
   }
   const setupEditor = async () => {
@@ -1741,11 +1819,6 @@ async function ensureSchoolNewsTinyMce() {
       promotion: false,
       convert_urls: false,
       content_style: "body { font-family: Inter, Arial, sans-serif; font-size: 14px; }",
-      setup(editor) {
-        editor.on("input change keyup setcontent", () => {
-          try { renderSchoolNewsPreview(); } catch (_) {}
-        });
-      },
     });
     window.__gsSchoolNewsEditorInitDone = true;
   };
@@ -2162,16 +2235,6 @@ function bindForm() {
       renderSchoolNewsList();
     };
   }
-if (elements.schoolNewsContent) {
-  elements.schoolNewsContent.addEventListener("input", () => {
-    try { renderSchoolNewsPreview(); } catch (_) {}
-  });
-}
-if (elements.schoolNewsFormat) {
-  elements.schoolNewsFormat.addEventListener("change", () => {
-    try { renderSchoolNewsPreview(); } catch (_) {}
-  });
-}
   if (elements.schoolNewsSaveBtn) {
     elements.schoolNewsSaveBtn.onclick = async () => {
       const payload = {
