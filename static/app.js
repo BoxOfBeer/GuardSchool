@@ -72,6 +72,8 @@ const WIDGET_TYPE_KEYS = new Set([
   "carousel",
   "holidays",
   "announcements",
+  "school_news",
+  "rss_news",
   "marquee",
   "rss_news",
   "emergency",
@@ -89,6 +91,8 @@ const PALETTE_TYPES_ORDER = [
   "carousel",
   "holidays",
   "announcements",
+  "school_news",
+  "rss_news",
   "marquee",
   "rss_news",
   "emergency",
@@ -679,6 +683,21 @@ function createDefaultScreen(index) {
         },
       },
       {
+        id: "school_news",
+        type: "school_news",
+        title: "Новости школы",
+        enabled: false,
+        x: 0, y: 13, w: 16, h: 11,
+        settings: {
+          fontSize: 18,
+          titleFontSize: 22,
+          color: "#ffffff",
+          background: "rgba(15,23,42,0.55)",
+          rotateSec: 12,
+          bold: false,
+        },
+      },
+      {
         id: "rss_news",
         type: "rss_news",
         title: "Мировые новости",
@@ -689,6 +708,7 @@ function createDefaultScreen(index) {
           titleFontSize: 18,
           color: "#ffffff",
           background: "rgba(15,23,42,0.55)",
+          rotateSec: 12,
           bold: false,
         },
       },
@@ -1616,6 +1636,40 @@ function renderOverrides() {
   });
 }
 
+function resetSchoolNewsForm() {
+  if (elements.schoolNewsId) elements.schoolNewsId.value = "";
+  if (elements.schoolNewsTitle) elements.schoolNewsTitle.value = "";
+  if (elements.schoolNewsDate) elements.schoolNewsDate.value = new Date().toISOString().slice(0, 10);
+  if (elements.schoolNewsCover) elements.schoolNewsCover.value = "";
+  if (elements.schoolNewsActive) elements.schoolNewsActive.checked = true;
+  if (elements.schoolNewsContent) elements.schoolNewsContent.value = "";
+  state.editingSchoolNewsId = "";
+}
+
+function renderSchoolNewsList() {
+  const root = elements.schoolNewsList;
+  if (!root) return;
+  const items = Array.isArray(state.schoolNews) ? state.schoolNews : [];
+  if (!items.length) {
+    root.innerHTML = '<div class="hint">Новостей пока нет.</div>';
+    return;
+  }
+  root.innerHTML = items
+    .map((row) => {
+      const id = escapeHtmlAttr(String(row.id || ""));
+      const title = escapeHtml(String(row.title || ""));
+      const dt = escapeHtml(String(row.created_at || ""));
+      const active = row.is_active !== false ? "✅" : "⛔";
+      return `<div class="override-item"><span class="override-row-text">${active} ${dt} — ${title}</span>
+        <div class="table-actions">
+          <button type="button" class="secondary-btn compact-btn" data-news-edit="${id}">Ред.</button>
+          <button type="button" class="danger-btn compact-btn" data-news-del="${id}">Удалить</button>
+        </div>
+      </div>`;
+    })
+    .join("");
+}
+
 function render() {
   if (state.meta?.demo_session && state.statsPanelActive) {
     state.statsPanelActive = false;
@@ -1710,6 +1764,7 @@ function render() {
   if (state.widgetModalWidgetId) syncWidgetModal();
   renderPreview();
   renderOverrides();
+  renderSchoolNewsList();
   renderLessonImportStats();
   if (state.activeSection === "schedule") {
     renderBellEditor();
@@ -1940,6 +1995,70 @@ function bindForm() {
       }
     };
   }
+  if (elements.schoolNewsResetBtn) {
+    elements.schoolNewsResetBtn.onclick = () => {
+      resetSchoolNewsForm();
+      renderSchoolNewsList();
+    };
+  }
+  if (elements.schoolNewsSaveBtn) {
+    elements.schoolNewsSaveBtn.onclick = async () => {
+      const payload = {
+        id: String(elements.schoolNewsId?.value || "").trim(),
+        title: String(elements.schoolNewsTitle?.value || "").trim(),
+        created_at: String(elements.schoolNewsDate?.value || "").trim(),
+        cover_image: String(elements.schoolNewsCover?.value || "").trim(),
+        is_active: Boolean(elements.schoolNewsActive?.checked),
+        content: String(elements.schoolNewsContent?.value || "").trim(),
+      };
+      if (!payload.title || !payload.content) {
+        alert("Укажите заголовок и текст новости.");
+        return;
+      }
+      try {
+        const r = await api("/api/admin/school-news", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        state.schoolNews = r.items || [];
+        resetSchoolNewsForm();
+        renderSchoolNewsList();
+      } catch (e) {
+        alert(e.message || String(e));
+      }
+    };
+  }
+  if (elements.schoolNewsList) {
+    elements.schoolNewsList.addEventListener("click", async (event) => {
+      const editBtn = event.target.closest("[data-news-edit]");
+      const delBtn = event.target.closest("[data-news-del]");
+      if (editBtn) {
+        const id = String(editBtn.getAttribute("data-news-edit") || "");
+        const row = (state.schoolNews || []).find((item) => String(item.id || "") === id);
+        if (!row) return;
+        elements.schoolNewsId.value = String(row.id || "");
+        elements.schoolNewsTitle.value = String(row.title || "");
+        elements.schoolNewsDate.value = String(row.created_at || "");
+        elements.schoolNewsCover.value = String(row.cover_image || "");
+        elements.schoolNewsActive.checked = row.is_active !== false;
+        elements.schoolNewsContent.value = String(row.content || "");
+        return;
+      }
+      if (delBtn) {
+        const id = String(delBtn.getAttribute("data-news-del") || "");
+        if (!id || !confirm("Удалить новость?")) return;
+        try {
+          const r = await api(`/api/admin/school-news/${encodeURIComponent(id)}`, { method: "DELETE" });
+          state.schoolNews = r.items || [];
+          resetSchoolNewsForm();
+          renderSchoolNewsList();
+        } catch (e) {
+          alert(e.message || String(e));
+        }
+      }
+    });
+  }
 }
 
 function addScreen() {
@@ -2043,6 +2162,7 @@ async function init() {
   state.scheduleSampleRows = schedule.schedule_sample_rows ?? 0;
   state.overrides = schedule.overrides || [];
   state.announcements = schedule.announcements || [];
+  state.schoolNews = schedule.school_news || [];
   state.marquee = schedule.marquee || [];
   state.bells = schedule.bells || { templates: [], weekday_overrides: {}, date_overrides: [], sound_defaults: { start: null, end: null } };
   state.bells.sound_defaults = state.bells.sound_defaults || { start: null, end: null };
@@ -2062,6 +2182,7 @@ async function init() {
   bindSettingsSoundTestsOnce();
   bindWidgetModalOnce();
   bindProgramSettingsModalOnce();
+  resetSchoolNewsForm();
   render();
   setInterval(() => {
     if (window.GuardSchoolScreen && state.activeSection === "preview") {
