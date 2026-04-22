@@ -51,7 +51,7 @@ export const elements = {
   announcementsInput: document.getElementById("announcements-input"),
   marqueeInput: document.getElementById("marquee-input"),
   schoolNewsId: document.getElementById("school-news-id"),
-  schoolNewsTitle: document.getElementById("school-news-title"),
+  schoolNewsTitle: document.getElementById("school-news-title-input"),
   schoolNewsDate: document.getElementById("school-news-date"),
   schoolNewsCover: document.getElementById("school-news-cover"),
   schoolNewsActive: document.getElementById("school-news-active"),

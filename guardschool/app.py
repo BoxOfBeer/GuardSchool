@@ -1670,6 +1670,10 @@ def sanitize_school_news_item(item: dict[str, Any], fallback_id: str = "") -> di
         tenant = ""
     title = str(item.get("title") or "").strip()[:200]
     content = str(item.get("content") or "").strip()[:50000]
+    # Защита от опасного встроенного JS в HTML-контенте новости.
+    content = re.sub(r"(?is)<script[^>]*>.*?</script>", "", content)
+    content = re.sub(r"(?is)on[a-z]+\s*=\s*\"[^\"]*\"", "", content)
+    content = re.sub(r"(?is)on[a-z]+\s*=\s*'[^']*'", "", content)
     cover = str(item.get("cover_image") or "").strip()[:500]
     if cover and not cover.startswith("/uploads/"):
         cover = ""
@@ -4617,7 +4621,14 @@ def get_public_school_news(limit: int = Query(default=3, ge=1, le=30)) -> dict[s
 @app.get("/api/school-news/{news_id}")
 def get_public_school_news_item(news_id: str) -> dict[str, Any]:
     nid = str(news_id or "").strip()
-    row = next((item for item in load_school_news() if str(item.get("id") or "") == nid), None)
+    row = next(
+        (
+            item
+            for item in load_school_news()
+            if str(item.get("id") or "") == nid and item.get("is_active", True)
+        ),
+        None,
+    )
     if not row:
         raise HTTPException(status_code=404, detail="Новость не найдена.")
     return {"item": row}
