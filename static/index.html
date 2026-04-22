@@ -236,7 +236,17 @@
                 <span class="hint" style="align-self:center">до 1 МБ; при удалении новости локальные картинки удаляются.</span>
               </div>
               <label class="override-field toggle-label"><input id="school-news-active" type="checkbox" checked><span>Активна</span></label>
-              <label class="override-field override-field-wide"><span class="override-field-label">Текст новости</span><textarea id="school-news-content" class="standard-input wide-input" rows="6" placeholder="Текст новости"></textarea></label>
+              <div class="override-field override-field-wide">
+                <div class="school-news-editor-head">
+                  <span class="override-field-label">Текст новости</span>
+                  <label class="toggle-label school-news-editor-opt">
+                    <input id="school-news-format" type="checkbox" checked>
+                    <span>Абзацы из переносов строк</span>
+                  </label>
+                </div>
+                <textarea id="school-news-content" class="standard-input wide-input school-news-editor" rows="14" placeholder="Текст новости"></textarea>
+                <div id="school-news-preview" class="school-news-preview" aria-label="Предпросмотр новости"></div>
+              </div>
               <div class="override-form-actions">
                 <button id="school-news-save-btn" type="button" class="primary-btn">Сохранить новость</button>
                 <button id="school-news-reset-btn" type="button" class="secondary-btn">Очистить форму</button>

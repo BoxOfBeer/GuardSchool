@@ -1657,6 +1657,7 @@ function resetSchoolNewsForm() {
   if (elements.schoolNewsCover) elements.schoolNewsCover.value = "";
   if (elements.schoolNewsActive) elements.schoolNewsActive.checked = true;
   setSchoolNewsEditorContent("");
+  if (elements.schoolNewsFormat) elements.schoolNewsFormat.checked = true;
   state.editingSchoolNewsId = "";
 }
 
@@ -1665,7 +1666,39 @@ function getSchoolNewsEditorContent() {
     const ed = window.tinymce && typeof window.tinymce.get === "function" ? window.tinymce.get("school-news-content") : null;
     if (ed && typeof ed.getContent === "function") return String(ed.getContent() || "").trim();
   } catch (_) {}
-  return String(elements.schoolNewsContent?.value || "").trim();
+  const raw = String(elements.schoolNewsContent?.value || "").trim();
+  const format = elements.schoolNewsFormat ? Boolean(elements.schoolNewsFormat.checked) : true;
+  if (!raw) return "";
+  if (!format) return raw;
+  // Если пользователь ввёл HTML — не трогаем (иначе поломаем теги).
+  if (/<[a-z][\s\S]*>/i.test(raw)) return raw;
+  return schoolNewsPlainToHtml(raw);
+}
+
+function schoolNewsPlainToHtml(text) {
+  const src = String(text || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
+  if (!src) return "";
+  const blocks = src.split(/\n{2,}/g).map((b) => b.trim()).filter(Boolean);
+  const esc = (s) => escapeHtml(String(s || ""));
+  return blocks
+    .map((b) => `<p>${esc(b).replace(/\n/g, "<br>")}</p>`)
+    .join("");
+}
+
+function schoolNewsSanitizePreviewHtml(html) {
+  // Минимальная защита предпросмотра в админке (сервер тоже чистит при сохранении).
+  let s = String(html || "");
+  s = s.replace(/(?is)<script[^>]*>[\s\S]*?<\/script>/g, "");
+  s = s.replace(/(?is)\son[a-z]+\s*=\s*\"[^\"]*\"/g, "");
+  s = s.replace(/(?is)\son[a-z]+\s*=\s*'[^']*'/g, "");
+  return s;
+}
+
+function renderSchoolNewsPreview() {
+  const root = elements.schoolNewsPreview;
+  if (!root) return;
+  const html = getSchoolNewsEditorContent();
+  root.innerHTML = html ? schoolNewsSanitizePreviewHtml(html) : '<div class="hint">Предпросмотр появится здесь.</div>';
 }
 
 function setSchoolNewsEditorContent(html) {
@@ -1674,10 +1707,13 @@ function setSchoolNewsEditorContent(html) {
     const ed = window.tinymce && typeof window.tinymce.get === "function" ? window.tinymce.get("school-news-content") : null;
     if (ed && typeof ed.setContent === "function") {
       ed.setContent(text);
+      // Предпросмотр обновляем отдельно: часть браузеров не шлёт change на setContent.
+      setTimeout(renderSchoolNewsPreview, 0);
       return;
     }
   } catch (_) {}
   if (elements.schoolNewsContent) elements.schoolNewsContent.value = text;
+  renderSchoolNewsPreview();
 }
 
 async function ensureSchoolNewsTinyMce() {
@@ -1698,13 +1734,18 @@ async function ensureSchoolNewsTinyMce() {
     await window.tinymce.init({
       selector: "#school-news-content",
       menubar: false,
-      height: 280,
+      height: 520,
       plugins: "lists link image table code autoresize",
       toolbar: "undo redo | styles | bold italic underline | alignleft aligncenter alignright | bullist numlist | link image table | code",
       branding: false,
       promotion: false,
       convert_urls: false,
       content_style: "body { font-family: Inter, Arial, sans-serif; font-size: 14px; }",
+      setup(editor) {
+        editor.on("input change keyup setcontent", () => {
+          try { renderSchoolNewsPreview(); } catch (_) {}
+        });
+      },
     });
     window.__gsSchoolNewsEditorInitDone = true;
   };
@@ -2121,6 +2162,16 @@ function bindForm() {
       renderSchoolNewsList();
     };
   }
+if (elements.schoolNewsContent) {
+  elements.schoolNewsContent.addEventListener("input", () => {
+    try { renderSchoolNewsPreview(); } catch (_) {}
+  });
+}
+if (elements.schoolNewsFormat) {
+  elements.schoolNewsFormat.addEventListener("change", () => {
+    try { renderSchoolNewsPreview(); } catch (_) {}
+  });
+}
   if (elements.schoolNewsSaveBtn) {
     elements.schoolNewsSaveBtn.onclick = async () => {
       const payload = {
