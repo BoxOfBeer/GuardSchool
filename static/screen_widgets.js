@@ -582,13 +582,13 @@
     const createdLabel = created ? formatDateLabel(created) : "";
     // Для школьных новостей: без QR, без обрезки картинки, без ограничения длины текста.
     // Картинка слева (~20% ширины), текст «обтекает».
-    return `<article style="background:${settings.background};color:${settings.color};padding:10px;border-radius:10px;height:100%;overflow:auto;">
+    return `<article style="background:${settings.background};color:${settings.color};padding:10px;border-radius:10px;flex:1;min-height:0;overflow:auto;">
       <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:8px;">
-        <div style="font-size:${settings.titleFontSize || 20}px;${settings.bold ? "font-weight:700;" : ""};white-space:normal;overflow:visible;">${title || L.schoolNews}</div>
+        <div style="font-size:${settings.titleFontSize || 20}px;${settings.bold ? "font-weight:700;" : ""};flex:1 1 auto;min-width:0;white-space:normal;overflow:visible;overflow-wrap:anywhere;word-break:break-word;">${title || L.schoolNews}</div>
         <div style="font-size:12px;opacity:.85;white-space:nowrap;flex:0 0 auto;">${createdLabel}</div>
       </div>
       ${cover ? `<img src="${escapeHtmlAttr(cover)}" alt="${title}" style="float:left;width:20%;max-width:180px;margin:0 10px 6px 0;border-radius:8px;object-fit:contain;height:auto;max-height:none;">` : ""}
-      <div style="font-size:${settings.fontSize || 18}px;line-height:1.35;white-space:normal;overflow:visible;">${summary || L.noSchoolNews}</div>
+      <div style="font-size:${settings.fontSize || 18}px;line-height:1.35;white-space:normal;overflow:visible;overflow-wrap:anywhere;word-break:break-word;">${summary || L.noSchoolNews}</div>
       <div style="clear:both;"></div>
       <div style="margin-top:6px;font-size:12px;opacity:.85;">${idx + 1}/${rows.length}</div>
     </article>`;
