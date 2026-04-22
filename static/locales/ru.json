@@ -364,6 +364,7 @@
   "widget.type.holidays": "События",
   "widget.type.announcements": "Объявления",
   "widget.type.school_news": "Новости школы",
+  "widget.type.rss_news": "Мировые новости (RSS)",
   "widget.type.marquee": "Бегущая строка",
   "widget.type.emergency": "Аварийный",
   "widget.type.image": "Изображение",

@@ -80,6 +80,7 @@
       events: "События",
       announcements: "Объявления",
       schoolNews: "Новости школы",
+      rssNews: "Мировые новости",
       noAnnouncements: "Нет объявлений",
       noSchoolNews: "Нет новостей",
       qr: "QR на новость",
@@ -98,6 +99,7 @@
       events: "Events",
       announcements: "Announcements",
       schoolNews: "School news",
+      rssNews: "World news",
       noAnnouncements: "No announcements",
       noSchoolNews: "No news",
       qr: "QR to article",
@@ -588,6 +590,26 @@
     </article>`;
   }
 
+  function buildRssNews(widget, rssNews = []) {
+    const L = tvUiStrings();
+    const settings = widget.settings || {};
+    const rows = Array.isArray(rssNews) ? rssNews : [];
+    if (!rows.length) {
+      return `<div class="info-widget-box" style="background:${settings.background};color:${settings.color};"><div style="font-size:${settings.titleFontSize || 18}px;">${L.rssNews}</div><div>${L.noSchoolNews}</div></div>`;
+    }
+    const sec = Math.max(10, Math.min(15, Number(settings.rotateSec || 12)));
+    const idx = Math.floor(Date.now() / (sec * 1000)) % rows.length;
+    const item = rows[idx] || {};
+    const title = escapeHtml(String(item.title || ""));
+    const summary = escapeHtml(String(item.summary || item.description || ""));
+    const url = String(item.url || "").trim();
+    return `<article style="background:${settings.background};color:${settings.color};padding:10px;border-radius:10px;height:100%;overflow:hidden;">
+      <div style="font-size:${settings.titleFontSize || 18}px;${settings.bold ? "font-weight:700;" : ""};margin-bottom:8px;">${title || L.rssNews}</div>
+      <div style="font-size:${settings.fontSize || 16}px;line-height:1.3;">${summary || L.noSchoolNews}</div>
+      ${url ? `<div style="margin-top:8px;font-size:12px;opacity:.9;"><a href="${escapeHtmlAttr(url)}" style="color:${settings.color}" target="_blank" rel="noopener">Источник</a></div>` : ""}
+    </article>`;
+  }
+
   function widgetIdsHiddenByCarousel(screen) {
     const sw = (screen && screen.widgets) || [];
     return new Set(sw
@@ -655,7 +677,7 @@
     return Math.max(3000, 180 * 1000);
   }
 
-  function renderWidgetHtml(widget, schedule, screen, holidays = [], announcements = [], marquee = [], schoolNews = [], ctx = null) {
+  function renderWidgetHtml(widget, schedule, screen, holidays = [], announcements = [], marquee = [], schoolNews = [], rssNews = [], ctx = null) {
     const L = tvUiStrings();
     const weight = widget.settings.bold ? "font-weight:700;" : "";
     if (widget.type === "emergency") {
@@ -764,10 +786,13 @@
     if (widget.type === "school_news") {
       return buildSchoolNews(widget, schoolNews, screen);
     }
+    if (widget.type === "rss_news") {
+      return buildRssNews(widget, rssNews);
+    }
     return "";
   }
 
-  function startCarousel(block, widget, childWidgets, schedule, screen, holidays, announcements, marquee, schoolNews) {
+  function startCarousel(block, widget, childWidgets, schedule, screen, holidays, announcements, marquee, schoolNews, rssNews) {
     if (!childWidgets.length) {
       block.innerHTML = `<div class="widget-meta">${tvUiStrings().carouselNoSlides}</div>`;
       return;
@@ -804,6 +829,7 @@
         announcements,
         marquee,
         schoolNews,
+        rssNews,
         { mode: index === st.index ? "carousel_show" : "carousel_init" }
       );
       block.appendChild(slide);
@@ -820,11 +846,12 @@
             announcements: p.announcements || [],
             marquee: p.marquee || [],
             schoolNews: p.school_news || [],
+            rssNews: p.rss_news || [],
             display: p.display || {},
           };
         }
       } catch (_) {}
-      return { screen, schedule, holidays, announcements, marquee, schoolNews, display: getDisplayFromPayload() };
+      return { screen, schedule, holidays, announcements, marquee, schoolNews, rssNews, display: getDisplayFromPayload() };
     };
     const advance = () => {
       const current = slides[st.index];
@@ -844,6 +871,7 @@
           d.announcements,
           d.marquee,
           d.schoolNews,
+          d.rssNews,
           { mode: "carousel_show" }
         );
       } catch (_) {}

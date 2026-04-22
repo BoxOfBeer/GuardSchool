@@ -364,6 +364,7 @@
   "widget.type.holidays": "Events",
   "widget.type.announcements": "Announcements",
   "widget.type.school_news": "School news",
+  "widget.type.rss_news": "World news (RSS)",
   "widget.type.marquee": "Marquee",
   "widget.type.emergency": "Emergency",
   "widget.type.image": "Image",

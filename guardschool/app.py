@@ -145,6 +145,7 @@ SINGLETON_WIDGET_IDS = {
     "holidays": "holidays",
     "announcements": "announcements",
     "school_news": "school_news",
+    "rss_news": "rss_news",
     "marquee": "marquee",
     "emergency": "emergency",
     "image": "image",
@@ -163,6 +164,7 @@ ADMIN_PALETTE_WIDGET_TYPES = frozenset(
         "holidays",
         "announcements",
         "school_news",
+        "rss_news",
         "marquee",
         "emergency",
         "image",
@@ -420,6 +422,24 @@ def default_screen(name: str, slug: str) -> dict[str, Any]:
                 "settings": {
                     "fontSize": 18,
                     "titleFontSize": 22,
+                    "color": "#ffffff",
+                    "background": "rgba(15,23,42,0.55)",
+                    "rotateSec": 12,
+                    "bold": False,
+                },
+            },
+            {
+                "id": "rss_news",
+                "type": "rss_news",
+                "title": "Мировые новости",
+                "enabled": False,
+                "x": 24,
+                "y": 14,
+                "w": 8,
+                "h": 10,
+                "settings": {
+                    "fontSize": 16,
+                    "titleFontSize": 18,
                     "color": "#ffffff",
                     "background": "rgba(15,23,42,0.55)",
                     "rotateSec": 12,
@@ -1226,12 +1246,12 @@ def normalize_widget(widget: dict[str, Any]) -> dict[str, Any]:
         widget["settings"].setdefault("fontSize", 24)
         widget["settings"].setdefault("color", "#ffffff")
         widget["settings"].setdefault("bold", False)
-    if widget["type"] in {"holidays", "announcements", "marquee", "school_news"}:
+    if widget["type"] in {"holidays", "announcements", "marquee", "school_news", "rss_news"}:
         widget["settings"].setdefault("fontSize", 18)
         widget["settings"].setdefault("color", "#ffffff")
         widget["settings"].setdefault("background", "rgba(15,23,42,0.55)")
         widget["settings"].setdefault("bold", False)
-    if widget["type"] in {"holidays", "announcements", "school_news"}:
+    if widget["type"] in {"holidays", "announcements", "school_news", "rss_news"}:
         widget["settings"].setdefault("titleFontSize", 18)
     if widget["type"] == "text":
         widget["settings"].setdefault("background", "rgba(0,0,0,0.35)")
@@ -1244,7 +1264,7 @@ def normalize_widget(widget: dict[str, Any]) -> dict[str, Any]:
         widget["settings"].setdefault("items", "")
         widget["settings"].setdefault("useManual", False)
         widget["settings"].setdefault("speedSec", 18)
-    if widget["type"] == "school_news":
+    if widget["type"] in {"school_news", "rss_news"}:
         widget["settings"].setdefault("rotateSec", 12)
     if widget["type"] == "holidays":
         widget["settings"].setdefault("count", 5)
@@ -1701,6 +1721,11 @@ def load_school_news() -> list[dict[str, Any]]:
                 out.append(sanitize_school_news_item(item, fallback_id=f"news_{idx + 1}"))
     out.sort(key=lambda x: (str(x.get("created_at") or ""), str(x.get("id") or "")), reverse=True)
     return out
+
+
+def load_rss_news() -> list[dict[str, Any]]:
+    """Совместимость с ветками, где есть виджет rss_news. Пока источник не настроен — возвращаем пусто."""
+    return []
 
 
 def load_marquee_items() -> list[str]:
@@ -4547,6 +4572,7 @@ async def get_schedule_snapshot(request: Request) -> dict[str, Any]:
         "holidays": load_holidays(),
         "announcements": load_announcements(),
         "school_news": load_school_news()[:20],
+        "rss_news": load_rss_news(),
         "marquee": load_marquee_items(),
         "overrides": load_overrides(),
         "bells": load_bell_schedules(),
@@ -4813,6 +4839,7 @@ def post_preview_payload(request: Request, payload: dict[str, Any] = Body(...)) 
         "holidays": load_holidays(),
         "announcements": load_announcements(),
         "school_news": load_school_news()[:20],
+        "rss_news": load_rss_news(),
         "marquee": load_marquee_items(),
         "background_gallery": list_background_images_from_uploads(screen.get("background_rotate_folder")),
         "bell_audio": build_bell_audio_payload(
@@ -4909,6 +4936,7 @@ def get_screen(request: Request, slug: str) -> JSONResponse:
         "holidays": load_holidays(),
         "announcements": load_announcements(),
         "school_news": load_school_news(),
+        "rss_news": load_rss_news(),
         "marquee": load_marquee_items(),
         "background_gallery": list_background_images_from_uploads(screen.get("background_rotate_folder")),
         "bell_audio": build_bell_audio_payload(
