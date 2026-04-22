@@ -4087,7 +4087,7 @@ def screen_page(request: Request, slug: str) -> HTMLResponse:
         try:
             # Явный tenant в URL (на случай, если ТВ открывает экран без device-token / без доступа к БД).
             explicit_tenant = str(request.query_params.get("gs_tenant") or "").strip().lower()
-            if explicit_tenant and _saas_tenant_slug_cookie_ok(explicit_tenant):
+            if explicit_tenant and 1 <= len(explicit_tenant) <= 64 and explicit_tenant not in ("www", "admin"):
                 from .tenant_ctx import set_tenant_slug
 
                 set_tenant_slug(explicit_tenant)
@@ -4131,13 +4131,13 @@ def screen_page(request: Request, slug: str) -> HTMLResponse:
             from .tenant_ctx import tenant_slug as _tenant_slug
 
             ts2 = str(_tenant_slug() or "").strip()
-            if ts2 and _saas_tenant_slug_cookie_ok(ts2):
+            if ts2 and 1 <= len(ts2) <= 64 and ts2 not in ("www", "admin"):
                 # Для TV/браузеров на устройствах чаще открывают screen по http внутри сети.
                 # Secure-cookie в таком случае не сохраняется, и /uploads снова "теряет" tenant.
                 sec = (getattr(request.url, "scheme", "") == "https")
                 resp.set_cookie(
                     SAAS_TENANT_COOKIE,
-                    ts2,
+                    _encode_saas_tenant_cookie_value(ts2),
                     max_age=3600 * 24 * 30,
                     httponly=True,
                     samesite="lax",
