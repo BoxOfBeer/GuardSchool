@@ -78,6 +78,10 @@
                 <input id="screen-mobile-mode" type="checkbox">
                 <span>Мобильный режим (вертикальная лента, скролл)</span>
               </label>
+              <label class="compact-field toggle-label" style="align-items:center; gap: 10px">
+                <input id="screen-enable-feedback" type="checkbox">
+                <span>Обратная связь (💬 рядом с шестерёнкой)</span>
+              </label>
               <label class="compact-field"><span data-i18n="screen.ipNote">Подпись к этому ТВ</span>
                 <input id="screen-ip-note" type="text" data-i18n-placeholder="screen.ipNotePh" placeholder="Место установки экрана (не IP стрима)">
               </label>
@@ -569,6 +573,12 @@
             </div>
           </details>
           <div id="stats-panel-body" class="stats-panel-body"></div>
+        </div>
+        <div class="card span-2 stats-card">
+          <div class="card-header">
+            <h2>Обратная связь</h2>
+          </div>
+          <div id="feedback-admin-body" class="stats-panel-body"></div>
         </div>
       </section>
     </main>

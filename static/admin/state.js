@@ -57,6 +57,7 @@ export const elements = {
   screenSlug: document.getElementById("screen-slug"),
   screenOrientation: document.getElementById("screen-orientation"),
   screenMobileMode: document.getElementById("screen-mobile-mode"),
+  screenEnableFeedback: document.getElementById("screen-enable-feedback"),
   screenMobileWidgets: document.getElementById("screen-mobile-widgets"),
   screenIpNote: document.getElementById("screen-ip-note"),
   screenPollInterval: document.getElementById("screen-poll-interval"),
