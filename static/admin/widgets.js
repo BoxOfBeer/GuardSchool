@@ -19,6 +19,7 @@ const WIDGET_TYPE_KEYS = new Set([
   "school_news",
   "rss_news",
   "marquee",
+  "rss_news",
   "emergency",
   "image",
 ]);

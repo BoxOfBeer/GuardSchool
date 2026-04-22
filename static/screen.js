@@ -154,6 +154,22 @@ function getGsClientId() {
   }
 }
 
+function getGsDeviceHash() {
+  try {
+    const key = "gs_device_hash";
+    const ex = localStorage.getItem(key);
+    if (ex && ex.length >= 12) return ex;
+    const src = `${getGsClientId()}|${navigator.userAgent || ""}|${navigator.platform || ""}`;
+    let h = 5381;
+    for (let i = 0; i < src.length; i++) h = ((h << 5) + h) ^ src.charCodeAt(i);
+    const out = `d${(h >>> 0).toString(16)}`;
+    localStorage.setItem(key, out);
+    return out;
+  } catch (_) {
+    return `d${Date.now().toString(16)}`;
+  }
+}
+
 /** Подпись места (из URL ?gs_label=…), передаётся на сервер при каждом опросе. */
 function getGsLabelForPoll() {
   try {
@@ -301,6 +317,7 @@ function ensureDeviceSettingsUi() {
     btn.className = "gs-device-settings-btn";
     btn.setAttribute("aria-label", "Настройки устройства");
     btn.textContent = "⚙";
+    btn.style.right = "14px";
 
     const panel = document.createElement("div");
     panel.id = "gs-device-settings-panel";
@@ -365,6 +382,65 @@ function ensureDeviceSettingsUi() {
       },
       { capture: true }
     );
+  } catch (_) {}
+}
+
+function ensureFeedbackUi() {
+  try {
+    if (document.getElementById("gs-feedback-btn")) return;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.id = "gs-feedback-btn";
+    btn.className = "gs-device-settings-btn";
+    btn.setAttribute("aria-label", "Обратная связь");
+    btn.textContent = "💬";
+    btn.style.right = "78px";
+    btn.style.fontSize = "22px";
+    const panel = document.createElement("div");
+    panel.id = "gs-feedback-panel";
+    panel.className = "gs-device-settings-panel";
+    panel.hidden = true;
+    panel.innerHTML = `
+      <div class="gs-device-settings-head">
+        <div class="gs-device-settings-title">Обратная связь</div>
+        <button type="button" class="gs-device-settings-close" id="gs-feedback-close">Закрыть</button>
+      </div>
+      <div class="gs-device-settings-row">
+        <textarea id="gs-feedback-message" class="gs-device-settings-input" rows="5" maxlength="2000" placeholder="Ваше сообщение"></textarea>
+      </div>
+      <div class="gs-device-settings-actions">
+        <button type="button" class="gs-device-btn-primary" id="gs-feedback-send">Отправить</button>
+        <span id="gs-feedback-status" class="hint"></span>
+      </div>
+    `;
+    document.body.appendChild(btn);
+    document.body.appendChild(panel);
+    const toggle = (show) => { panel.hidden = !show; };
+    btn.addEventListener("click", () => toggle(panel.hidden));
+    panel.querySelector("#gs-feedback-close")?.addEventListener("click", () => toggle(false));
+    panel.querySelector("#gs-feedback-send")?.addEventListener("click", async () => {
+      const slug = getSlug();
+      const inp = panel.querySelector("#gs-feedback-message");
+      const st = panel.querySelector("#gs-feedback-status");
+      const msg = String(inp && inp.value || "").trim();
+      if (msg.length < 2) {
+        if (st) st.textContent = "Введите сообщение (минимум 2 символа).";
+        return;
+      }
+      try {
+        const r = await fetch(`/api/screen/${encodeURIComponent(slug)}/feedback`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ device_hash: getGsDeviceHash(), message: msg }),
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(j.detail || "Ошибка отправки.");
+        if (inp) inp.value = "";
+        if (st) st.textContent = "Отправлено.";
+      } catch (e) {
+        if (st) st.textContent = String(e && e.message || e || "Ошибка");
+      }
+    });
   } catch (_) {}
 }
 
@@ -478,6 +554,7 @@ const GS_DEVICE_WIDGET_TYPE_LABELS = {
   carousel: "Карусель",
   holidays: "Праздники",
   announcements: "Объявления",
+  rss_news: "Мировые новости",
   marquee: "Бегущая строка",
   image: "Фон / картинка",
 };
@@ -639,6 +716,8 @@ let bellAudioDay = null;
 let screenAudioUnlocked = false;
 let emergencyAudioEl = null;
 let emergencyAudioUrl = "";
+let emergencyCountdownKey = "";
+let emergencyCountdownDeadlineMs = 0;
 
 let lastRenderOkAt = Date.now();
 
@@ -915,6 +994,65 @@ function tickEmergencyAudio(payload) {
   } catch (_) {}
 }
 
+function resolveEmergencyTimerState(payload) {
+  try {
+    const screen = payload && payload.screen;
+    const widgets = (screen && screen.widgets) || [];
+    const w = widgets.find((x) => x && x.type === "emergency" && x.enabled !== false);
+    if (!w) return { active: false };
+    const s = w.settings || {};
+    const raw = Number(s.timer_seconds != null ? s.timer_seconds : s.timerSeconds);
+    const timerSeconds = Number.isFinite(raw) ? Math.max(0, Math.round(raw)) : 0;
+    if (timerSeconds <= 0) return { active: false };
+    const key = JSON.stringify({
+      screen: String(screen && (screen.id || screen.slug || screen.name) || ""),
+      widget: String(w.id || "emergency"),
+      timer: timerSeconds,
+      text: String(s.text || ""),
+      color: String(s.color || ""),
+      background: String(s.background || ""),
+    });
+    return { active: true, timerSeconds, key };
+  } catch (_) {
+    return { active: false };
+  }
+}
+
+function tickEmergencyTimerState(payload) {
+  const st = resolveEmergencyTimerState(payload);
+  if (!st.active) {
+    emergencyCountdownKey = "";
+    emergencyCountdownDeadlineMs = 0;
+    return;
+  }
+  if (emergencyCountdownKey !== st.key || !emergencyCountdownDeadlineMs) {
+    emergencyCountdownKey = st.key;
+    emergencyCountdownDeadlineMs = Date.now() + st.timerSeconds * 1000;
+  }
+  const screen = payload && payload.screen;
+  const widgets = (screen && screen.widgets) || [];
+  const w = widgets.find((x) => x && x.type === "emergency" && x.enabled !== false);
+  if (!w) return;
+  const s = w.settings || (w.settings = {});
+  const remain = Math.max(0, Math.ceil((emergencyCountdownDeadlineMs - Date.now()) / 1000));
+  s.timerRemainingSec = remain;
+  s.timerShowZero = true;
+}
+
+function tickEmergencyCountdownUi() {
+  const root = document.getElementById("screen-root");
+  if (!root) return;
+  if (!root.querySelector("[data-emergency-countdown='1']")) return;
+  root.querySelectorAll("[data-emergency-countdown='1']").forEach((el) => {
+    const cur = Number(el.getAttribute("data-seconds-left"));
+    const now = Number.isFinite(cur) ? Math.max(0, Math.round(cur)) : 0;
+    const next = Math.max(0, now - 1);
+    el.setAttribute("data-seconds-left", String(next));
+  });
+  const g = window.GuardSchoolScreen;
+  if (g && g.updateAllEmergencyCountdowns) g.updateAllEmergencyCountdowns(root);
+}
+
 function screenPayloadScheduleSig(p) {
   if (!p || typeof p !== "object") return "";
   try {
@@ -977,8 +1115,10 @@ function shouldSoftRefreshWidget(widget, scheduleChanged, staticChanged) {
 
 function render(screenPayload) {
   window.__lastScreenPayload = screenPayload;
+  tickEmergencyTimerState(screenPayload);
   const screenForUi = (screenPayload && screenPayload.screen) || {};
   const deviceUiAllowed = gsShowScreenDeviceGear(screenForUi);
+  const feedbackUiAllowed = deviceUiAllowed && Boolean(screenForUi && screenForUi.enable_feedback);
   if (deviceUiAllowed) {
     ensureDeviceSettingsUi();
     syncDeviceSettingsFromPayload(screenPayload);
@@ -987,6 +1127,16 @@ function render(screenPayload) {
       const panel = document.getElementById("gs-device-settings-panel");
       if (panel && panel.remove) panel.remove();
       const btn = document.getElementById("gs-device-settings-btn");
+      if (btn && btn.remove) btn.remove();
+    } catch (_) {}
+  }
+  if (feedbackUiAllowed) {
+    ensureFeedbackUi();
+  } else {
+    try {
+      const panel = document.getElementById("gs-feedback-panel");
+      if (panel && panel.remove) panel.remove();
+      const btn = document.getElementById("gs-feedback-btn");
       if (btn && btn.remove) btn.remove();
     } catch (_) {}
   }
@@ -1629,6 +1779,9 @@ window.setInterval(() => {
 }, 1000);
 window.setInterval(() => {
   if (window.__lastScreenPayload) tickBellAudio(window.__lastScreenPayload);
+}, 1000);
+window.setInterval(() => {
+  tickEmergencyCountdownUi();
 }, 1000);
 /** Смена фона по интервалу без полного poll (картинки уже известны с сервера). */
 window.setInterval(() => {

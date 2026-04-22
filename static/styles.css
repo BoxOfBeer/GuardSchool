@@ -1242,6 +1242,19 @@ button {
   align-items: flex-start;
 }
 
+.rss-sources-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rss-source-row {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) minmax(260px, 2fr) auto auto;
+  gap: 8px;
+  align-items: center;
+}
+
 .widget-editor-modal-body .settings-grid {
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
 }
@@ -1562,6 +1575,21 @@ button {
 .stats-history-list {
   margin: 6px 0 0;
   padding-left: 18px;
+}
+
+.stats-feedback-item {
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 10px;
+  padding: 10px;
+  margin-bottom: 8px;
+  background: #ffffff;
+}
+
+.stats-feedback-actions {
+  margin-top: 8px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .pc-audio-player {
@@ -2316,6 +2344,24 @@ label.bell-file-upload:hover {
   max-width: 96%;
   word-break: break-word;
   text-shadow: var(--gs-tv-text-shadow, none);
+}
+
+.screen-widget--emergency .emergency-overlay-timer-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.screen-widget--emergency .emergency-overlay-timer-title {
+  font-size: 0.44em;
+  opacity: 0.95;
+}
+
+.screen-widget--emergency .emergency-overlay-timer {
+  font-size: 0.9em;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.05em;
 }
 
 .screen-widget--emergency .emergency-overlay-image-wrap {
