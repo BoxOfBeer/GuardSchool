@@ -1688,9 +1688,9 @@ function schoolNewsPlainToHtml(text) {
 function schoolNewsSanitizePreviewHtml(html) {
   // Минимальная защита предпросмотра в админке (сервер тоже чистит при сохранении).
   let s = String(html || "");
-  s = s.replace(/(?is)<script[^>]*>[\s\S]*?<\/script>/g, "");
-  s = s.replace(/(?is)\son[a-z]+\s*=\s*\"[^\"]*\"/g, "");
-  s = s.replace(/(?is)\son[a-z]+\s*=\s*'[^']*'/g, "");
+  s = s.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "");
+  s = s.replace(/\son[a-z]+\s*=\s*"[^"]*"/gi, "");
+  s = s.replace(/\son[a-z]+\s*=\s*'[^']*'/gi, "");
   return s;
 }
 
