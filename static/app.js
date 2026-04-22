@@ -515,6 +515,7 @@ function createDefaultScreen(index) {
     tv_text_outline_color: "rgba(0,0,0,0.85)",
     selected_classes: ["5", "6", "7", "8"],
     mobile_mode: false,
+    enable_feedback: false,
     /** Список id виджетов, которые рендерить в мобильном режиме (вертикальная лента). */
     mobile_widget_ids: [],
     bell_schedule_template: "standard",
@@ -1335,6 +1336,7 @@ function renderForm() {
   elements.screenSlug.value = screen.slug;
   if (elements.screenOrientation) elements.screenOrientation.value = screen.orientation === "portrait" ? "portrait" : "landscape";
   if (elements.screenMobileMode) elements.screenMobileMode.checked = Boolean(screen.mobile_mode);
+  if (elements.screenEnableFeedback) elements.screenEnableFeedback.checked = Boolean(screen.enable_feedback);
   elements.screenIpNote.value = screen.ip_note;
   elements.screenPollInterval.value = screen.poll_interval_sec;
   elements.screenBackground.value = screen.background_image || "";
@@ -1666,6 +1668,11 @@ function bindForm() {
     elements.screenMobileMode.onchange = () => {
       selectedScreen().mobile_mode = Boolean(elements.screenMobileMode.checked);
       renderPreview();
+    };
+  }
+  if (elements.screenEnableFeedback) {
+    elements.screenEnableFeedback.onchange = () => {
+      selectedScreen().enable_feedback = Boolean(elements.screenEnableFeedback.checked);
     };
   }
   elements.screenIpNote.oninput = (event) => { selectedScreen().ip_note = event.target.value; };

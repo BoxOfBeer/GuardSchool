@@ -154,6 +154,22 @@ function getGsClientId() {
   }
 }
 
+function getGsDeviceHash() {
+  try {
+    const key = "gs_device_hash";
+    const ex = localStorage.getItem(key);
+    if (ex && ex.length >= 12) return ex;
+    const src = `${getGsClientId()}|${navigator.userAgent || ""}|${navigator.platform || ""}`;
+    let h = 5381;
+    for (let i = 0; i < src.length; i++) h = ((h << 5) + h) ^ src.charCodeAt(i);
+    const out = `d${(h >>> 0).toString(16)}`;
+    localStorage.setItem(key, out);
+    return out;
+  } catch (_) {
+    return `d${Date.now().toString(16)}`;
+  }
+}
+
 /** Подпись места (из URL ?gs_label=…), передаётся на сервер при каждом опросе. */
 function getGsLabelForPoll() {
   try {
@@ -301,6 +317,7 @@ function ensureDeviceSettingsUi() {
     btn.className = "gs-device-settings-btn";
     btn.setAttribute("aria-label", "Настройки устройства");
     btn.textContent = "⚙";
+    btn.style.right = "14px";
 
     const panel = document.createElement("div");
     panel.id = "gs-device-settings-panel";
@@ -365,6 +382,65 @@ function ensureDeviceSettingsUi() {
       },
       { capture: true }
     );
+  } catch (_) {}
+}
+
+function ensureFeedbackUi() {
+  try {
+    if (document.getElementById("gs-feedback-btn")) return;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.id = "gs-feedback-btn";
+    btn.className = "gs-device-settings-btn";
+    btn.setAttribute("aria-label", "Обратная связь");
+    btn.textContent = "💬";
+    btn.style.right = "78px";
+    btn.style.fontSize = "22px";
+    const panel = document.createElement("div");
+    panel.id = "gs-feedback-panel";
+    panel.className = "gs-device-settings-panel";
+    panel.hidden = true;
+    panel.innerHTML = `
+      <div class="gs-device-settings-head">
+        <div class="gs-device-settings-title">Обратная связь</div>
+        <button type="button" class="gs-device-settings-close" id="gs-feedback-close">Закрыть</button>
+      </div>
+      <div class="gs-device-settings-row">
+        <textarea id="gs-feedback-message" class="gs-device-settings-input" rows="5" maxlength="2000" placeholder="Ваше сообщение"></textarea>
+      </div>
+      <div class="gs-device-settings-actions">
+        <button type="button" class="gs-device-btn-primary" id="gs-feedback-send">Отправить</button>
+        <span id="gs-feedback-status" class="hint"></span>
+      </div>
+    `;
+    document.body.appendChild(btn);
+    document.body.appendChild(panel);
+    const toggle = (show) => { panel.hidden = !show; };
+    btn.addEventListener("click", () => toggle(panel.hidden));
+    panel.querySelector("#gs-feedback-close")?.addEventListener("click", () => toggle(false));
+    panel.querySelector("#gs-feedback-send")?.addEventListener("click", async () => {
+      const slug = getSlug();
+      const inp = panel.querySelector("#gs-feedback-message");
+      const st = panel.querySelector("#gs-feedback-status");
+      const msg = String(inp && inp.value || "").trim();
+      if (msg.length < 2) {
+        if (st) st.textContent = "Введите сообщение (минимум 2 символа).";
+        return;
+      }
+      try {
+        const r = await fetch(`/api/screen/${encodeURIComponent(slug)}/feedback`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ device_hash: getGsDeviceHash(), message: msg }),
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(j.detail || "Ошибка отправки.");
+        if (inp) inp.value = "";
+        if (st) st.textContent = "Отправлено.";
+      } catch (e) {
+        if (st) st.textContent = String(e && e.message || e || "Ошибка");
+      }
+    });
   } catch (_) {}
 }
 
@@ -979,6 +1055,7 @@ function render(screenPayload) {
   window.__lastScreenPayload = screenPayload;
   const screenForUi = (screenPayload && screenPayload.screen) || {};
   const deviceUiAllowed = gsShowScreenDeviceGear(screenForUi);
+  const feedbackUiAllowed = deviceUiAllowed && Boolean(screenForUi && screenForUi.enable_feedback);
   if (deviceUiAllowed) {
     ensureDeviceSettingsUi();
     syncDeviceSettingsFromPayload(screenPayload);
@@ -987,6 +1064,16 @@ function render(screenPayload) {
       const panel = document.getElementById("gs-device-settings-panel");
       if (panel && panel.remove) panel.remove();
       const btn = document.getElementById("gs-device-settings-btn");
+      if (btn && btn.remove) btn.remove();
+    } catch (_) {}
+  }
+  if (feedbackUiAllowed) {
+    ensureFeedbackUi();
+  } else {
+    try {
+      const panel = document.getElementById("gs-feedback-panel");
+      if (panel && panel.remove) panel.remove();
+      const btn = document.getElementById("gs-feedback-btn");
       if (btn && btn.remove) btn.remove();
     } catch (_) {}
   }
