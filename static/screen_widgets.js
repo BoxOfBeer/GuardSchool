@@ -607,7 +607,7 @@
     const settings = widget.settings || {};
     const rows = Array.isArray(rssNews) ? rssNews : [];
     if (!rows.length) {
-      return `<div class="info-widget-box" style="background:${settings.background};color:${settings.color};"><div style="font-size:${settings.titleFontSize || 18}px;">${L.rssNews}</div><div>${L.noSchoolNews}</div></div>`;
+      return `<div class="info-widget-box" style="background:${settings.background};color:${settings.color};"><div style="font-size:${settings.titleFontSize || 18}px;">${L.rssNews}</div><div>${L.noRssNews}</div></div>`;
     }
     const sec = Math.max(10, Math.min(15, Number(settings.rotateSec || 12)));
     const idx = Math.floor(Date.now() / (sec * 1000)) % rows.length;
@@ -617,7 +617,7 @@
     const url = String(item.url || "").trim();
     return `<article style="background:${settings.background};color:${settings.color};padding:10px;border-radius:10px;height:100%;overflow:hidden;">
       <div style="font-size:${settings.titleFontSize || 18}px;${settings.bold ? "font-weight:700;" : ""};margin-bottom:8px;">${title || L.rssNews}</div>
-      <div style="font-size:${settings.fontSize || 16}px;line-height:1.3;">${summary || L.noSchoolNews}</div>
+      <div style="font-size:${settings.fontSize || 16}px;line-height:1.3;">${summary || L.noRssNews}</div>
       ${url ? `<div style="margin-top:8px;font-size:12px;opacity:.9;"><a href="${escapeHtmlAttr(url)}" style="color:${settings.color}" target="_blank" rel="noopener">Источник</a></div>` : ""}
     </article>`;
   }

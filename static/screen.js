@@ -1092,6 +1092,8 @@ function screenPayloadStaticSig(p) {
       screen: p.screen,
       holidays: p.holidays,
       announcements: p.announcements,
+      school_news: p.school_news,
+      rss_news: p.rss_news,
       marquee: p.marquee,
       background_gallery: p.background_gallery,
       bell_audio: p.bell_audio,
@@ -1113,7 +1115,7 @@ function shouldSoftRefreshWidget(widget, scheduleChanged, staticChanged) {
   if (t === "schedule" || t === "bell_status" || t === "bell_countdown") {
     return scheduleChanged;
   }
-  if (t === "announcements" || t === "marquee" || t === "holidays") {
+  if (t === "announcements" || t === "marquee" || t === "holidays" || t === "school_news" || t === "rss_news") {
     return staticChanged;
   }
   if (t === "image") {
