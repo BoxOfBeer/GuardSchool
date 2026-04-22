@@ -1718,12 +1718,10 @@ def load_announcements() -> list[dict[str, Any]]:
     return read_json(ANNOUNCEMENTS_PATH, [])
 
 
-def _school_news_text_preview(raw_html: str, limit: int = 220) -> str:
+def _school_news_text_preview(raw_html: str) -> str:
+    """Текст для виджета школьных новостей: без ограничения длины."""
     text = re.sub(r"<[^>]+>", " ", str(raw_html or ""))
-    text = re.sub(r"\s+", " ", text).strip()
-    if len(text) <= limit:
-        return text
-    return text[:limit].rstrip() + "…"
+    return re.sub(r"\s+", " ", text).strip()
 
 
 def sanitize_school_news_item(item: dict[str, Any], fallback_id: str = "") -> dict[str, Any]:
@@ -1836,6 +1834,39 @@ def _save_school_news_image_bytes(news_id: str, data: bytes, content_type: str |
             ext = ".jpg" if m.group(1) in ("jpg", "jpeg") else f".{m.group(1)}"
     if not ext:
         ext = ".jpg"
+    # Максимальная совместимость с ТВ: стараемся перекодировать в baseline JPEG (без прогрессива/CMYK).
+    try:
+        import io
+
+        from PIL import Image  # type: ignore
+
+        try:
+            img = Image.open(io.BytesIO(data))
+            img.load()
+            if img.mode not in ("RGB", "L"):
+                img = img.convert("RGB")
+            elif img.mode == "L":
+                img = img.convert("RGB")
+            out = io.BytesIO()
+            quality = 85
+            best = None
+            while quality >= 50:
+                out.seek(0)
+                out.truncate(0)
+                img.save(out, format="JPEG", quality=quality, optimize=True, progressive=False)
+                b = out.getvalue()
+                best = b
+                if len(b) <= 1024 * 1024:
+                    break
+                quality -= 10
+            if best:
+                data = best
+                ext = ".jpg"
+        except Exception:
+            pass
+    except Exception:
+        pass
+
     fn = f"{nid}_{secrets.token_hex(4)}{ext}"
     (base / fn).write_bytes(data)
     return f"/uploads/school_news/{fn}"

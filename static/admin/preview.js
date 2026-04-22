@@ -93,6 +93,8 @@ export async function fetchPreviewPayloadOnce() {
       background_gallery: res.background_gallery || [],
       announcements: res.announcements || [],
       marquee: res.marquee || [],
+      school_news: res.school_news || [],
+      rss_news: res.rss_news || [],
       pc_audio_preview: res.pc_audio_preview || null,
       display: res.display || null,
       displayScreen: res.screen && typeof res.screen === "object" ? res.screen : null,
