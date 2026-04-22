@@ -3,6 +3,8 @@
   const marqueeState = new Map();
   // announcementsState: widgetId -> { contentKey, order, pos, lastIdx }
   const announcementsState = new Map();
+  // schoolNewsState: widgetId -> { contentKey, order, pos, lastIdx, currentIdx }
+  const schoolNewsState = new Map();
   const RANDOM_CAROUSEL_ANIMATIONS = [
     "slide",
     "slideUp",
@@ -481,6 +483,50 @@
     return idx;
   }
 
+  function schoolNewsContentKey(rows) {
+    // Достаточно стабильный ключ: если поменялся набор/порядок новостей — перегенерим order.
+    // id+created_at достаточно, summary может быть длинным.
+    try {
+      return (rows || []).map((x) => `${String(x && x.id || "")}|${String(x && x.created_at || "")}`).join("\u0000");
+    } catch (_) {
+      return String((rows || []).length || 0);
+    }
+  }
+
+  function ensureSchoolNewsOrder(widgetId, rows) {
+    if (!widgetId) return null;
+    const key = schoolNewsContentKey(rows);
+    let st = schoolNewsState.get(widgetId);
+    if (!st || st.contentKey !== key || !Array.isArray(st.order) || st.order.length !== rows.length) {
+      const order = shuffleInPlace(Array.from({ length: rows.length }, (_, i) => i));
+      st = { contentKey: key, order, pos: 0, lastIdx: null, currentIdx: rows.length ? order[0] : 0 };
+      schoolNewsState.set(widgetId, st);
+    }
+    return st;
+  }
+
+  function nextSchoolNewsIndex(widgetId, rows) {
+    const st = ensureSchoolNewsOrder(widgetId, rows);
+    if (!st) return 0;
+    if (!rows.length) return 0;
+    if (st.pos >= st.order.length) {
+      const order = shuffleInPlace(Array.from({ length: rows.length }, (_, i) => i));
+      if (rows.length >= 2 && st.lastIdx != null && order[0] === st.lastIdx) {
+        const tmp = order[0];
+        order[0] = order[1];
+        order[1] = tmp;
+      }
+      st.order = order;
+      st.pos = 0;
+    }
+    const idx = st.order[st.pos] != null ? st.order[st.pos] : 0;
+    st.pos += 1;
+    st.lastIdx = idx;
+    st.currentIdx = idx;
+    schoolNewsState.set(widgetId, st);
+    return idx;
+  }
+
   function buildAnnouncements(settings, announcementsData = [], widgetId = "", ctx = null) {
     const useManual = Boolean(settings && settings.useManual);
     const raw = String(settings.items || "");
@@ -563,7 +609,7 @@
   `;
   }
 
-  function buildSchoolNews(widget, schoolNews = [], screen = null) {
+  function buildSchoolNews(widget, schoolNews = [], screen = null, ctx = null) {
     const L = tvUiStrings();
     const settings = widget.settings || {};
     // Берём 3 последних активных — и ротируем их (а не весь список целиком).
@@ -572,9 +618,11 @@
     if (!rows.length) {
       return `<div class="info-widget-box" style="background:${settings.background};color:${settings.color};"><div style="font-size:${settings.titleFontSize || 18}px;">${L.schoolNews}</div><div>${L.noSchoolNews}</div></div>`;
     }
-    const sec = Math.max(10, Math.min(15, Number(settings.rotateSec || 12)));
-    const idx = Math.floor(Date.now() / (sec * 1000)) % rows.length;
-    const item = rows[idx];
+    // Как «Объявления»: без таймера. Переключаем только при показе (карусель) в уникальном порядке.
+    const st = ensureSchoolNewsOrder(widget.id, rows);
+    const isCarouselShow = Boolean(ctx && ctx.mode === "carousel_show");
+    const pickIdx = isCarouselShow ? nextSchoolNewsIndex(widget.id, rows) : (st && Number.isFinite(st.currentIdx) ? st.currentIdx : 0);
+    const item = rows[pickIdx] || rows[0];
     const title = escapeHtml(String(item.title || ""));
     const summaryText = String(item.summary || "");
     const summaryHtml = escapeHtml(summaryText).replace(/\n/g, "<br>");
@@ -596,7 +644,7 @@
       })() : ""}
       <div style="font-size:${settings.fontSize || 18}px;line-height:1.35;white-space:normal;overflow:visible;overflow-wrap:anywhere;word-break:break-word;">${summaryHtml || escapeHtml(L.noSchoolNews)}</div>
       <div style="clear:both;"></div>
-      <div style="margin-top:6px;font-size:12px;opacity:.85;">${idx + 1}/${rows.length}</div>
+      <div style="margin-top:6px;font-size:12px;opacity:.85;">${rows.length > 1 ? `${Math.min(rows.length, (st && st.pos ? st.pos : 1))}/${rows.length}` : ""}</div>
     </article>`;
   }
 
@@ -799,7 +847,7 @@
       return buildMarquee(widget, marquee);
     }
     if (widget.type === "school_news") {
-      return buildSchoolNews(widget, schoolNews, screen);
+      return buildSchoolNews(widget, schoolNews, screen, ctx);
     }
     if (widget.type === "rss_news") {
       return buildRssNews(widget, rssNews);
