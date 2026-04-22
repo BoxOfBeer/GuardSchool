@@ -932,6 +932,7 @@ const CLIENT_EMERGENCY_DEFAULTS = [
       backdrop: true,
       soundEnabled: true,
       soundUrl: "",
+      timer_seconds: 0,
       byScreenName: {},
     },
   },
@@ -947,6 +948,7 @@ const CLIENT_EMERGENCY_DEFAULTS = [
       backdrop: true,
       soundEnabled: false,
       soundUrl: "",
+      timer_seconds: 0,
       byScreenName: {},
     },
   },
@@ -962,6 +964,7 @@ const CLIENT_EMERGENCY_DEFAULTS = [
       backdrop: true,
       soundEnabled: false,
       soundUrl: "",
+      timer_seconds: 0,
       byScreenName: {},
     },
   },
@@ -977,6 +980,7 @@ const CLIENT_EMERGENCY_DEFAULTS = [
       backdrop: true,
       soundEnabled: true,
       soundUrl: "",
+      timer_seconds: 0,
       byScreenName: {},
     },
   },
@@ -1098,10 +1102,12 @@ function renderEmergencyTemplatesAdmin() {
         <label><span>${escapeHtml(t("w.fontSize"))}</span><input type="number" id="emergency-f-fs" class="standard-input" min="10" max="200" value="${Number(s.fontSize) || 42}"></label>
         <label><span>${escapeHtml(t("w.color"))}</span><input type="color" id="emergency-f-color" value="${escapeHtmlAttr(/^#[0-9a-fA-F]{6}$/.test(String(s.color || "").trim()) ? String(s.color).trim() : "#ffffff")}"></label>
         <label><span>${escapeHtml(t("w.blockBg"))}</span><input type="text" id="emergency-f-bg" class="standard-input" value="${escapeHtmlAttr(String(s.background || "#b91c1c"))}"></label>
+        <label><span>${escapeHtml(t("emergencyTemplates.timerSeconds"))}</span><input type="number" id="emergency-f-timer" class="standard-input" min="0" max="86400" step="1" value="${Math.max(0, Math.round(Number(s.timer_seconds) || 0))}" placeholder="${escapeHtmlAttr(t("emergencyTemplates.timerHint"))}"></label>
         <label class="toggle-label"><input type="checkbox" id="emergency-f-bold" ${s.bold !== false ? "checked" : ""}> ${escapeHtml(t("w.bold"))}</label>
         <label class="toggle-label"><input type="checkbox" id="emergency-f-backdrop" ${s.backdrop !== false ? "checked" : ""}> ${escapeHtml(t("w.backdrop"))}</label>
         <label class="toggle-label"><input type="checkbox" id="emergency-f-sound" ${s.soundEnabled === true ? "checked" : ""}> ${escapeHtml(t("emergencyTemplates.globalSound"))}</label>
       </div>
+      <p class="hint">${escapeHtml(t("emergencyTemplates.timerHintValues"))}</p>
       <label class="settings-row"><span>${escapeHtml(t("w.emergencySoundFile"))}</span>
         <input type="text" id="emergency-f-surl" class="standard-input wide-input" value="${escapeHtmlAttr(String(s.soundUrl || ""))}" ${soundRo}></label>
       <div class="compact-form-row">${state.meta?.saas_mode ? "" : `<label class="bell-file-upload"><span class="bell-file-upload-main">${escapeHtml(t("w.browse"))}</span>
@@ -1133,6 +1139,7 @@ function renderEmergencyTemplatesAdmin() {
         backdrop: true,
         soundEnabled: false,
         soundUrl: "",
+        timer_seconds: 0,
         byScreenName: {},
       },
     });
@@ -1222,6 +1229,7 @@ function flushEmergencyEditorToState() {
   const bk = document.getElementById("emergency-f-backdrop");
   const snd = document.getElementById("emergency-f-sound");
   const surl = document.getElementById("emergency-f-surl");
+  const timer = document.getElementById("emergency-f-timer");
   if (!tpl.settings) tpl.settings = {};
   if (fs) {
     const n = Number(fs.value);
@@ -1236,6 +1244,10 @@ function flushEmergencyEditorToState() {
   if (bk) tpl.settings.backdrop = Boolean(bk.checked);
   if (snd) tpl.settings.soundEnabled = Boolean(snd.checked);
   if (surl) tpl.settings.soundUrl = String(surl.value || "").trim();
+  if (timer) {
+    const n = Number(timer.value);
+    tpl.settings.timer_seconds = Number.isFinite(n) ? Math.max(0, Math.min(86400, Math.round(n))) : 0;
+  }
   const root = document.getElementById("emergency-templates-admin-root");
   if (root) {
     root.querySelectorAll("[data-em-screen]").forEach((inp) => {

@@ -2331,6 +2331,24 @@ label.bell-file-upload:hover {
   text-shadow: var(--gs-tv-text-shadow, none);
 }
 
+.screen-widget--emergency .emergency-overlay-timer-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.screen-widget--emergency .emergency-overlay-timer-title {
+  font-size: 0.44em;
+  opacity: 0.95;
+}
+
+.screen-widget--emergency .emergency-overlay-timer {
+  font-size: 0.9em;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.05em;
+}
+
 .screen-widget--emergency .emergency-overlay-image-wrap {
   max-width: min(96%, 720px);
   max-height: min(38vh, 320px);

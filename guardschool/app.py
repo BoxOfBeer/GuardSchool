@@ -485,6 +485,7 @@ def _default_emergency_templates() -> list[dict[str, Any]]:
                 "backdrop": True,
                 "soundEnabled": True,
                 "soundUrl": "",
+                "timer_seconds": 0,
                 "byScreenName": {},
             },
         },
@@ -500,6 +501,7 @@ def _default_emergency_templates() -> list[dict[str, Any]]:
                 "backdrop": True,
                 "soundEnabled": False,
                 "soundUrl": "",
+                "timer_seconds": 0,
                 "byScreenName": {},
             },
         },
@@ -515,6 +517,7 @@ def _default_emergency_templates() -> list[dict[str, Any]]:
                 "backdrop": True,
                 "soundEnabled": False,
                 "soundUrl": "",
+                "timer_seconds": 0,
                 "byScreenName": {},
             },
         },
@@ -530,6 +533,7 @@ def _default_emergency_templates() -> list[dict[str, Any]]:
                 "backdrop": True,
                 "soundEnabled": True,
                 "soundUrl": "",
+                "timer_seconds": 0,
                 "byScreenName": {},
             },
         },
@@ -584,6 +588,11 @@ def _sanitize_emergency_templates_list(raw: Any) -> list[dict[str, Any]]:
         surl = str(st.get("soundUrl") or "").strip()[:512]
         if surl and not (surl.startswith("/uploads/") or surl.startswith("http://") or surl.startswith("https://")):
             surl = ""
+        try:
+            timer_seconds = int(st.get("timer_seconds", st.get("timerSeconds", 0)) or 0)
+        except (TypeError, ValueError):
+            timer_seconds = 0
+        timer_seconds = max(0, min(24 * 60 * 60, timer_seconds))
         out.append(
             {
                 "id": tid,
@@ -597,6 +606,7 @@ def _sanitize_emergency_templates_list(raw: Any) -> list[dict[str, Any]]:
                     "backdrop": bd,
                     "soundEnabled": se,
                     "soundUrl": surl,
+                    "timer_seconds": timer_seconds,
                     "byScreenName": _sanitize_emergency_by_screen_name(st.get("byScreenName")),
                 },
             }
@@ -648,6 +658,11 @@ def apply_emergency_template_to_screen(screen: dict[str, Any], config: dict[str,
     surl = str(ts.get("soundUrl") or "").strip()[:512]
     if surl and not (surl.startswith("/uploads/") or surl.startswith("http://") or surl.startswith("https://")):
         surl = ""
+    try:
+        timer_seconds = int(ts.get("timer_seconds", ts.get("timerSeconds", 0)) or 0)
+    except (TypeError, ValueError):
+        timer_seconds = 0
+    timer_seconds = max(0, min(24 * 60 * 60, timer_seconds))
     new_s = {
         "text": str(ts.get("text", ""))[:5000],
         "fontSize": fs,
@@ -657,6 +672,7 @@ def apply_emergency_template_to_screen(screen: dict[str, Any], config: dict[str,
         "backdrop": bd,
         "soundEnabled": bool(ts.get("soundEnabled")),
         "soundUrl": surl,
+        "timer_seconds": timer_seconds,
         "imageUrl": img,
         "imageCaption": cap,
     }
