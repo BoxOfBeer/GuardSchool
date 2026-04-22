@@ -80,7 +80,7 @@ from .gs_import_bundle import (
 )
 from .gs_import_state import load_import_state
 from .gs_jsonio import read_json, write_json
-from .gs_rss_news import load_rss_news, sanitize_rss_refresh_minutes, sanitize_rss_sources
+from .gs_rss_news import load_rss_news as load_rss_news_feed, sanitize_rss_refresh_minutes, sanitize_rss_sources
 from .gs_uploads_bg import (
     list_background_images_from_uploads,
     list_background_subdirs_from_uploads,
@@ -156,10 +156,11 @@ SINGLETON_WIDGET_IDS = {
     "announcements": "announcements",
     "school_news": "school_news",
     "rss_news": "rss_news",
+    "rss_feed": "rss_news",
+    "external_news": "rss_news",
     "marquee": "marquee",
     "emergency": "emergency",
     "image": "image",
-    "rss_news": "rss_news",
 }
 
 # Типы виджетов, которые можно скрыть из списка в админке (не влияет на ТВ и на сетку превью).
@@ -176,10 +177,11 @@ ADMIN_PALETTE_WIDGET_TYPES = frozenset(
         "announcements",
         "school_news",
         "rss_news",
+        "rss_feed",
+        "external_news",
         "marquee",
         "emergency",
         "image",
-        "rss_news",
     }
 )
 
@@ -444,7 +446,7 @@ def default_screen(name: str, slug: str) -> dict[str, Any]:
             {
                 "id": "rss_news",
                 "type": "rss_news",
-                "title": "Мировые новости",
+                "title": "RSS-лента",
                 "enabled": False,
                 "x": 24,
                 "y": 14,
@@ -1270,6 +1272,9 @@ def default_bell_schedules() -> dict[str, Any]:
 
 
 def normalize_widget(widget: dict[str, Any]) -> dict[str, Any]:
+    wtype = str(widget.get("type") or "").strip()
+    if wtype in {"rss_feed", "external_news"}:
+        widget["type"] = "rss_news"
     widget["id"] = widget.get("id") or SINGLETON_WIDGET_IDS.get(widget.get("type"), secrets.token_hex(4))
     widget.setdefault("enabled", True)
     widget.setdefault("settings", {})
@@ -1764,9 +1769,14 @@ def load_school_news() -> list[dict[str, Any]]:
     return out
 
 
-def load_rss_news() -> list[dict[str, Any]]:
-    """Совместимость с ветками, где есть виджет rss_news. Пока источник не настроен — возвращаем пусто."""
-    return []
+def load_rss_news(config: dict[str, Any] | None = None, *, force_refresh: bool = False) -> list[dict[str, Any]]:
+    """
+    Обёртка совместимости для rss_news:
+    - принимает старые/новые вызовы (с config и без),
+    - делегирует загрузку в gs_rss_news.
+    """
+    cfg = config if isinstance(config, dict) else load_config()
+    return load_rss_news_feed(cfg, force_refresh=force_refresh)
 
 
 def load_marquee_items() -> list[str]:
@@ -4614,6 +4624,7 @@ def list_bell_sounds(request: Request) -> dict[str, Any]:
 @app.get("/api/admin/schedule")
 async def get_schedule_snapshot(request: Request) -> dict[str, Any]:
     require_auth(request)
+    cfg = load_config()
     schedule_rows = load_schedule()
     full_rows = load_full_schedule()
     sample_rows = load_schedule_sample()
@@ -4622,7 +4633,7 @@ async def get_schedule_snapshot(request: Request) -> dict[str, Any]:
         "holidays": load_holidays(),
         "announcements": load_announcements(),
         "school_news": load_school_news()[:20],
-        "rss_news": load_rss_news(),
+        "rss_news": load_rss_news(cfg),
         "marquee": load_marquee_items(),
         "overrides": load_overrides(),
         "bells": load_bell_schedules(),
@@ -4889,7 +4900,6 @@ def post_preview_payload(request: Request, payload: dict[str, Any] = Body(...)) 
         "holidays": load_holidays(),
         "announcements": load_announcements(),
         "school_news": load_school_news()[:20],
-        "rss_news": load_rss_news(),
         "marquee": load_marquee_items(),
         "rss_news": load_rss_news(cfg),
         "background_gallery": list_background_images_from_uploads(screen.get("background_rotate_folder")),
@@ -4987,7 +4997,6 @@ def get_screen(request: Request, slug: str) -> JSONResponse:
         "holidays": load_holidays(),
         "announcements": load_announcements(),
         "school_news": load_school_news(),
-        "rss_news": load_rss_news(),
         "marquee": load_marquee_items(),
         "rss_news": load_rss_news(config),
         "background_gallery": list_background_images_from_uploads(screen.get("background_rotate_folder")),

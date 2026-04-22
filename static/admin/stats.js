@@ -179,45 +179,52 @@ function renderFeedback(items, root) {
 
 async function fetchAndRender() {
   const root = document.getElementById("stats-panel-body");
-  const feedbackRoot = document.getElementById("feedback-admin-body");
   if (!root) return;
   try {
-    const [data, feedback] = await Promise.all([
-      api("/api/admin/screen-watch"),
-      api("/api/admin/feedback"),
-    ]);
+    const data = await api("/api/admin/screen-watch");
     renderWatch(data, root);
-    if (feedbackRoot) renderFeedback(feedback.items || [], feedbackRoot);
   } catch (e) {
     root.innerHTML = `<p class="hint">${escapeHtml(String(e.message || e))}</p>`;
-    if (feedbackRoot) feedbackRoot.innerHTML = `<p class="hint">${escapeHtml(String(e.message || e))}</p>`;
   }
+}
+
+export async function refreshFeedbackAdminPanel() {
+  const feedbackRoot = document.getElementById("feedback-admin-body");
+  if (!feedbackRoot) return;
+  try {
+    const feedback = await api("/api/admin/feedback");
+    renderFeedback(feedback.items || [], feedbackRoot);
+  } catch (e) {
+    feedbackRoot.innerHTML = `<p class="hint">${escapeHtml(String(e.message || e))}</p>`;
+  }
+}
+
+export function bindFeedbackAdminPanelOnce() {
+  const feedbackRoot = document.getElementById("feedback-admin-body");
+  if (!feedbackRoot || feedbackRoot.dataset.feedbackBound) return;
+  feedbackRoot.dataset.feedbackBound = "1";
+  feedbackRoot.addEventListener("click", async (ev) => {
+    const btn = ev.target && ev.target.closest ? ev.target.closest("[data-fb-act]") : null;
+    if (!btn) return;
+    const item = btn.closest("[data-feedback-id]");
+    if (!item) return;
+    const id = Number(item.getAttribute("data-feedback-id"));
+    const hash = String(item.getAttribute("data-feedback-hash") || "");
+    const act = String(btn.getAttribute("data-fb-act") || "");
+    try {
+      if (act === "read") await api(`/api/admin/feedback/${id}/read`, { method: "POST" });
+      else if (act === "hide") await api(`/api/admin/feedback/${id}/hide`, { method: "POST" });
+      else if (act === "block") await api("/api/admin/feedback/block-hash", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ device_hash: hash }) });
+      await refreshFeedbackAdminPanel();
+    } catch (e) {
+      window.alert(String(e.message || e));
+    }
+  });
 }
 
 export function enterStatsPanel() {
   if (statsInterval) window.clearInterval(statsInterval);
   fetchAndRender();
-  const feedbackRoot = document.getElementById("feedback-admin-body");
-  if (feedbackRoot && !feedbackRoot.dataset.feedbackBound) {
-    feedbackRoot.dataset.feedbackBound = "1";
-    feedbackRoot.addEventListener("click", async (ev) => {
-      const btn = ev.target && ev.target.closest ? ev.target.closest("[data-fb-act]") : null;
-      if (!btn) return;
-      const item = btn.closest("[data-feedback-id]");
-      if (!item) return;
-      const id = Number(item.getAttribute("data-feedback-id"));
-      const hash = String(item.getAttribute("data-feedback-hash") || "");
-      const act = String(btn.getAttribute("data-fb-act") || "");
-      try {
-        if (act === "read") await api(`/api/admin/feedback/${id}/read`, { method: "POST" });
-        else if (act === "hide") await api(`/api/admin/feedback/${id}/hide`, { method: "POST" });
-        else if (act === "block") await api("/api/admin/feedback/block-hash", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ device_hash: hash }) });
-        await fetchAndRender();
-      } catch (e) {
-        window.alert(String(e.message || e));
-      }
-    });
-  }
   statsInterval = window.setInterval(fetchAndRender, 3000);
 }
 

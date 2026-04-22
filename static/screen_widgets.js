@@ -80,11 +80,10 @@
       events: "События",
       announcements: "Объявления",
       schoolNews: "Новости школы",
-      rssNews: "Мировые новости",
+      rssNews: "RSS-лента",
       noAnnouncements: "Нет объявлений",
       noSchoolNews: "Нет новостей",
       qr: "QR на новость",
-      rssNews: "Мировые новости",
       noRssNews: "Нет новостей",
       scheduleDefault: "Расписание",
       nextSchoolDay: "Следующий учебный день:",
@@ -102,11 +101,10 @@
       events: "Events",
       announcements: "Announcements",
       schoolNews: "School news",
-      rssNews: "World news",
+      rssNews: "RSS feed",
       noAnnouncements: "No announcements",
       noSchoolNews: "No news",
       qr: "QR to article",
-      rssNews: "World News",
       noRssNews: "No news",
       scheduleDefault: "Schedule",
       nextSchoolDay: "Next school day:",
@@ -614,31 +612,6 @@
       <div style="font-size:${settings.fontSize || 16}px;line-height:1.3;">${summary || L.noSchoolNews}</div>
       ${url ? `<div style="margin-top:8px;font-size:12px;opacity:.9;"><a href="${escapeHtmlAttr(url)}" style="color:${settings.color}" target="_blank" rel="noopener">Источник</a></div>` : ""}
     </article>`;
-  function buildRssNews(settings, rssNewsData = []) {
-    const L = tvUiStrings();
-    const rows = Array.isArray(rssNewsData) ? rssNewsData.slice(0, 5) : [];
-    const header = `<div style="font-size:${settings.titleFontSize || 18}px;${settings.bold ? "font-weight:700;" : ""}">${L.rssNews}</div>`;
-    if (!rows.length) {
-      return `<div class="info-widget-box" style="background:${settings.background};color:${settings.color};">${header}<div style="font-size:${settings.fontSize || 16}px;">${L.noRssNews}</div></div>`;
-    }
-    const body = rows
-      .map((item) => {
-        const title = escapeHtml(String(item?.title || ""));
-        const source = escapeHtml(String(item?.source || ""));
-        const link = String(item?.link || "").trim();
-        const qrSrc = link
-          ? `https://api.qrserver.com/v1/create-qr-code/?size=96x96&data=${encodeURIComponent(link)}`
-          : "";
-        return `<div class="rss-news-item" style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;margin-top:8px;">
-          <div>
-            <div>${title || "&nbsp;"}</div>
-            <div class="widget-meta">${source || "&nbsp;"}</div>
-          </div>
-          ${qrSrc ? `<a href="${escapeHtmlAttr(link)}" target="_blank" rel="noopener noreferrer"><img src="${escapeHtmlAttr(qrSrc)}" alt="QR" width="64" height="64" loading="lazy"></a>` : ""}
-        </div>`;
-      })
-      .join("");
-    return `<div class="info-widget-box" style="background:${settings.background};color:${settings.color};font-size:${settings.fontSize || 16}px;${settings.bold ? "font-weight:700;" : ""}">${header}${body}</div>`;
   }
 
   function widgetIdsHiddenByCarousel(screen) {
@@ -909,7 +882,6 @@
           d.marquee,
           d.schoolNews,
           d.rssNews,
-          d.rss_news || [],
           { mode: "carousel_show" }
         );
       } catch (_) {}
