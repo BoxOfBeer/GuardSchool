@@ -2743,12 +2743,20 @@ async def _tenant_middleware(request: Request, call_next):
     if deployment_mode() == "saas":
         host = _request_host_for_routing(request)
         slug: str | None = None
-        if _is_public_school_host(host):
-            cook_raw = request.cookies.get(SAAS_TENANT_COOKIE) or ""
-            cook = _decode_saas_tenant_cookie_value(cook_raw)
-            if cook and 1 <= len(cook) <= 64 and cook not in ("www", "admin"):
-                slug = cook
-        elif host.endswith(".guarddoc.ru"):
+        # 1) Если cookie gs_saas_tenant уже есть — используем её для tenant routing,
+        # даже при доступе по IP/локальному хосту (на ТВ часто открывают прямой адрес).
+        cook_raw = request.cookies.get(SAAS_TENANT_COOKIE) or ""
+        cook = _decode_saas_tenant_cookie_value(cook_raw)
+        if cook and 1 <= len(cook) <= 64 and cook not in ("www", "admin"):
+            slug = cook
+        # 2) Если cookie нет, на публичном school.* тоже смотрим cookie (исторически).
+        if not slug and _is_public_school_host(host):
+            cook2_raw = request.cookies.get(SAAS_TENANT_COOKIE) or ""
+            cook2 = _decode_saas_tenant_cookie_value(cook2_raw)
+            if cook2 and 1 <= len(cook2) <= 64 and cook2 not in ("www", "admin"):
+                slug = cook2
+        # 3) Если cookie нет — subdomain tenant.
+        if not slug and host.endswith(".guarddoc.ru"):
             left = host[: -len(".guarddoc.ru")]
             if left and left not in ("www", "admin"):
                 slug = left
