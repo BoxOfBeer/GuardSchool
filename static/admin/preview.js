@@ -201,7 +201,7 @@ export function renderPreview() {
     return;
   }
 
-  const { schedule, holidays, announcements, marquee, background_gallery: previewGallery, pc_audio_preview: soundDiag } = state.previewCache;
+  const { schedule, holidays, announcements, marquee, school_news, background_gallery: previewGallery, pc_audio_preview: soundDiag } = state.previewCache;
   if (elements.previewSoundDiag) {
     const diagLines = formatPreviewPcAudioLines(soundDiag);
     if (diagLines.length) {
@@ -263,9 +263,9 @@ export function renderPreview() {
       const childWidgets = G.orderedCarouselChildWidgets
         ? G.orderedCarouselChildWidgets(screen, widget)
         : screen.widgets.filter((w) => (widget.settings.childWidgetIds || []).includes(w.id));
-      G.startCarousel(item, widget, childWidgets, schedule, screen, holidays, announcements || [], marquee || []);
+      G.startCarousel(item, widget, childWidgets, schedule, screen, holidays, announcements || [], marquee || [], school_news || []);
     } else {
-      item.innerHTML = G.renderWidgetHtml(widget, schedule, screen, holidays, announcements || [], marquee || []);
+      item.innerHTML = G.renderWidgetHtml(widget, schedule, screen, holidays, announcements || [], marquee || [], school_news || []);
     }
     if (G.applyWidgetBackdropClass) G.applyWidgetBackdropClass(item, widget);
     if (widget.type !== "emergency") item.onpointerdown = (event) => startDrag(event, index);
@@ -297,6 +297,7 @@ export function renderPreview() {
     holidays,
     announcements,
     marquee,
+    school_news,
     display,
     background_gallery: previewGallery,
   };

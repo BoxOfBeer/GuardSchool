@@ -1001,7 +1001,7 @@ function render(screenPayload) {
 
   const GRef = window.GuardSchoolScreen;
   if (!GRef) return;
-  const { screen, schedule, holidays, announcements, marquee } = screenPayload;
+  const { screen, schedule, holidays, announcements, marquee, school_news: schoolNews } = screenPayload;
   const root = document.getElementById("screen-root");
   if (!root) return;
   const menuMode = gsQueryParams(window.location.search || "").get("gs_menu") === "1";
@@ -1065,7 +1065,7 @@ function render(screenPayload) {
       item.className = "screen-widget";
       item.dataset.widgetId = String(widget.id);
       item.dataset.widgetType = String(widget.type);
-      item.innerHTML = GRef.renderWidgetHtml(widget, schedule, screen, holidays, announcements || [], marquee || []);
+      item.innerHTML = GRef.renderWidgetHtml(widget, schedule, screen, holidays, announcements || [], marquee || [], schoolNews || []);
       if (GRef.applyWidgetBackdropClass) GRef.applyWidgetBackdropClass(item, widget);
       list.appendChild(item);
     });
@@ -1132,9 +1132,9 @@ function render(screenPayload) {
           const childWidgets = GRef.orderedCarouselChildWidgets
             ? GRef.orderedCarouselChildWidgets(screen, widget)
             : (screen.widgets || []).filter((it) => (widget.settings.childWidgetIds || []).includes(it.id));
-          GRef.startCarousel(item, widget, childWidgets, schedule, screen, holidays, announcements || [], marquee || []);
+          GRef.startCarousel(item, widget, childWidgets, schedule, screen, holidays, announcements || [], marquee || [], schoolNews || []);
         } else {
-          item.innerHTML = GRef.renderWidgetHtml(widget, schedule, screen, holidays, announcements || [], marquee || []);
+          item.innerHTML = GRef.renderWidgetHtml(widget, schedule, screen, holidays, announcements || [], marquee || [], schoolNews || []);
         }
         if (GRef.applyWidgetBackdropClass) GRef.applyWidgetBackdropClass(item, widget);
         list.appendChild(item);
@@ -1207,15 +1207,15 @@ function render(screenPayload) {
 
       if (widget.type === "text") {
         block.style.background = widget.settings.background;
-        block.innerHTML = GRef.renderWidgetHtml(widget, schedule, screen, holidays, announcements || [], marquee || []);
+        block.innerHTML = GRef.renderWidgetHtml(widget, schedule, screen, holidays, announcements || [], marquee || [], schoolNews || []);
       } else if (widget.type === "carousel") {
         block.classList.add("carousel-widget");
         const childWidgets = GRef.orderedCarouselChildWidgets
           ? GRef.orderedCarouselChildWidgets(screen, widget)
           : (screen.widgets || []).filter((item) => (widget.settings.childWidgetIds || []).includes(item.id));
-        GRef.startCarousel(block, widget, childWidgets, schedule, screen, holidays, announcements || [], marquee || []);
+        GRef.startCarousel(block, widget, childWidgets, schedule, screen, holidays, announcements || [], marquee || [], schoolNews || []);
       } else {
-        block.innerHTML = GRef.renderWidgetHtml(widget, schedule, screen, holidays, announcements || [], marquee || []);
+        block.innerHTML = GRef.renderWidgetHtml(widget, schedule, screen, holidays, announcements || [], marquee || [], schoolNews || []);
       }
 
       if (GRef.applyWidgetBackdropClass) GRef.applyWidgetBackdropClass(block, widget);
@@ -1238,7 +1238,7 @@ function render(screenPayload) {
       if (widget.type === "text") {
         el.style.background = widget.settings.background;
       }
-      el.innerHTML = GRef.renderWidgetHtml(widget, schedule, screen, holidays, announcements || [], marquee || []);
+      el.innerHTML = GRef.renderWidgetHtml(widget, schedule, screen, holidays, announcements || [], marquee || [], schoolNews || []);
       if (GRef.applyWidgetBackdropClass) GRef.applyWidgetBackdropClass(el, widget);
       else if (widget.settings && widget.settings.backdrop === false) el.classList.add("no-backdrop");
       else el.classList.remove("no-backdrop");

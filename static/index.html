@@ -215,6 +215,24 @@
           </section>
 
           <section class="admin-subpanel schedule-subpanel-zip" aria-labelledby="schedule-zip-title">
+            <h3 class="admin-subpanel-title">Новости школы</h3>
+            <p class="hint admin-subpanel-lead">Публикации для виджета «Новости школы»: достижения, мероприятия, олимпиады, объявления администрации.</p>
+            <div class="override-form-grid">
+              <input id="school-news-id" type="hidden">
+              <label class="override-field override-field-wide"><span class="override-field-label">Заголовок</span><input id="school-news-title" class="standard-input" type="text" placeholder="Название новости"></label>
+              <label class="override-field"><span class="override-field-label">Дата</span><input id="school-news-date" class="standard-input" type="date"></label>
+              <label class="override-field"><span class="override-field-label">Обложка (URL из /uploads/...)</span><input id="school-news-cover" class="standard-input" type="text" placeholder="/uploads/..."></label>
+              <label class="override-field toggle-label"><input id="school-news-active" type="checkbox" checked><span>Активна</span></label>
+              <label class="override-field override-field-wide"><span class="override-field-label">Текст (HTML, TinyMCE можно подключить позже)</span><textarea id="school-news-content" class="standard-input wide-input" rows="6" placeholder="Текст новости"></textarea></label>
+              <div class="override-form-actions">
+                <button id="school-news-save-btn" type="button" class="primary-btn">Сохранить новость</button>
+                <button id="school-news-reset-btn" type="button" class="secondary-btn">Очистить форму</button>
+              </div>
+            </div>
+            <div id="school-news-list" class="override-list"></div>
+          </section>
+
+          <section class="admin-subpanel schedule-subpanel-zip" aria-labelledby="schedule-zip-title">
             <h3 id="schedule-zip-title" class="admin-subpanel-title" data-i18n="schedule.zipTitle">Архив недели (ZIP)</h3>
             <div class="lesson-weekly-actions">
               <button id="weekly-schedule-export-btn" type="button" class="secondary-btn" data-i18n="schedule.zipExport">Экспорт недели (ZIP)</button>

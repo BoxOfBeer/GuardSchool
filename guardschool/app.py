@@ -106,6 +106,7 @@ from .gs_paths import (
     IMPORT_DIR,
     MARQUEE_PATH,
     OVERRIDES_PATH,
+    SCHOOL_NEWS_PATH,
     SCHEDULE_PATH,
     SCHEDULE_SAMPLE_PATH,
     SAAS_TENANT_COOKIE,
@@ -143,6 +144,7 @@ SINGLETON_WIDGET_IDS = {
     "schedule": "schedule",
     "holidays": "holidays",
     "announcements": "announcements",
+    "school_news": "school_news",
     "marquee": "marquee",
     "emergency": "emergency",
     "image": "image",
@@ -160,6 +162,7 @@ ADMIN_PALETTE_WIDGET_TYPES = frozenset(
         "carousel",
         "holidays",
         "announcements",
+        "school_news",
         "marquee",
         "emergency",
         "image",
@@ -402,6 +405,24 @@ def default_screen(name: str, slug: str) -> dict[str, Any]:
                     "background": "rgba(15,23,42,0.7)",
                     "charsPerMin": 180,
                     "speedSec": 18,
+                    "bold": False,
+                },
+            },
+            {
+                "id": "school_news",
+                "type": "school_news",
+                "title": "Новости школы",
+                "enabled": False,
+                "x": 0,
+                "y": 13,
+                "w": 16,
+                "h": 11,
+                "settings": {
+                    "fontSize": 18,
+                    "titleFontSize": 22,
+                    "color": "#ffffff",
+                    "background": "rgba(15,23,42,0.55)",
+                    "rotateSec": 12,
                     "bold": False,
                 },
             },
@@ -1205,12 +1226,12 @@ def normalize_widget(widget: dict[str, Any]) -> dict[str, Any]:
         widget["settings"].setdefault("fontSize", 24)
         widget["settings"].setdefault("color", "#ffffff")
         widget["settings"].setdefault("bold", False)
-    if widget["type"] in {"holidays", "announcements", "marquee"}:
+    if widget["type"] in {"holidays", "announcements", "marquee", "school_news"}:
         widget["settings"].setdefault("fontSize", 18)
         widget["settings"].setdefault("color", "#ffffff")
         widget["settings"].setdefault("background", "rgba(15,23,42,0.55)")
         widget["settings"].setdefault("bold", False)
-    if widget["type"] in {"holidays", "announcements"}:
+    if widget["type"] in {"holidays", "announcements", "school_news"}:
         widget["settings"].setdefault("titleFontSize", 18)
     if widget["type"] == "text":
         widget["settings"].setdefault("background", "rgba(0,0,0,0.35)")
@@ -1223,6 +1244,8 @@ def normalize_widget(widget: dict[str, Any]) -> dict[str, Any]:
         widget["settings"].setdefault("items", "")
         widget["settings"].setdefault("useManual", False)
         widget["settings"].setdefault("speedSec", 18)
+    if widget["type"] == "school_news":
+        widget["settings"].setdefault("rotateSec", 12)
     if widget["type"] == "holidays":
         widget["settings"].setdefault("count", 5)
     if widget["type"] in {"bell_status", "bell_countdown"}:
@@ -1626,6 +1649,54 @@ def load_holidays() -> list[dict[str, Any]]:
 def load_announcements() -> list[dict[str, Any]]:
     maybe_import_announcements_from_folder()
     return read_json(ANNOUNCEMENTS_PATH, [])
+
+
+def _school_news_text_preview(raw_html: str, limit: int = 220) -> str:
+    text = re.sub(r"<[^>]+>", " ", str(raw_html or ""))
+    text = re.sub(r"\s+", " ", text).strip()
+    if len(text) <= limit:
+        return text
+    return text[:limit].rstrip() + "…"
+
+
+def sanitize_school_news_item(item: dict[str, Any], fallback_id: str = "") -> dict[str, Any]:
+    nid = str(item.get("id") or fallback_id or secrets.token_hex(6)).strip()[:64]
+    tenant = ""
+    try:
+        from .tenant_ctx import tenant_slug as _tenant_slug
+
+        tenant = str(_tenant_slug() or "").strip()[:64]
+    except Exception:
+        tenant = ""
+    title = str(item.get("title") or "").strip()[:200]
+    content = str(item.get("content") or "").strip()[:50000]
+    cover = str(item.get("cover_image") or "").strip()[:500]
+    if cover and not cover.startswith("/uploads/"):
+        cover = ""
+    created = schedule_date_iso(item.get("created_at")) or date.today().isoformat()
+    active = bool(item.get("is_active", True))
+    out = {
+        "id": nid,
+        "tenant_id": tenant or str(item.get("tenant_id") or "").strip()[:64],
+        "title": title,
+        "content": content,
+        "cover_image": cover,
+        "created_at": created,
+        "is_active": active,
+    }
+    out["summary"] = _school_news_text_preview(content)
+    return out
+
+
+def load_school_news() -> list[dict[str, Any]]:
+    raw = read_json(SCHOOL_NEWS_PATH, [])
+    out: list[dict[str, Any]] = []
+    if isinstance(raw, list):
+        for idx, item in enumerate(raw):
+            if isinstance(item, dict):
+                out.append(sanitize_school_news_item(item, fallback_id=f"news_{idx + 1}"))
+    out.sort(key=lambda x: (str(x.get("created_at") or ""), str(x.get("id") or "")), reverse=True)
+    return out
 
 
 def load_marquee_items() -> list[str]:
@@ -2877,6 +2948,7 @@ def _ensure_try_demo_sandbox_tenant_data() -> None:
             write_json(SCHEDULE_SAMPLE_PATH, [])
             write_json(HOLIDAYS_PATH, [])
             write_json(ANNOUNCEMENTS_PATH, [])
+            write_json(SCHOOL_NEWS_PATH, [])
             write_json(MARQUEE_PATH, [])
             write_json(OVERRIDES_PATH, [])
             write_json(BELL_SCHEDULES_PATH, default_bell_schedules())
@@ -4470,6 +4542,7 @@ async def get_schedule_snapshot(request: Request) -> dict[str, Any]:
         "schedule": schedule_rows,
         "holidays": load_holidays(),
         "announcements": load_announcements(),
+        "school_news": load_school_news()[:20],
         "marquee": load_marquee_items(),
         "overrides": load_overrides(),
         "bells": load_bell_schedules(),
@@ -4496,6 +4569,77 @@ async def get_schedule_snapshot(request: Request) -> dict[str, Any]:
 def get_change_history(request: Request) -> dict[str, Any]:
     require_auth(request)
     return {"history": load_change_log(), "app_version": APP_VERSION}
+
+
+@app.get("/api/admin/school-news")
+def get_admin_school_news(request: Request) -> dict[str, Any]:
+    require_auth(request)
+    return {"items": load_school_news()}
+
+
+@app.post("/api/admin/school-news")
+async def save_admin_school_news(request: Request, payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    require_auth(request)
+    rows = load_school_news()
+    nid = str(payload.get("id") or "").strip()
+    item = sanitize_school_news_item(payload, fallback_id=nid or secrets.token_hex(6))
+    replaced = False
+    if nid:
+        for i, row in enumerate(rows):
+            if str(row.get("id") or "") == nid:
+                rows[i] = item
+                replaced = True
+                break
+    if not replaced:
+        rows.append(item)
+    rows.sort(key=lambda x: (str(x.get("created_at") or ""), str(x.get("id") or "")), reverse=True)
+    write_json(SCHOOL_NEWS_PATH, rows)
+    return {"status": "ok", "item": item, "items": rows}
+
+
+@app.delete("/api/admin/school-news/{news_id}")
+def delete_admin_school_news(request: Request, news_id: str) -> dict[str, Any]:
+    require_auth(request)
+    nid = str(news_id or "").strip()
+    if not nid:
+        raise HTTPException(status_code=400, detail="Не указан id новости.")
+    rows = [item for item in load_school_news() if str(item.get("id") or "") != nid]
+    write_json(SCHOOL_NEWS_PATH, rows)
+    return {"status": "ok", "items": rows}
+
+
+@app.get("/api/school-news")
+def get_public_school_news(limit: int = Query(default=3, ge=1, le=30)) -> dict[str, Any]:
+    rows = [item for item in load_school_news() if item.get("is_active", True)]
+    return {"items": rows[:limit]}
+
+
+@app.get("/api/school-news/{news_id}")
+def get_public_school_news_item(news_id: str) -> dict[str, Any]:
+    nid = str(news_id or "").strip()
+    row = next((item for item in load_school_news() if str(item.get("id") or "") == nid), None)
+    if not row:
+        raise HTTPException(status_code=404, detail="Новость не найдена.")
+    return {"item": row}
+
+
+@app.get("/school-news/{news_id}", response_class=HTMLResponse)
+def school_news_page(news_id: str) -> HTMLResponse:
+    nid = str(news_id or "").strip()
+    row = next((item for item in load_school_news() if str(item.get("id") or "") == nid and item.get("is_active", True)), None)
+    if not row:
+        return HTMLResponse("<h1>Новость не найдена</h1>", status_code=404)
+    title = html.escape(str(row.get("title") or "Новость школы"))
+    content = str(row.get("content") or "")
+    cover = str(row.get("cover_image") or "").strip()
+    cover_html = f'<img src="{html.escape(cover)}" alt="" style="max-width:100%;border-radius:14px;margin:0 0 16px;">' if cover else ""
+    dt = html.escape(str(row.get("created_at") or ""))
+    body = (
+        "<!doctype html><html lang=\"ru\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+        f"<title>{title}</title><style>body{{margin:0;background:#0b1220;color:#e2e8f0;font:16px/1.5 Arial,sans-serif}}main{{max-width:900px;margin:0 auto;padding:20px}}h1{{margin:0 0 8px}}.meta{{opacity:.8;margin:0 0 12px}}</style></head>"
+        f"<body><main><h1>{title}</h1><p class=\"meta\">{dt}</p>{cover_html}<article>{content}</article></main></body></html>"
+    )
+    return HTMLResponse(body)
 
 
 @app.post("/api/admin/overrides")
@@ -4657,6 +4801,7 @@ def post_preview_payload(request: Request, payload: dict[str, Any] = Body(...)) 
         "schedule": build_schedule_payload(screen, today, cfg),
         "holidays": load_holidays(),
         "announcements": load_announcements(),
+        "school_news": load_school_news()[:20],
         "marquee": load_marquee_items(),
         "background_gallery": list_background_images_from_uploads(screen.get("background_rotate_folder")),
         "bell_audio": build_bell_audio_payload(
@@ -4752,6 +4897,7 @@ def get_screen(request: Request, slug: str) -> JSONResponse:
         "schedule": sched_body,
         "holidays": load_holidays(),
         "announcements": load_announcements(),
+        "school_news": load_school_news(),
         "marquee": load_marquee_items(),
         "background_gallery": list_background_images_from_uploads(screen.get("background_rotate_folder")),
         "bell_audio": build_bell_audio_payload(
