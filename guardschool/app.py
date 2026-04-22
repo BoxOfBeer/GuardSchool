@@ -4085,6 +4085,13 @@ def screen_page(request: Request, slug: str) -> HTMLResponse:
     """
     if deployment_mode() == "saas" and saas_db_enabled():
         try:
+            # Явный tenant в URL (на случай, если ТВ открывает экран без device-token / без доступа к БД).
+            explicit_tenant = str(request.query_params.get("gs_tenant") or "").strip().lower()
+            if explicit_tenant and _saas_tenant_slug_cookie_ok(explicit_tenant):
+                from .tenant_ctx import set_tenant_slug
+
+                set_tenant_slug(explicit_tenant)
+
             tok = str(request.query_params.get("gs_tv_token") or "").strip()
             scr = _normalize_screen_slug_for_api(slug) or str(slug or "").strip().lower()
             if tok and scr:
