@@ -4132,7 +4132,9 @@ def screen_page(request: Request, slug: str) -> HTMLResponse:
 
             ts2 = str(_tenant_slug() or "").strip()
             if ts2 and _saas_tenant_slug_cookie_ok(ts2):
-                sec = session_cookie_secure(request)
+                # Для TV/браузеров на устройствах чаще открывают screen по http внутри сети.
+                # Secure-cookie в таком случае не сохраняется, и /uploads снова "теряет" tenant.
+                sec = (getattr(request.url, "scheme", "") == "https")
                 resp.set_cookie(
                     SAAS_TENANT_COOKIE,
                     ts2,
