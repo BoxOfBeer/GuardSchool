@@ -2746,7 +2746,7 @@ async def _tenant_middleware(request: Request, call_next):
         if _is_public_school_host(host):
             cook_raw = request.cookies.get(SAAS_TENANT_COOKIE) or ""
             cook = _decode_saas_tenant_cookie_value(cook_raw)
-            if cook and _saas_tenant_slug_cookie_ok(cook):
+            if cook and 1 <= len(cook) <= 64 and cook not in ("www", "admin"):
                 slug = cook
         elif host.endswith(".guarddoc.ru"):
             left = host[: -len(".guarddoc.ru")]
