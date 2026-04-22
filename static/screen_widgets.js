@@ -580,25 +580,17 @@
     const cover = String(item.cover_image || "").trim();
     const created = String(item.created_at || "").trim();
     const createdLabel = created ? formatDateLabel(created) : "";
-    const base = global.location?.origin || "";
-    const path = `/school-news/${encodeURIComponent(String(item.id || ""))}`;
-    const fullUrl = `${base}${path}`;
-    const qr = `https://api.qrserver.com/v1/create-qr-code/?size=128x128&data=${encodeURIComponent(fullUrl)}`;
-    const screenSlug = screen && screen.slug ? `?from_screen=${encodeURIComponent(String(screen.slug))}` : "";
-    return `<article style="background:${settings.background};color:${settings.color};padding:10px;border-radius:10px;height:100%;display:grid;grid-template-columns:1fr auto;gap:8px;overflow:hidden;">
-      <div style="min-width:0;">
-        <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:6px;">
-          <div style="font-size:${settings.titleFontSize || 20}px;${settings.bold ? "font-weight:700;" : ""};min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${title || L.schoolNews}</div>
-          <div style="font-size:12px;opacity:.85;white-space:nowrap;">${createdLabel}</div>
-        </div>
-        ${cover ? `<img src="${escapeHtmlAttr(cover)}" alt="${title}" style="width:100%;max-height:130px;object-fit:cover;border-radius:8px;margin-bottom:8px;">` : ""}
-        <div style="font-size:${settings.fontSize || 18}px;line-height:1.3;">${summary || L.noSchoolNews}</div>
-        <div style="margin-top:6px;font-size:12px;opacity:.85;">${idx + 1}/${rows.length}</div>
+    // Для школьных новостей: без QR, без обрезки картинки, без ограничения длины текста.
+    // Картинка слева (~20% ширины), текст «обтекает».
+    return `<article style="background:${settings.background};color:${settings.color};padding:10px;border-radius:10px;height:100%;overflow:auto;">
+      <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:8px;">
+        <div style="font-size:${settings.titleFontSize || 20}px;${settings.bold ? "font-weight:700;" : ""};white-space:normal;overflow:visible;">${title || L.schoolNews}</div>
+        <div style="font-size:12px;opacity:.85;white-space:nowrap;flex:0 0 auto;">${createdLabel}</div>
       </div>
-      <div style="display:flex;flex-direction:column;align-items:center;gap:6px;">
-        <a href="${escapeHtmlAttr(path + screenSlug)}" style="color:${settings.color};font-size:12px;text-decoration:none">${L.qr}</a>
-        <img src="${escapeHtmlAttr(qr)}" alt="QR" style="width:90px;height:90px;border-radius:8px;background:#fff;padding:4px;">
-      </div>
+      ${cover ? `<img src="${escapeHtmlAttr(cover)}" alt="${title}" style="float:left;width:20%;max-width:180px;margin:0 10px 6px 0;border-radius:8px;object-fit:contain;height:auto;max-height:none;">` : ""}
+      <div style="font-size:${settings.fontSize || 18}px;line-height:1.35;white-space:normal;overflow:visible;">${summary || L.noSchoolNews}</div>
+      <div style="clear:both;"></div>
+      <div style="margin-top:6px;font-size:12px;opacity:.85;">${idx + 1}/${rows.length}</div>
     </article>`;
   }
 
