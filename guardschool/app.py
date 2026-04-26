@@ -2638,6 +2638,10 @@ def build_schedule_payload(
         else date.fromordinal(target_date.toordinal() + 1)
     )
 
+    # Показывать «следующий учебный день»:
+    # - после завершения последнего интервала (обычное поведение),
+    # - а также когда на "сегодня" нет строк расписания, но на следующий учебный день они есть
+    #   (выходные/каникулы/пустой день — иначе ТВ показывает только «Нет данных»).
     show_next_day = tomorrow_schedule_visible(bell_status)
 
     def _collect(day: date, sel: list[str]) -> list[dict[str, Any]]:
@@ -2662,6 +2666,8 @@ def build_schedule_payload(
             sel_use = []
             today_rows = t_all_today
             tomorrow_rows = t_all_tomorrow
+    if not show_next_day and not today_rows and tomorrow_rows:
+        show_next_day = True
     max_lesson_index_today = max_lesson_index_from_enriched_rows(today_rows)
 
     return {
