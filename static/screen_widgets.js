@@ -827,12 +827,14 @@
         : [];
       const hideTodayAsSchoolDayOver =
         schedule.bell_status?.state === "done" && bellEntries.length > 0;
-      const todayBlock = hideTodayAsSchoolDayOver
+      const hasTodayRows = Array.isArray(schedule.today_rows) && schedule.today_rows.length > 0;
+      const hasTomorrowRows = Array.isArray(schedule.tomorrow_rows) && schedule.tomorrow_rows.length > 0;
+      const todayBlock = hideTodayAsSchoolDayOver || !hasTodayRows
         ? ""
         : buildScheduleTable(schedule.today_rows, title, ws);
       const showTomorrowBlock = ws.showTomorrow !== false
         && schedule.tomorrow_schedule_visible !== false;
-      const tomorrowBlock = showTomorrowBlock
+      const tomorrowBlock = showTomorrowBlock && hasTomorrowRows
         ? buildScheduleTable(schedule.tomorrow_rows, nextDayTitle, ws)
         : "";
       return `<div class="schedule-widget-content">${todayBlock}${tomorrowBlock}</div>`;
