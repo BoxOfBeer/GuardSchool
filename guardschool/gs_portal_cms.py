@@ -14,11 +14,23 @@ _MAX_URL = 2048
 _MAX_APPS = 16
 _MAX_BULLETS = 24
 _MAX_ACTIONS = 8
+_MAX_SHELL_NAV = 16
+
+# Корень школьного хоста редиректит на /setup, если нет auth.json — в ссылках используем /login.
+_SCHOOL_HOST_ROOT_RE = re.compile(r"^https?://school\.guarddoc\.ru/?$", re.I)
 
 
 def _clip(s: str, n: int = _MAX_STR) -> str:
     t = str(s or "").strip()
     return t if len(t) <= n else t[:n]
+
+
+def normalize_guardschool_entry_url(url: str | None) -> str:
+    """school.guarddoc.ru/ → …/login (избегаем редиректа на /setup у анонимного корня)."""
+    u = str(url or "").strip()
+    if _SCHOOL_HOST_ROOT_RE.match(u):
+        return "https://school.guarddoc.ru/login"
+    return u
 
 
 def _safe_href(raw: str | None) -> str:
@@ -45,22 +57,33 @@ def default_portal_cms() -> dict[str, Any]:
             ),
             "portal_public_url": "https://guarddoc.ru",
         },
+        "shell": {
+            "nav_title": "GuardDoc",
+            "nav_subtitle": "Экосистема для школ",
+            "nav": [
+                {"label": "Обзор", "href": "#portal-main-top"},
+                {"label": "О платформе", "href": "#section-ecosystem"},
+                {"label": "Приложения", "href": "#section-apps"},
+                {"label": "Пробный доступ", "href": "#section-demo"},
+                {"label": "Регистрация школы", "href": "/register"},
+                {"label": "Вход в GuardSchool", "href": "https://school.guarddoc.ru/login", "external": True},
+            ],
+        },
         "hero": {
             "brand": "GuardDoc",
             "title": "Платформа для школ, а не один «монолит»",
             "lead": (
                 "Здесь собраны приложения одной экосистемы: GuardSchool уже доступен для экранов и "
                 "администрирования, GuardNotes и другие модули дополняют сценарии работы сотрудников. "
-                "Регистрируйте школу, запускайте демо или открывайте нужный сервис ниже."
+                "Регистрация — по кнопке ниже; вход в GuardSchool и пробная песочница — в меню слева."
             ),
             "primary_action": {
-                "label": "Открыть GuardSchool",
-                "href": "https://school.guarddoc.ru/",
+                "label": "Войти в GuardSchool",
+                "href": "https://school.guarddoc.ru/login",
                 "external": True,
             },
             "secondary_actions": [
                 {"label": "Регистрация школы", "href": "/register"},
-                {"label": "Демо-режим", "href": "/try-demo"},
             ],
         },
         "ecosystem": {
@@ -87,8 +110,8 @@ def default_portal_cms() -> dict[str, Any]:
                     "Основной продукт для электронных табло и админки контента. Работает в браузере: "
                     "настройка сетки экранов, экстренные шаблоны, импорт расписания."
                 ),
-                "url": "https://school.guarddoc.ru/",
-                "url_label": "Перейти",
+                "url": "https://school.guarddoc.ru/login",
+                "url_label": "Войти",
             },
             {
                 "id": "guardnotes",
@@ -118,24 +141,20 @@ def default_portal_cms() -> dict[str, Any]:
             },
         ],
         "demo": {
-            "heading": "Демо без регистрации",
+            "heading": "Пробная песочница",
             "intro": (
-                "Можно открыть изолированную копию с примером данных: вы посмотрите интерфейс GuardSchool, "
-                "не смешиваясь с реальными школами. Сессия ограничена по времени; для постоянной работы "
-                "оформите регистрацию и получите свой поддомен."
+                "Изолированная копия с примером данных: интерфейс GuardSchool без влияния на реальные школы. "
+                "Сессия ограничена по времени; для постоянной работы оформите регистрацию и получите свой поддомен."
             ),
             "bullets": [
                 "Отдельный временный тенант — ваши правки не затрагивают продакшн других клиентов.",
-                "После демо можно войти под своим логином администратора на школьном хосте.",
+                "После теста войдите под логином администратора на школьном хосте (раздел «Вход в GuardSchool»).",
             ],
-            "action": {"label": "Запустить демо", "href": "/try-demo"},
+            "action": {"label": "Открыть песочницу", "href": "/try-demo"},
         },
         "links_column": {
-            "heading": "Действия",
-            "items": [
-                {"label": "Регистрация школы", "href": "/register"},
-                {"label": "Страница демо (провайдер)", "href": "/demo-setup"},
-            ],
+            "heading": "Ещё",
+            "items": [],
         },
         "footer": {
             "note": (
@@ -162,15 +181,40 @@ def _merge_defaults(stored: dict[str, Any]) -> dict[str, Any]:
     return base
 
 
+def _normalize_merged_cms_urls(d: dict[str, Any]) -> None:
+    """Подмена устаревших ссылок school…/ → …/login после merge и при сохранении."""
+    hero = d.get("hero")
+    if isinstance(hero, dict):
+        pa = hero.get("primary_action")
+        if isinstance(pa, dict):
+            h = pa.get("href")
+            if isinstance(h, str) and h.strip():
+                pa["href"] = normalize_guardschool_entry_url(h)
+    for app in d.get("applications") or []:
+        if not isinstance(app, dict):
+            continue
+        if str(app.get("id", "")).strip().lower() != "guardschool":
+            continue
+        u = app.get("url")
+        if isinstance(u, str) and u.strip():
+            app["url"] = normalize_guardschool_entry_url(u)
+
+
 def load_portal_cms_merged() -> dict[str, Any]:
     path: Path = PORTAL_CMS_PATH
     if not path.is_file():
-        return deepcopy(default_portal_cms())
+        out = deepcopy(default_portal_cms())
+        _normalize_merged_cms_urls(out)
+        return out
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
-        return deepcopy(default_portal_cms())
-    return _merge_defaults(raw if isinstance(raw, dict) else {})
+        out = deepcopy(default_portal_cms())
+        _normalize_merged_cms_urls(out)
+        return out
+    merged = _merge_defaults(raw if isinstance(raw, dict) else {})
+    _normalize_merged_cms_urls(merged)
+    return merged
 
 
 def _sanitize_action(item: Any) -> dict[str, str | bool] | None:
@@ -297,7 +341,22 @@ def sanitize_portal_cms_payload(raw: Any) -> dict[str, Any]:
     if isinstance(foot, dict):
         out["footer"]["note"] = _clip(foot.get("note"))
 
+    shell = raw.get("shell")
+    if isinstance(shell, dict):
+        out["shell"]["nav_title"] = _clip(shell.get("nav_title"), 120)
+        out["shell"]["nav_subtitle"] = _clip(shell.get("nav_subtitle"), 200)
+        nav = shell.get("nav")
+        if isinstance(nav, list):
+            nv: list[dict[str, Any]] = []
+            for it in nav[:_MAX_SHELL_NAV]:
+                a = _sanitize_action(it)
+                if a:
+                    nv.append(a)
+            if nv:
+                out["shell"]["nav"] = nv
+
     out["version"] = 1
+    _normalize_merged_cms_urls(out)
     return out
 
 

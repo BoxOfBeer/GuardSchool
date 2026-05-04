@@ -1,5 +1,5 @@
 /**
- * Портал экосистемы GuardDoc: контент с /api/portal/cms (редактируется в /ADM → «Контент портала»).
+ * Портал GuardDoc: левый бар + контент из /api/portal/cms.
  */
 function esc(s) {
   return String(s ?? "")
@@ -13,14 +13,47 @@ function escAttr(s) {
   return esc(s).replace(/'/g, "&#39;");
 }
 
+function navLinkAttrs(href, external) {
+  const h = String(href || "");
+  const isHash = h.startsWith("#");
+  const ext = !!external && !isHash;
+  if (ext) {
+    return ' target="_blank" rel="noopener noreferrer"';
+  }
+  return "";
+}
+
+function renderShellNav(shell) {
+  const title = (shell && shell.nav_title) || "GuardDoc";
+  const sub = (shell && shell.nav_subtitle) || "";
+  const items = Array.isArray(shell && shell.nav) ? shell.nav : [];
+  const links = items
+    .filter((n) => n && n.label && n.href)
+    .map(
+      (n) =>
+        `<a class="portal-side-link" href="${escAttr(n.href)}"${navLinkAttrs(n.href, n.external)}>${esc(
+          n.label,
+        )}</a>`,
+    )
+    .join("");
+  return `<aside class="portal-sidebar" aria-label="Навигация по разделам">
+    <div class="portal-sidebar-brand">
+      <span class="portal-sidebar-title">${esc(title)}</span>
+      ${sub ? `<span class="portal-sidebar-sub">${esc(sub)}</span>` : ""}
+    </div>
+    <nav class="portal-sidebar-nav">${links}</nav>
+  </aside>`;
+}
+
 function renderActions(actions, primary) {
   const parts = [];
   if (primary && primary.label && primary.href) {
     const ext = primary.external ? '<span class="ext" aria-hidden="true">↗</span>' : "";
     parts.push(
-      `<a class="portal-eco-btn primary" href="${escAttr(primary.href)}" ${
-        primary.external ? 'target="_blank" rel="noopener noreferrer"' : ""
-      }>${esc(primary.label)}${ext}</a>`,
+      `<a class="portal-eco-btn primary" href="${escAttr(primary.href)}" ${navLinkAttrs(
+        primary.href,
+        primary.external,
+      )}>${esc(primary.label)}${ext}</a>`,
     );
   }
   if (Array.isArray(actions)) {
@@ -28,9 +61,9 @@ function renderActions(actions, primary) {
       if (!a || !a.label || !a.href) continue;
       const ext = a.external ? '<span class="ext" aria-hidden="true">↗</span>' : "";
       parts.push(
-        `<a class="portal-eco-btn" href="${escAttr(a.href)}" ${
-          a.external ? 'target="_blank" rel="noopener noreferrer"' : ""
-        }>${esc(a.label)}${ext}</a>`,
+        `<a class="portal-eco-btn" href="${escAttr(a.href)}" ${navLinkAttrs(a.href, a.external)}>${esc(
+          a.label,
+        )}${ext}</a>`,
       );
     }
   }
@@ -46,7 +79,7 @@ function renderAppCard(app) {
   const urlLabel = (app.url_label || "Открыть").trim();
   const link =
     url &&
-    `<a class="portal-eco-btn" href="${escAttr(url)}" target="_blank" rel="noopener noreferrer">${esc(
+    `<a class="portal-eco-btn" href="${escAttr(url)}"${navLinkAttrs(url, true)}>${esc(
       urlLabel,
     )}<span class="ext" aria-hidden="true"> ↗</span></a>`;
   return `<article class="portal-app-card">
@@ -57,7 +90,26 @@ function renderAppCard(app) {
   </article>`;
 }
 
+function renderLinksColumn(aside) {
+  const items = Array.isArray(aside && aside.items) ? aside.items : [];
+  const clean = items.filter((it) => it && it.label && it.href);
+  if (!clean.length) return "";
+  const list = clean
+    .map(
+      (it) =>
+        `<li><a href="${escAttr(it.href)}"${navLinkAttrs(it.href, /^https?:/i.test(it.href))}>${esc(
+          it.label,
+        )}</a></li>`,
+    )
+    .join("");
+  return `<div class="portal-eco-extras" role="complementary" aria-label="${esc(aside.heading || "Дополнительно")}">
+    <h3 class="portal-eco-extras-title">${esc(aside.heading || "")}</h3>
+    <ul class="portal-eco-extras-list">${list}</ul>
+  </div>`;
+}
+
 function render(cms) {
+  const shell = cms.shell || {};
   const meta = cms.meta || {};
   const hero = cms.hero || {};
   const eco = cms.ecosystem || {};
@@ -79,55 +131,45 @@ function render(cms) {
 
   const demoAction =
     demo.action && demo.action.label && demo.action.href
-      ? `<p style="margin:0"><a class="portal-eco-btn primary" href="${escAttr(demo.action.href)}">${esc(
+      ? `<p class="portal-eco-demo-cta"><a class="portal-eco-btn primary" href="${escAttr(demo.action.href)}">${esc(
           demo.action.label,
         )}</a></p>`
       : "";
 
-  const asideItems = Array.isArray(aside.items)
-    ? aside.items
-        .map(
-          (it) =>
-            `<li><a href="${escAttr(it.href)}">${esc(it.label)}</a></li>`,
-        )
-        .join("")
-    : "";
+  const extras = renderLinksColumn(aside);
 
   return `
-  <div class="portal-eco-wrap">
-    <header class="portal-eco-hero">
-      ${hero.brand ? `<p class="portal-eco-brand">${esc(hero.brand)}</p>` : ""}
-      <h1>${esc(hero.title || "")}</h1>
-      <p class="portal-eco-lead">${esc(hero.lead || "")}</p>
-      ${renderActions(hero.secondary_actions, hero.primary_action)}
-    </header>
+  <div class="portal-shell">
+    ${renderShellNav(shell)}
+    <div class="portal-main" id="portal-main-top">
+      <header class="portal-eco-hero">
+        ${hero.brand ? `<p class="portal-eco-brand">${esc(hero.brand)}</p>` : ""}
+        <h1>${esc(hero.title || "")}</h1>
+        <p class="portal-eco-lead">${esc(hero.lead || "")}</p>
+        ${renderActions(hero.secondary_actions, hero.primary_action)}
+      </header>
 
-    <section class="portal-eco-section" aria-labelledby="eco-heading">
-      <h2 id="eco-heading">${esc(eco.heading || "")}</h2>
-      ${paras}
-    </section>
+      ${extras}
 
-    <div class="portal-eco-split">
-      <div>
-        <section class="portal-eco-section" aria-labelledby="apps-heading">
-          <h2 id="apps-heading">Приложения экосистемы</h2>
-          <div class="portal-eco-apps">${apps}</div>
-        </section>
+      <section class="portal-eco-section" id="section-ecosystem" aria-labelledby="eco-heading">
+        <h2 id="eco-heading">${esc(eco.heading || "")}</h2>
+        ${paras}
+      </section>
 
-        <section class="portal-eco-section portal-eco-demo" aria-labelledby="demo-heading">
-          <h2 id="demo-heading">${esc(demo.heading || "")}</h2>
-          <p class="portal-eco-prose">${esc(demo.intro || "")}</p>
-          ${bullets}
-          ${demoAction}
-        </section>
-      </div>
-      <aside class="portal-eco-aside" aria-label="${esc(aside.heading || "Ссылки")}">
-        <h3>${esc(aside.heading || "")}</h3>
-        <ul>${asideItems}</ul>
-      </aside>
+      <section class="portal-eco-section" id="section-apps" aria-labelledby="apps-heading">
+        <h2 id="apps-heading">Приложения экосистемы</h2>
+        <div class="portal-eco-apps">${apps}</div>
+      </section>
+
+      <section class="portal-eco-section portal-eco-demo" id="section-demo" aria-labelledby="demo-heading">
+        <h2 id="demo-heading">${esc(demo.heading || "")}</h2>
+        <p class="portal-eco-prose">${esc(demo.intro || "")}</p>
+        ${bullets}
+        ${demoAction}
+      </section>
+
+      <footer class="portal-eco-foot">${esc(foot.note || "")}</footer>
     </div>
-
-    <footer class="portal-eco-foot">${esc(foot.note || "")}</footer>
   </div>`;
 }
 
