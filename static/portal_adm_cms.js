@@ -161,129 +161,40 @@ function renderAppRows(apps) {
   wireAppRemove();
 }
 
-function blockTypeFields(t, b) {
-  const x = b || {};
-  if (t === "h2" || t === "p") {
-    return `<label class="portal-label">Текст</label><textarea class="portal-field" data-bf="text" rows="${
-      t === "h2" ? 2 : 5
-    }" style="width:100%">${esc(x.text || "")}</textarea>`;
-  }
-  if (t === "badge") {
-    const v = ["success", "neutral", "warning"].includes(x.variant) ? x.variant : "neutral";
-    return `<div class="toolbar inputs-row" style="margin-top:8px">
-      <div class="grow compact">
-        <label class="portal-label">Вариант</label>
-        <select class="portal-field" data-bf="badge-variant">
-          ${["success", "neutral", "warning"]
-            .map((opt) => `<option value="${opt}" ${opt === v ? "selected" : ""}>${opt}</option>`)
-            .join("")}
-        </select>
-      </div>
-    </div>
-    <label class="portal-label">Текст метки</label>
-    <input class="portal-field" data-bf="badge-text" value="${esc(x.text || "")}" style="width:100%" />`;
-  }
-  if (t === "figure") {
-    return `<label class="portal-label">URL изображения (https…, /static/…, /uploads/…)</label>
-    <input class="portal-field" data-bf="fig-src" value="${esc(x.src || "")}" style="width:100%" />
-    <label class="portal-label">Подпись над картинкой (необяз.)</label>
-    <input class="portal-field" data-bf="fig-title" value="${esc(x.title || "")}" style="width:100%" />
-    <label class="portal-label">Подпись под картинкой</label>
-    <textarea class="portal-field" data-bf="fig-caption" rows="2" style="width:100%">${esc(x.caption || "")}</textarea>
-    <label class="portal-label">alt для доступности</label>
-    <input class="portal-field" data-bf="fig-alt" value="${esc(x.alt || "")}" style="width:100%" />`;
-  }
-  if (t === "ul") {
-    const lines = Array.isArray(x.items) ? x.items.join("\n") : "";
-    return `<label class="portal-label">Строки списка (одна строка — один пункт)</label>
-    <textarea class="portal-field" data-bf="ul-items" rows="6" style="width:100%">${esc(lines)}</textarea>`;
-  }
-  return `<label class="portal-label">Текст</label><textarea class="portal-field" data-bf="text" rows="4" style="width:100%">${esc(
-    x.text || "",
-  )}</textarea>`;
+/** Текст в HTML (как тело новости в GuardSchool); для легаси-blocks — одноразовая конвертация в поле. */
+function escHtmlPlain(s) {
+  const d = document.createElement("div");
+  d.textContent = s ?? "";
+  return d.innerHTML;
 }
 
-function blockRowHtml(b, idx, pg) {
-  const raw = (b && b.type) || "p";
-  const t = ["h2", "p", "badge", "figure", "ul"].includes(raw) ? raw : "p";
-  return `<div class="portal-card" data-cms-block-row data-pg="${pg}" style="margin-top:12px;padding:12px">
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
-      <strong style="color:#fff">Блок ${idx + 1}</strong>
-      <button type="button" class="portal-btn danger cms-block-remove">Удалить</button>
-    </div>
-    <label class="portal-label">Тип</label>
-    <select class="portal-field" data-bf="type">
-      ${["h2", "p", "badge", "figure", "ul"]
-        .map((v) => `<option value="${v}" ${t === v ? "selected" : ""}>${v}</option>`)
-        .join("")}
-    </select>
-    <div data-bf-host>${blockTypeFields(t, b)}</div>
-  </div>`;
-}
-
-function wirePageBlockHandlers(pg) {
-  const host = $(`cms-blocks-${pg}-host`);
-  if (!host) return;
-  if (host.dataset.delegation === "1") return;
-  host.dataset.delegation = "1";
-  host.addEventListener("change", (ev) => {
-    const sel = ev.target.closest('[data-bf="type"]');
-    if (!sel || !host.contains(sel)) return;
-    const row = sel.closest("[data-cms-block-row]");
-    if (!row) return;
-    const t = sel.value;
-    const hostFields = row.querySelector("[data-bf-host]");
-    if (hostFields) hostFields.innerHTML = blockTypeFields(t, {});
-  });
-  host.addEventListener("click", (ev) => {
-    const btn = ev.target.closest(".cms-block-remove");
-    if (!btn || !host.contains(btn)) return;
-    const row = btn.closest("[data-cms-block-row]");
-    row?.remove();
-    if (!host.querySelector("[data-cms-block-row]")) {
-      host.innerHTML = blockRowHtml({ type: "p", text: "" }, 0, pg);
+function blocksToHtmlForAdmin(blocks) {
+  if (!Array.isArray(blocks)) return "";
+  const parts = [];
+  for (const b of blocks) {
+    if (!b || !b.type) continue;
+    if (b.type === "h2") {
+      parts.push(`<h2 class="portal-about-h2">${escHtmlPlain(b.text)}</h2>`);
+    } else if (b.type === "p") {
+      parts.push(`<p class="portal-eco-prose portal-about-p">${escHtmlPlain(b.text)}</p>`);
+    } else if (b.type === "badge") {
+      const v = ["success", "neutral", "warning"].includes(b.variant) ? b.variant : "neutral";
+      parts.push(`<p class="portal-about-badge portal-about-badge--${v}" role="note">${escHtmlPlain(b.text)}</p>`);
+    } else if (b.type === "figure") {
+      const src = String(b.src || "").trim();
+      if (!src) continue;
+      const alt = String(b.alt || b.title || "").trim();
+      const img = `<img class="portal-about-img" src="${esc(src)}" alt="${esc(alt || "Иллюстрация")}" loading="lazy" />`;
+      const cap = b.caption ? `<figcaption class="portal-about-figcap">${escHtmlPlain(b.caption)}</figcaption>` : "";
+      const tit = b.title ? `<span class="portal-about-figtitle">${escHtmlPlain(b.title)}</span>` : "";
+      parts.push(`<figure class="portal-about-figure">${tit}${img}${cap}</figure>`);
+    } else if (b.type === "ul") {
+      const items = Array.isArray(b.items) ? b.items : [];
+      if (!items.length) continue;
+      parts.push(`<ul class="portal-about-ul">${items.map((x) => `<li>${escHtmlPlain(x)}</li>`).join("")}</ul>`);
     }
-  });
-}
-
-function collectBlocksFromDom(pg) {
-  const host = $(`cms-blocks-${pg}-host`);
-  if (!host) return [];
-  const out = [];
-  host.querySelectorAll("[data-cms-block-row]").forEach((row) => {
-    const t = (row.querySelector('[data-bf="type"]')?.value || "p").toLowerCase();
-    if (t === "h2" || t === "p") {
-      const text = (row.querySelector('[data-bf="text"]')?.value || "").trim();
-      if (text) out.push({ type: t, text });
-      return;
-    }
-    if (t === "badge") {
-      const text = (row.querySelector('[data-bf="badge-text"]')?.value || "").trim();
-      let variant = (row.querySelector('[data-bf="badge-variant"]')?.value || "neutral").toLowerCase();
-      if (!["success", "neutral", "warning"].includes(variant)) variant = "neutral";
-      if (text) out.push({ type: "badge", text, variant });
-      return;
-    }
-    if (t === "figure") {
-      const src = (row.querySelector('[data-bf="fig-src"]')?.value || "").trim();
-      const title = (row.querySelector('[data-bf="fig-title"]')?.value || "").trim();
-      const caption = (row.querySelector('[data-bf="fig-caption"]')?.value || "").trim();
-      const alt = (row.querySelector('[data-bf="fig-alt"]')?.value || "").trim();
-      if (src || title || caption || alt) {
-        out.push({ type: "figure", src, title, caption, alt });
-      }
-      return;
-    }
-    if (t === "ul") {
-      const raw = row.querySelector('[data-bf="ul-items"]')?.value || "";
-      const items = raw
-        .split("\n")
-        .map((s) => s.trim())
-        .filter(Boolean);
-      if (items.length) out.push({ type: "ul", items });
-    }
-  });
-  return out;
+  }
+  return parts.join("\n\n");
 }
 
 function collectPage(pg) {
@@ -298,8 +209,8 @@ function collectPage(pg) {
   if (vbOn && vbText) {
     version_badge = { text: vbText, variant: vbVar };
   }
-  const blocks = collectBlocksFromDom(pg);
-  return { title, meta_description, version_badge, blocks };
+  const body_html = ($(`cms-pg-${pg}-body`)?.value || "").trim();
+  return { title, meta_description, version_badge, body_html };
 }
 
 function fillPageSection(pg, page) {
@@ -317,12 +228,11 @@ function fillPageSection(pg, page) {
     if (vbt) vbt.value = vb?.text || "";
     if (vbv) vbv.value = ["success", "neutral", "warning"].includes(vb?.variant) ? vb.variant : "neutral";
   }
-  const host = $(`cms-blocks-${pg}-host`);
-  if (!host) return;
-  host.dataset.delegation = "";
-  const blocks = Array.isArray(p.blocks) && p.blocks.length ? p.blocks : [{ type: "p", text: "" }];
-  host.innerHTML = blocks.map((b, i) => blockRowHtml(b, i, pg)).join("");
-  wirePageBlockHandlers(pg);
+  const bodyEl = $(`cms-pg-${pg}-body`);
+  if (bodyEl) {
+    const fromServer = String(p.body_html || "").trim();
+    bodyEl.value = fromServer || blocksToHtmlForAdmin(p.blocks);
+  }
 }
 
 function fillForm(cms) {
@@ -493,7 +403,7 @@ function mountForm() {
     <textarea class="portal-field cms-monospace" id="cms-shell-nav" rows="8" style="width:100%"></textarea>
 
     <h3 id="cms-section-page-gs" class="cms-section-title">Страница <code>/about/guardschool</code></h3>
-    <p class="portal-hint">Полный текст, метка версии, изображения и списки — блоками ниже. Публичный URL задаётся заголовком страницы.</p>
+    <p class="portal-hint">Второстепенная страница: один текст (как новости в GuardSchool), плюс метка версии при необходимости. URL — <code>/about/guardschool</code>.</p>
     <div class="toolbar inputs-row">
       <div class="grow"><label class="portal-label">Заголовок (h1 / вкладка)</label><input class="portal-field" id="cms-pg-gs-title" /></div>
     </div>
@@ -507,12 +417,12 @@ function mountForm() {
         <select class="portal-field" id="cms-pg-gs-vb-var"><option value="success">success</option><option value="neutral">neutral</option><option value="warning">warning</option></select>
       </div>
     </div>
-    <label class="portal-label">Блоки контента</label>
-    <div id="cms-blocks-gs-host"></div>
-    <button type="button" class="portal-btn" id="cms-add-block-gs">+ Блок</button>
+    <label class="portal-label">Текст страницы (HTML)</label>
+    <p class="portal-hint">Абзацы, <code>&lt;h2&gt;</code>, списки, <code>&lt;img src=&quot;https://…&quot; /&gt;</code> или <code>/static/…</code>. На сервере удаляются <code>script</code> и атрибуты <code>on*</code> (как у школьных новостей).</p>
+    <textarea class="portal-field cms-monospace" id="cms-pg-gs-body" rows="18" style="width:100%"></textarea>
 
     <h3 id="cms-section-page-demo" class="cms-section-title">Страница <code>/about/guardschool-demo</code></h3>
-    <p class="portal-hint">Описание демо-песочницы — отдельная страница в том же разделе <code>/about/</code>.</p>
+    <p class="portal-hint">Отдельная второстепенная страница про демо-песочницу.</p>
     <div class="toolbar inputs-row">
       <div class="grow"><label class="portal-label">Заголовок</label><input class="portal-field" id="cms-pg-demo-title" /></div>
     </div>
@@ -526,9 +436,9 @@ function mountForm() {
         <select class="portal-field" id="cms-pg-demo-vb-var"><option value="success">success</option><option value="neutral">neutral</option><option value="warning">warning</option></select>
       </div>
     </div>
-    <label class="portal-label">Блоки контента</label>
-    <div id="cms-blocks-demo-host"></div>
-    <button type="button" class="portal-btn" id="cms-add-block-demo">+ Блок</button>
+    <label class="portal-label">Текст страницы (HTML)</label>
+    <p class="portal-hint">Тот же формат, что и для «О GuardSchool».</p>
+    <textarea class="portal-field cms-monospace" id="cms-pg-demo-body" rows="16" style="width:100%"></textarea>
 
     <h3 id="cms-section-hero" class="cms-section-title">Герой</h3>
     <div class="toolbar inputs-row">
@@ -606,16 +516,6 @@ function mountForm() {
     const n = host.querySelectorAll("[data-cms-app-row]").length;
     host.insertAdjacentHTML("beforeend", appRowHtml({}, n));
     wireAppRemove();
-  });
-  $("cms-add-block-gs").addEventListener("click", () => {
-    const host = $("cms-blocks-gs-host");
-    const n = host.querySelectorAll("[data-cms-block-row]").length;
-    host.insertAdjacentHTML("beforeend", blockRowHtml({ type: "p", text: "" }, n, "gs"));
-  });
-  $("cms-add-block-demo").addEventListener("click", () => {
-    const host = $("cms-blocks-demo-host");
-    const n = host.querySelectorAll("[data-cms-block-row]").length;
-    host.insertAdjacentHTML("beforeend", blockRowHtml({ type: "p", text: "" }, n, "demo"));
   });
 }
 

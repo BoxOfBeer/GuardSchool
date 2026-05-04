@@ -593,3 +593,46 @@
   line-height: 1.45;
   font-size: 14px;
 }
+
+/* HTML из CMS (body_html), как тело новости в GuardSchool */
+.portal-about-prose-body {
+  font-size: 15px;
+  line-height: 1.55;
+  color: rgba(232, 240, 255, 0.92);
+  word-break: break-word;
+}
+
+.portal-about-prose-body h2,
+.portal-about-prose-body h3 {
+  margin: 1.1em 0 0.45em;
+  font-size: 1.12rem;
+  color: rgba(240, 245, 255, 0.96);
+}
+
+.portal-about-prose-body p {
+  margin: 0 0 0.75em;
+}
+
+.portal-about-prose-body ul,
+.portal-about-prose-body ol {
+  margin: 0.5em 0 0.85em;
+  padding-left: 1.25rem;
+}
+
+.portal-about-prose-body a {
+  color: #9ec5ff;
+  text-decoration: none;
+}
+
+.portal-about-prose-body a:hover {
+  text-decoration: underline;
+}
+
+.portal-about-prose-body img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 12px 0;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}

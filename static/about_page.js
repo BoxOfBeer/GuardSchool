@@ -146,7 +146,11 @@ async function main() {
 
     const shell = cms.shell || {};
     const fl = cms.footer_legal;
+    const bodyHtml = String(page.body_html || "").trim();
     const blocksArr = Array.isArray(page.blocks) ? page.blocks : [];
+    const bodyInner =
+      bodyHtml ||
+      (blocksArr.length ? `<div class="portal-about-legacy-blocks">${blocksArr.map(renderBlock).join("")}</div>` : "");
 
     root.className = "";
     root.innerHTML = `
@@ -159,7 +163,7 @@ async function main() {
               <h1 class="portal-about-title">${esc(page.title || "")}</h1>
               ${renderVersionBadge(page.version_badge)}
             </header>
-            <div class="portal-about-body">${blocksArr.map(renderBlock).join("")}</div>
+            <div class="portal-about-body portal-about-prose-body">${bodyInner}</div>
           </article>
           ${renderLegalFooter(fl)}
         </div>

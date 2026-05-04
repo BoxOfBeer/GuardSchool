@@ -19,6 +19,7 @@ _MAX_SHOWCASE_SHOTS = 18
 _MAX_PANEL_PARAS = 10
 _MAX_BLOCKS = 80
 _MAX_UL_ITEMS = 40
+_MAX_BODY_HTML = 100_000
 
 _SCHOOL_HOST_ROOT_RE = re.compile(r"^https?://school\.guarddoc\.ru/?$", re.I)
 
@@ -103,8 +104,8 @@ def _default_page_guardschool() -> dict[str, Any]:
 
 def _default_about_guardschool_intro() -> str:
     return (
-        "Ниже вы можете обновлять текст и изображения из админки портала без правок кода — в том числе "
-        "метку версии (например «Актуально») и галерею интерфейса."
+        "Редактируйте текст страницы одним полем (как новости в GuardSchool): HTML с абзацами, списками и "
+        "картинками; метку версии — отдельно выше. Старый формат «блоков» при открытии подставится сюда до первого сохранения."
     )
 
 
@@ -398,6 +399,35 @@ def _migrate_legacy_to_pages(d: dict[str, Any]) -> None:
         shell["demo_notice"] = {"title": "", "paragraphs": []}
 
 
+def _normalize_portal_pages_body_priority(d: dict[str, Any]) -> None:
+    """Одна форма контента: либо body_html, либо blocks (легаси), не оба сразу после merge."""
+    pages = d.get("pages")
+    if not isinstance(pages, dict):
+        return
+    for pg in pages.values():
+        if not isinstance(pg, dict):
+            continue
+        bh = str(pg.get("body_html") or "").strip()
+        blocks = pg.get("blocks")
+        has_b = isinstance(blocks, list) and len(blocks) > 0
+        if bh and has_b:
+            pg["blocks"] = []
+        elif has_b and not bh:
+            pg.pop("body_html", None)
+
+
+def _sanitize_portal_page_body_html(raw: Any) -> str:
+    """Как контент школьных новостей: без script и inline on*."""
+    s = str(raw or "").strip()
+    if len(s) > _MAX_BODY_HTML:
+        s = s[:_MAX_BODY_HTML]
+    s = re.sub(r"(?is)<script[^>]*>.*?</script>", "", s)
+    s = re.sub(r"(?is)</?script[^>]*>", "", s)
+    s = re.sub(r'(?is)on[a-z]+\s*=\s*"[^"]*"', "", s)
+    s = re.sub(r"(?is)on[a-z]+\s*=\s*'[^']*'", "", s)
+    return s.strip()
+
+
 def load_portal_cms_merged() -> dict[str, Any]:
     path: Path = PORTAL_CMS_PATH
     if not path.is_file():
@@ -413,6 +443,10 @@ def load_portal_cms_merged() -> dict[str, Any]:
     merged = _merge_defaults(raw if isinstance(raw, dict) else {})
     try:
         _migrate_legacy_to_pages(merged)
+    except Exception:
+        pass
+    try:
+        _normalize_portal_pages_body_priority(merged)
     except Exception:
         pass
     _normalize_merged_cms_urls(merged)
@@ -503,6 +537,11 @@ def _sanitize_page(page: Any) -> dict[str, Any] | None:
         out["version_badge"] = {"text": _clip(vb.get("text"), 200), "variant": v}
     else:
         out["version_badge"] = None
+    body = _sanitize_portal_page_body_html(page.get("body_html"))
+    if body:
+        out["body_html"] = body
+        out["blocks"] = []
+        return out
     blocks_in = page.get("blocks")
     blocks: list[dict[str, Any]] = []
     if isinstance(blocks_in, list):
