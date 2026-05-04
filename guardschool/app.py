@@ -131,6 +131,7 @@ from .gs_feedback import (
     list_feedback_messages,
     mark_feedback_read,
 )
+from .gs_portal_cms import load_portal_cms_merged, sanitize_portal_cms_payload, write_portal_cms
 from .saas_db import cleanup_expired_demo_sessions, ensure_public_schema, saas_db_enabled
 from .saas_db import (
     connect_public,
@@ -3779,6 +3780,36 @@ async def provider_create_demo(request: Request) -> dict[str, Any]:
         "tenant_host": _tenant_ui_host_for_demo(slug),
         "expires_at": expires_at.isoformat(),
     }
+
+
+@app.get("/api/portal/cms")
+def api_portal_cms_public() -> dict[str, Any]:
+    """Публичный контент главной страницы портала экосистемы (без авторизации)."""
+    return load_portal_cms_merged()
+
+
+@app.get("/api/provider/portal-cms")
+def api_provider_portal_cms_get(request: Request) -> dict[str, Any]:
+    _require_provider_admin(request)
+    return {"cms": load_portal_cms_merged()}
+
+
+@app.put("/api/provider/portal-cms")
+async def api_provider_portal_cms_put(request: Request) -> dict[str, Any]:
+    _require_provider_admin(request)
+    raw_body = await request.json()
+    raw_cms = raw_body.get("cms") if isinstance(raw_body, dict) and "cms" in raw_body else raw_body
+    if raw_cms is None:
+        raise HTTPException(status_code=400, detail="Expected JSON body with a cms object.")
+    try:
+        dumped = json.dumps(raw_cms if isinstance(raw_cms, (dict, list)) else {}, ensure_ascii=False)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON payload.") from None
+    if len(dumped.encode("utf-8")) > 480_000:
+        raise HTTPException(status_code=413, detail="CMS payload too large.")
+    payload = sanitize_portal_cms_payload(raw_cms)
+    write_portal_cms(payload)
+    return {"status": "ok", "cms": payload}
 
 
 @app.get("/demo/{token}")

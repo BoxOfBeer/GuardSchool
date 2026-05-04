@@ -1,5 +1,5 @@
 /* Загружается как модульный dependency до остальных импортов — window.GuardSchoolScreen всегда к моменту init. */
-import "./screen_widgets.js?v=1.02.001";
+import "./screen_widgets.js?v=1.02.040";
 import {
   setPreviewDeps,
   fetchPreviewPayloadOnce,
@@ -168,7 +168,7 @@ function renderRssSourcesEditor() {
         <input type="text" class="standard-input" data-rss-key="name" value="${name}" placeholder="Название">
         <input type="url" class="standard-input wide-input" data-rss-key="rss_url" value="${rssUrl}" placeholder="https://example.com/rss.xml">
         <label class="toggle-label"><input type="checkbox" data-rss-key="enabled" ${enabled ? "checked" : ""}><span>Включено</span></label>
-        <button type="button" class="secondary-btn compact-btn" data-rss-remove="${index}">Удалить</button>
+        <button type="button" class="secondary-btn compact-btn" data-rss-remove="${index}">${escapeHtml(t("programSettings.rssRemove"))}</button>
       </div>`;
     })
     .join("");
@@ -216,6 +216,37 @@ function renderProgramPaletteCheckboxes() {
       setWidgetTypeHiddenInPalette(typ, !inp.checked);
     });
   });
+}
+
+async function refreshAdminFooterStats() {
+  const elToday = document.getElementById("admin-footer-line-today");
+  const elMonth = document.getElementById("admin-footer-line-month");
+  const elTotal = document.getElementById("admin-footer-line-total");
+  if (!elToday || !elMonth || !elTotal) return;
+  if (state.meta?.demo_session) {
+    elToday.innerHTML = "";
+    elMonth.textContent = t("admin.footerDemo");
+    elTotal.innerHTML = "";
+    return;
+  }
+  try {
+    const data = await api("/api/admin/screen-watch");
+    const visits = (data && data.visits) || {};
+    const map =
+      visits.today_unique_by_device && typeof visits.today_unique_by_device === "object"
+        ? visits.today_unique_by_device
+        : {};
+    const todayN = Object.keys(map).reduce((acc, k) => acc + (Number(map[k]) || 0), 0);
+    const monthUsers = Number.isFinite(Number(visits.month_unique_users)) ? Number(visits.month_unique_users) : 0;
+    const totalConn = Number.isFinite(Number(visits.total_connections)) ? Number(visits.total_connections) : 0;
+    elToday.innerHTML = tf("admin.footerToday", { n: String(todayN) });
+    elMonth.innerHTML = tf("stats.monthUnique", { n: String(monthUsers) });
+    elTotal.innerHTML = tf("stats.totalConnections", { n: String(totalConn) });
+  } catch (e) {
+    elToday.innerHTML = "";
+    elMonth.textContent = tf("admin.footerError", { msg: String(e.message || e) });
+    elTotal.innerHTML = "";
+  }
 }
 
 async function refreshSyncStatusLine() {
@@ -272,12 +303,19 @@ function renderTvLinks(code) {
 async function refreshTvAccessUi() {
   const head = elements.tvAccessHead;
   const wrap = elements.tvAccessWrap;
+  const nonSaas = elements.tvNonSaasInfo;
+  const saasControls = elements.tvSaasControls;
   if (!head || !wrap) return;
-  if (state.meta?.deployment_mode !== "saas") {
+  const saas = state.meta?.deployment_mode === "saas";
+  if (!saas) {
+    if (nonSaas) nonSaas.hidden = false;
+    if (saasControls) saasControls.hidden = true;
     head.hidden = true;
     wrap.hidden = true;
     return;
   }
+  if (nonSaas) nonSaas.hidden = true;
+  if (saasControls) saasControls.hidden = false;
   head.hidden = false;
   wrap.hidden = false;
   if (elements.tvCodeOut) elements.tvCodeOut.textContent = "";
@@ -319,7 +357,15 @@ async function refreshTvAccessUi() {
 function getStoredProgramSettingsTab() {
   try {
     const t = sessionStorage.getItem(GS_ADMIN_PROGRAM_SETTINGS_TAB);
-    if (t === "general" || t === "tv" || t === "feedback" || t === "changelog" || t === "emergency") return t;
+    if (
+      t === "general" ||
+      t === "school_news" ||
+      t === "tv" ||
+      t === "feedback" ||
+      t === "changelog" ||
+      t === "emergency"
+    )
+      return t;
   } catch (_) {}
   return "general";
 }
@@ -333,32 +379,12 @@ async function refreshProgramHistoryFromApi() {
   renderHistory();
 }
 
-function syncProgramSettingsTvTabVisibility() {
-  const panel = elements.programSettingsPanel;
-  if (!panel) return;
-  const tabBtn = panel.querySelector("[data-ps-tab=\"tv\"]");
-  const saas = state.meta?.deployment_mode === "saas";
-  if (tabBtn) tabBtn.hidden = !saas;
-  if (!saas && getStoredProgramSettingsTab() === "tv") {
-    try {
-      sessionStorage.setItem(GS_ADMIN_PROGRAM_SETTINGS_TAB, "general");
-    } catch (_) {}
-  }
-}
-
 function setProgramSettingsTab(tab) {
   const panel = elements.programSettingsPanel;
   if (!panel) return;
-  if (tab === "tv" && state.meta?.deployment_mode !== "saas") tab = "general";
   try {
     sessionStorage.setItem(GS_ADMIN_PROGRAM_SETTINGS_TAB, tab);
   } catch (_) {}
-  panel.querySelectorAll("[data-ps-tab]").forEach((btn) => {
-    const id = btn.getAttribute("data-ps-tab");
-    const on = id === tab;
-    btn.classList.toggle("active", on);
-    btn.setAttribute("aria-selected", on ? "true" : "false");
-  });
   panel.querySelectorAll("[data-ps-pane]").forEach((pane) => {
     pane.hidden = pane.getAttribute("data-ps-pane") !== tab;
   });
@@ -368,29 +394,17 @@ function setProgramSettingsTab(tab) {
     bindFeedbackAdminPanelOnce();
     refreshFeedbackAdminPanel();
   }
+  if (tab === "school_news") renderSchoolNewsList();
+  if (tab === "tv") refreshTvAccessUi().catch(() => {});
 }
 
-function initProgramSettingsTabListenersOnce() {
-  if (initProgramSettingsTabListenersOnce._done) return;
-  initProgramSettingsTabListenersOnce._done = true;
-  elements.programSettingsPanel?.addEventListener("click", (e) => {
-    const b = e.target.closest("[data-ps-tab]");
-    if (!b || !elements.programSettingsPanel?.contains(b)) return;
-    e.preventDefault();
-    const t = b.getAttribute("data-ps-tab");
-    if (t) setProgramSettingsTab(t);
-  });
+function closeAdminSettingsSubmenu() {
+  /* Подразделы настроек всегда видны в сайдбаре — закрывать нечего. */
 }
 
-function openProgramSettingsModal() {
-  if (!elements.programSettingsPanel) return;
-  closeWidgetModal();
-  state.programSettingsPanelActive = true;
-  state.audioStreamPanelActive = false;
-  state.statsPanelActive = false;
-  leaveStatsPanel();
-  initProgramSettingsTabListenersOnce();
-  syncProgramSettingsTvTabVisibility();
+/** Синхронизация DOM панели настроек (после restore сессии или при открытии). */
+function hydrateProgramSettingsPanelIfOpen() {
+  if (!state.programSettingsPanelActive || !elements.programSettingsPanel) return;
   setProgramSettingsTab(getStoredProgramSettingsTab());
   syncProgramSettingsFieldsFromState();
   renderProgramPaletteCheckboxes();
@@ -399,11 +413,29 @@ function openProgramSettingsModal() {
   try {
     GuardSchoolI18n.applyDom(elements.programSettingsPanel);
   } catch (_) {}
+}
+
+/** @param {string} [initialTab] — вкладка панели настроек: general | tv | emergency | feedback | changelog */
+function openProgramSettingsModal(initialTab) {
+  if (!elements.programSettingsPanel) return;
+  closeWidgetModal();
+  closeAdminSettingsSubmenu();
+  state.programSettingsPanelActive = true;
+  state.audioStreamPanelActive = false;
+  state.statsPanelActive = false;
+  leaveStatsPanel();
+  if (initialTab && typeof initialTab === "string") {
+    try {
+      sessionStorage.setItem(GS_ADMIN_PROGRAM_SETTINGS_TAB, initialTab);
+    } catch (_) {}
+  }
+  hydrateProgramSettingsPanelIfOpen();
   render();
 }
 
 function closeProgramSettingsModal() {
   state.programSettingsPanelActive = false;
+  closeAdminSettingsSubmenu();
   render();
 }
 
@@ -412,16 +444,37 @@ function bindProgramSettingsModalOnce() {
   bindProgramSettingsModalOnce._done = true;
   elements.programSettingsOpenBtn?.addEventListener("click", (e) => {
     e.preventDefault();
-    if (state.programSettingsPanelActive) closeProgramSettingsModal();
-    else openProgramSettingsModal();
+    e.stopPropagation();
+    openProgramSettingsModal("general");
   });
-  document.addEventListener("click", (e) => {
-    if (e.target.closest("[data-close-program-settings]")) {
-      e.preventDefault();
-      closeProgramSettingsModal();
+  document.getElementById("admin-settings-submenu")?.addEventListener("click", (e) => {
+    const btn = e.target && e.target.closest ? e.target.closest("[data-admin-submenu]") : null;
+    if (!btn) return;
+    e.preventDefault();
+    const kind = btn.getAttribute("data-admin-submenu");
+    closeAdminSettingsSubmenu();
+    if (kind === "program") {
+      const tab = btn.getAttribute("data-ps-tab") || "general";
+      openProgramSettingsModal(tab);
+      return;
+    }
+    if (kind === "audio") {
+      closeWidgetModal();
+      state.programSettingsPanelActive = false;
+      state.statsPanelActive = false;
+      state.audioStreamPanelActive = true;
+      render();
+      return;
+    }
+    if (kind === "stats") {
+      if (state.meta?.demo_session) return;
+      closeWidgetModal();
+      state.programSettingsPanelActive = false;
+      state.audioStreamPanelActive = false;
+      state.statsPanelActive = true;
+      render();
     }
   });
-
   elements.tvRotateCodeBtn?.addEventListener("click", async () => {
     try {
       const r = await api("/api/admin/tv-access/rotate-code", { method: "POST" });
@@ -874,8 +927,10 @@ function restoreAdminUiFromSession() {
       }
     }
     const sec = sessionStorage.getItem(GS_ADMIN_SESSION_SECTION);
-    if (sec === "history") state.activeSection = "main";
-    else if (sec && ["main", "schedule", "preview"].includes(sec)) state.activeSection = sec;
+    if (sec === "history") state.activeSection = "screen";
+    else if (sec && ["screen", "widgets", "lessons", "bells", "preview"].includes(sec)) state.activeSection = sec;
+    else if (sec === "main") state.activeSection = "screen";
+    else if (sec === "schedule") state.activeSection = "lessons";
     const top = sessionStorage.getItem(GS_ADMIN_SESSION_TOP);
     const sid = sessionStorage.getItem(GS_ADMIN_SESSION_SCREEN);
     if (top === "audio") {
@@ -886,6 +941,13 @@ function restoreAdminUiFromSession() {
       state.statsPanelActive = true;
       state.audioStreamPanelActive = false;
       state.programSettingsPanelActive = false;
+    } else if (top === "program") {
+      state.audioStreamPanelActive = false;
+      state.statsPanelActive = false;
+      state.programSettingsPanelActive = true;
+      if (sid && state.config.screens.some((s) => s.id === sid)) {
+        state.selectedScreenId = sid;
+      }
     } else {
       state.audioStreamPanelActive = false;
       state.statsPanelActive = false;
@@ -912,7 +974,7 @@ function persistAdminUiToSession() {
     else if (state.statsPanelActive) top = "stats";
     sessionStorage.setItem(GS_ADMIN_SESSION_TOP, top);
     sessionStorage.setItem(GS_ADMIN_SESSION_SCREEN, state.selectedScreenId || "");
-    sessionStorage.setItem(GS_ADMIN_SESSION_SECTION, state.activeSection || "main");
+    sessionStorage.setItem(GS_ADMIN_SESSION_SECTION, state.activeSection || "screen");
   } catch (_) {}
 }
 
@@ -1351,57 +1413,69 @@ function bindEmergencyModeToggleOnce() {
 }
 
 function renderTabs() {
+  if (!elements.tabs || !state.config?.screens) return;
   elements.tabs.innerHTML = "";
-  const audioBtn = document.createElement("button");
-  audioBtn.type = "button";
-  audioBtn.className = `top-nav-btn ${state.audioStreamPanelActive ? "active" : ""}`;
-  audioBtn.textContent = t("tabs.pcAudio");
-  audioBtn.onclick = () => {
-    closeWidgetModal();
-    state.audioStreamPanelActive = true;
-    state.statsPanelActive = false;
-    state.programSettingsPanelActive = false;
-    render();
-  };
-  elements.tabs.appendChild(audioBtn);
-
-  if (!state.meta?.demo_session) {
-    const statsBtn = document.createElement("button");
-    statsBtn.type = "button";
-    statsBtn.className = `top-nav-btn ${state.statsPanelActive ? "active" : ""}`;
-    statsBtn.textContent = t("tabs.stats");
-    statsBtn.onclick = () => {
-      closeWidgetModal();
-      state.statsPanelActive = true;
-      state.audioStreamPanelActive = false;
-      state.programSettingsPanelActive = false;
-      render();
-    };
-    elements.tabs.appendChild(statsBtn);
-  }
 
   state.config.screens.forEach((screen) => {
-    const button = document.createElement("button");
-    button.className = `top-nav-btn ${!state.audioStreamPanelActive && !state.statsPanelActive && !state.programSettingsPanelActive && screen.id === state.selectedScreenId ? "active" : ""}`;
-    button.textContent = screen.name;
-    button.onclick = () => {
+    const row = document.createElement("div");
+    row.className = "admin-sidebar-screen-row";
+
+    const nameBtn = document.createElement("button");
+    nameBtn.type = "button";
+    nameBtn.className = `admin-sidebar-screen-btn${!state.audioStreamPanelActive && !state.statsPanelActive && !state.programSettingsPanelActive && screen.id === state.selectedScreenId ? " active" : ""}`;
+    nameBtn.textContent = screen.name || "";
+    nameBtn.onclick = () => {
       state.audioStreamPanelActive = false;
       state.statsPanelActive = false;
       state.programSettingsPanelActive = false;
       closeWidgetModal();
+      closeAdminSettingsSubmenu();
       state.selectedScreenId = screen.id;
       render();
     };
-    elements.tabs.appendChild(button);
+
+    const slug = String(screen.slug || "").trim();
+    const openA = document.createElement("a");
+    openA.className = "admin-sidebar-screen-open";
+    openA.textContent = "\u2192";
+    openA.target = "_blank";
+    openA.rel = "noopener noreferrer";
+    openA.title = t("admin.openScreenNewTab");
+    if (slug) {
+      openA.href = new URL(`/screen/${encodeURIComponent(slug)}`, window.location.origin).href;
+    } else {
+      openA.href = "#";
+      openA.setAttribute("aria-disabled", "true");
+      openA.addEventListener("click", (ev) => {
+        ev.preventDefault();
+      });
+    }
+
+    row.appendChild(nameBtn);
+    row.appendChild(openA);
+    elements.tabs.appendChild(row);
   });
+
   const plus = document.createElement("button");
-  plus.className = "top-nav-btn";
+  plus.type = "button";
+  plus.className = "top-nav-btn admin-sidebar-add-btn";
   plus.textContent = t("tabs.addScreen");
   plus.onclick = addScreen;
   elements.tabs.appendChild(plus);
-  if (elements.programSettingsOpenBtn) {
-    elements.programSettingsOpenBtn.classList.toggle("active", Boolean(state.programSettingsPanelActive));
+
+  const wrapSettings = document.getElementById("admin-sidebar-settings");
+  const panelish = Boolean(
+    state.programSettingsPanelActive || state.audioStreamPanelActive || state.statsPanelActive,
+  );
+  if (wrapSettings) {
+    wrapSettings.classList.toggle("admin-sidebar-settings--active", panelish);
   }
+  if (elements.programSettingsOpenBtn) {
+    elements.programSettingsOpenBtn.classList.toggle("active", panelish);
+  }
+
+  const statsItem = document.querySelector("#admin-settings-submenu [data-admin-submenu=\"stats\"]");
+  if (statsItem) statsItem.hidden = Boolean(state.meta?.demo_session);
 }
 
 function renderSectionTabs() {
@@ -1412,14 +1486,14 @@ function renderSectionTabs() {
     button.textContent = section.label;
     button.onclick = () => {
       state.activeSection = section.id;
-      if (section.id !== "main") closeWidgetModal();
+      if (section.id !== "widgets") closeWidgetModal();
       renderSectionVisibility();
       renderSectionTabs();
       if (section.id === "preview") {
         renderPreview();
         clearTimeout(window.__previewCfgDebounce);
         window.__previewCfgDebounce = setTimeout(() => fetchPreviewPayloadOnce(), 80);
-      } else if (section.id === "schedule") {
+      } else if (section.id === "bells") {
         renderBellEditor();
       } else {
         window.GuardSchoolScreen?.clearAllTimers();
@@ -1617,7 +1691,44 @@ function duplicateCurrentScreen() {
   render();
 }
 
+function ymdTodayInSchoolTz() {
+  const tz = (state.config && state.config.timezone) || "Europe/Moscow";
+  try {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: String(tz).trim() || "Europe/Moscow",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
+  } catch {
+    const d = new Date();
+    const p = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  }
+}
+
+/** Удаляет ручные замены с датой раньше «сегодня» по часовому поясу школы. */
+function prunePastOverrides() {
+  const today = ymdTodayInSchoolTz();
+  const before = (state.overrides || []).length;
+  state.overrides = (state.overrides || []).filter((o) => o && String(o.date || "") >= today);
+  return state.overrides.length !== before;
+}
+
+let persistOverridesPruneTimer = null;
+function schedulePersistOverridesPruned() {
+  clearTimeout(persistOverridesPruneTimer);
+  persistOverridesPruneTimer = setTimeout(() => {
+    api("/api/admin/overrides", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(state.overrides),
+    }).catch(() => {});
+  }, 500);
+}
+
 function renderOverrides() {
+  if (prunePastOverrides()) schedulePersistOverridesPruned();
   elements.overrideList.innerHTML = "";
   state.overrides.forEach((item, index) => {
     const div = document.createElement("div");
@@ -1934,7 +2045,9 @@ function render() {
       programPanel.setAttribute("aria-hidden", "false");
     }
     window.GuardSchoolScreen?.clearAllTimers();
-    if (getStoredProgramSettingsTab() === "emergency") renderEmergencyTemplatesAdmin();
+    const psTab = getStoredProgramSettingsTab();
+    if (psTab === "emergency") renderEmergencyTemplatesAdmin();
+    if (psTab === "school_news") renderSchoolNewsList();
     finishTopBarSessionWidgets();
     return;
   }
@@ -2000,7 +2113,7 @@ function render() {
   renderOverrides();
   renderSchoolNewsList();
   renderLessonImportStats();
-  if (state.activeSection === "schedule") {
+  if (state.activeSection === "bells") {
     renderBellEditor();
   }
   renderHistory();
@@ -2122,11 +2235,13 @@ function bindForm() {
       renderPreview();
     };
   }
-  elements.screenBellTemplate.onchange = (event) => {
-    selectedScreen().bell_schedule_template = event.target.value;
-    renderBellEditor();
-    renderPreview();
-  };
+  if (elements.screenBellTemplate) {
+    elements.screenBellTemplate.onchange = (event) => {
+      selectedScreen().bell_schedule_template = event.target.value;
+      renderBellEditor();
+      renderPreview();
+    };
+  }
   if (elements.adminLocaleSelect) {
     elements.adminLocaleSelect.onchange = async () => {
       state.config.ui_locale = elements.adminLocaleSelect.value === "en" ? "en" : "ru";
@@ -2395,6 +2510,7 @@ async function init() {
   state.fullScheduleRows = schedule.full_schedule_rows ?? 0;
   state.scheduleSampleRows = schedule.schedule_sample_rows ?? 0;
   state.overrides = schedule.overrides || [];
+  if (prunePastOverrides()) schedulePersistOverridesPruned();
   state.announcements = schedule.announcements || [];
   state.schoolNews = schedule.school_news || [];
   state.marquee = schedule.marquee || [];
@@ -2420,6 +2536,11 @@ async function init() {
   await ensureSchoolNewsTinyMce();
   resetSchoolNewsForm();
   render();
+  if (state.programSettingsPanelActive) hydrateProgramSettingsPanelIfOpen();
+  refreshAdminFooterStats().catch(() => {});
+  window.setInterval(() => {
+    refreshAdminFooterStats().catch(() => {});
+  }, 60000);
   setInterval(() => {
     if (window.GuardSchoolScreen && state.activeSection === "preview") {
       window.GuardSchoolScreen.updateAllClocks(elements.preview);
@@ -2435,13 +2556,16 @@ async function init() {
   }, 15000);
 }
 
-if (elements.saveConfigBtn) elements.saveConfigBtn.onclick = saveAll;
 if (elements.saveConfigTopBtn) elements.saveConfigTopBtn.onclick = saveAll;
-elements.exportDataBtn.onclick = async () => {
-  await downloadFile("/api/admin/export", "gorniitv_export");
-};
-elements.importDataBtn.onclick = () => elements.importDataInput.click();
-elements.importDataInput.onchange = (event) => event.target.files[0] && importBundle(event.target.files[0]);
+if (elements.exportDataBtn) {
+  elements.exportDataBtn.onclick = async () => {
+    await downloadFile("/api/admin/export", "gorniitv_export");
+  };
+}
+if (elements.importDataBtn && elements.importDataInput) {
+  elements.importDataBtn.onclick = () => elements.importDataInput.click();
+  elements.importDataInput.onchange = (event) => event.target.files[0] && importBundle(event.target.files[0]);
+}
 elements.deleteScreenBtn.onclick = deleteScreen;
 if (elements.duplicateScreenBtn) elements.duplicateScreenBtn.onclick = duplicateCurrentScreen;
 elements.addOverrideBtn.onclick = addOverride;
@@ -2457,8 +2581,12 @@ elements.saveBellTemplateBtn.onclick = async () => {
   renderBellEditor();
   alert(t("alert.bellsSaved"));
 };
-elements.backgroundInput.onchange = (event) => event.target.files[0] && uploadBackground(event.target.files[0]);
-elements.pickBackgroundBtn.onclick = () => elements.backgroundInput.click();
+if (elements.backgroundInput) {
+  elements.backgroundInput.onchange = (event) => event.target.files[0] && uploadBackground(event.target.files[0]);
+}
+if (elements.pickBackgroundBtn && elements.backgroundInput) {
+  elements.pickBackgroundBtn.onclick = () => elements.backgroundInput.click();
+}
 if (elements.scheduleInputDated) {
   elements.scheduleInputDated.onchange = (event) => {
     const f = event.target.files?.[0];

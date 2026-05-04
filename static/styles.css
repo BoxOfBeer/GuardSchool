@@ -78,6 +78,296 @@ body {
   min-height: 100vh;
 }
 
+/* Левая колонка меню + основная область + подвал */
+.admin-shell--sidebar {
+  flex-direction: row;
+  align-items: stretch;
+}
+
+.admin-sidebar {
+  width: 240px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(15, 23, 42, 0.98);
+  z-index: 55;
+}
+
+.admin-sidebar-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 10px 14px;
+  min-height: 100vh;
+  box-sizing: border-box;
+}
+
+.admin-sidebar-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.admin-sidebar-emergency {
+  white-space: normal;
+  align-self: stretch;
+  justify-content: flex-start;
+}
+
+.emergency-template-bar--sidebar {
+  max-width: 100%;
+}
+
+.emergency-template-bar--sidebar .emergency-template-btn {
+  max-width: 100%;
+}
+
+.admin-sidebar-sep {
+  border: none;
+  border-top: 1px solid rgba(148, 163, 184, 0.2);
+  margin: 4px 0;
+}
+
+.admin-sidebar-screens {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+}
+
+.admin-sidebar-screen-row {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  min-width: 0;
+}
+
+.admin-sidebar-screen-btn {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: rgba(30, 41, 59, 0.95);
+  color: var(--text);
+  font-size: 0.88rem;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-sidebar-screen-btn:hover {
+  border-color: rgba(56, 189, 248, 0.45);
+}
+
+.admin-sidebar-screen-btn.active {
+  background: var(--accent);
+  color: #082f49;
+  border-color: transparent;
+  font-weight: 600;
+}
+
+.admin-sidebar-screen-open {
+  flex: 0 0 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0;
+  border-radius: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(30, 41, 59, 0.95);
+  color: var(--accent);
+  font-size: 1rem;
+  font-weight: 700;
+  text-decoration: none;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.admin-sidebar-screen-open:hover {
+  border-color: var(--accent);
+  color: #e0f2fe;
+}
+
+.admin-sidebar-screen-open[aria-disabled="true"] {
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+.admin-sidebar-add-btn {
+  align-self: stretch;
+  margin-top: 2px;
+}
+
+/* Кнопка «Сохранить» в сайдбаре — заметный светло-зелёный акцент */
+.admin-sidebar-save-btn {
+  width: 100%;
+  margin: 2px 0 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(21, 128, 61, 0.45);
+  background: linear-gradient(180deg, #d1fae5 0%, #a7f3d0 55%, #86efac 100%);
+  color: #064e3b;
+  font-size: 0.95rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  box-shadow: 0 2px 0 rgba(15, 118, 110, 0.25), 0 4px 12px rgba(5, 46, 22, 0.12);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+.admin-sidebar-save-btn:hover {
+  background: linear-gradient(180deg, #ecfdf5 0%, #bbf7d0 50%, #6ee7b7 100%);
+  border-color: rgba(4, 120, 87, 0.55);
+  color: #022c22;
+}
+
+.admin-sidebar-save-btn:active {
+  transform: translateY(1px);
+  box-shadow: 0 1px 0 rgba(15, 118, 110, 0.2);
+}
+
+.admin-sidebar-settings {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.admin-sidebar-settings--active .admin-sidebar-settings-main {
+  border-color: rgba(56, 189, 248, 0.55);
+  box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.2);
+}
+
+.admin-sidebar-settings-main {
+  width: 100%;
+  flex: 0 0 auto;
+  min-width: 0;
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: rgba(30, 41, 59, 0.95);
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.admin-sidebar-settings-main:hover {
+  border-color: rgba(56, 189, 248, 0.45);
+}
+
+.admin-sidebar-settings-main.active {
+  background: var(--accent);
+  color: #082f49;
+  border-color: transparent;
+}
+
+.admin-settings-submenu {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 2px;
+  padding: 4px 0 2px;
+  border-top: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.admin-settings-submenu-item {
+  width: 100%;
+  margin: 0;
+  padding: 7px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font-size: 0.86rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.admin-settings-submenu-item:hover {
+  background: rgba(51, 65, 85, 0.85);
+}
+
+.admin-sidebar-brand {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 8px;
+}
+
+.admin-main-column {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.admin-footer {
+  flex-shrink: 0;
+  margin-top: auto;
+  padding: 12px 14px 16px;
+  border-top: 1px solid rgba(148, 163, 184, 0.2);
+  background: rgba(15, 23, 42, 0.88);
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.admin-footer-inner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px 28px;
+  align-items: flex-start;
+  justify-content: space-between;
+  max-width: 1200px;
+}
+
+.admin-footer-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: min(100%, 420px);
+}
+
+.admin-footer-stat-line {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.admin-footer-stat-line strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.admin-footer-contacts {
+  line-height: 1.5;
+}
+
+.admin-footer-contacts a {
+  color: var(--accent);
+}
+
+.admin-footer-contacts a:hover {
+  text-decoration: underline;
+}
+
+.program-settings-news-editor-top .override-field,
+.program-settings-news-editor-top .override-field-wide,
+.program-settings-news-editor-bottom .override-field,
+.program-settings-news-editor-bottom .override-field-wide {
+  width: 100%;
+  max-width: 100%;
+}
+
 .demo-session-banner {
   display: flex;
   align-items: center;
@@ -430,6 +720,22 @@ label {
   gap: 12px;
 }
 
+.login-ecosystem-note {
+  margin: 0;
+  font-size: 0.85em;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.login-ecosystem-note a {
+  color: #93c5fd;
+  text-decoration: underline;
+}
+
+.login-ecosystem-note a:hover {
+  color: #bfdbfe;
+}
+
 input,
 button,
 textarea,
@@ -548,6 +854,7 @@ button {
   gap: 6px;
   flex: 1;
   min-height: 0;
+  overflow-y: auto;
 }
 
 .sidebar-actions {
@@ -745,7 +1052,9 @@ button {
 
 .editor-card-screen-bg .bg-gallery {
   grid-template-columns: repeat(auto-fill, minmax(min(100px, 100%), 1fr));
-  max-height: min(220px, 38vh);
+  max-height: none;
+  overflow: visible;
+  align-items: stretch;
 }
 
 .widget-list.widget-list-grid {
@@ -833,58 +1142,121 @@ button {
 
 .lesson-uploads-grid {
   display: grid;
-  gap: 12px 14px;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr));
+  gap: 14px 18px;
+  justify-items: start;
+  align-items: start;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), max-content));
 }
 
 @media (min-width: 900px) {
   .lesson-uploads-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(3, max-content);
   }
 }
 
-.lesson-upload-cell {
+.lesson-import-slot {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  align-items: stretch;
+  gap: 8px;
+  width: fit-content;
+  max-width: min(100%, 420px);
+}
+
+.lesson-import-kind {
+  font-weight: 600;
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.lesson-import-slot-hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.lesson-import-file-wrap {
+  display: block;
   min-width: 0;
+}
+
+.lesson-import-file-wrap .lesson-import-file {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  font-size: 12px;
 }
 
 .lesson-sample-btn {
-  width: fit-content;
-  max-width: 100%;
-  align-self: flex-start;
+  width: 100%;
+  box-sizing: border-box;
 }
 
-.lesson-file-field {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  min-width: 0;
+.lesson-import-weekly-span {
+  grid-column: 1 / -1;
+  width: 100%;
+  max-width: 100%;
+  margin-top: 4px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.lesson-import-weekly-head {
+  margin-bottom: 8px;
+}
+
+.lesson-import-weekly-label {
+  display: block;
+  font-weight: 600;
   font-size: 13px;
+  margin-bottom: 4px;
 }
 
-.lesson-file-field input[type="file"] {
+.lesson-import-weekly-hint {
+  margin: 0;
   font-size: 12px;
-  max-width: 100%;
+  line-height: 1.35;
 }
 
-/* Архив недели: три кнопки в одну строку (глобально button { width:100% } иначе даёт «три простыни») */
-.schedule-subpanel-zip .lesson-weekly-actions {
+.lesson-weekly-actions.lesson-weekly-actions--accent {
   display: flex;
   flex-direction: row;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 10px;
   align-items: center;
   justify-content: flex-start;
 }
 
-.schedule-subpanel-zip .lesson-weekly-actions button.secondary-btn {
+.lesson-weekly-actions.lesson-weekly-actions--accent .schedule-zip-action-btn {
   width: auto;
   min-width: auto;
   max-width: none;
   flex: 0 1 auto;
   white-space: nowrap;
+  border-color: rgba(74, 222, 128, 0.55);
+  background: rgba(34, 197, 94, 0.18);
+  color: rgba(220, 252, 231, 0.98);
+}
+
+.lesson-weekly-actions.lesson-weekly-actions--accent .schedule-zip-action-btn:hover {
+  background: rgba(34, 197, 94, 0.3);
+  border-color: rgba(134, 239, 172, 0.75);
+}
+
+.schedule-overrides-prune-hint {
+  margin: -4px 0 8px;
+  font-size: 12px;
+}
+
+.schedule-help-list {
+  margin: 6px 0 8px;
+  padding-left: 1.2rem;
+  line-height: 1.45;
+}
+
+.schedule-help-list li {
+  margin: 4px 0;
 }
 
 .lesson-stats-text {
@@ -1005,67 +1377,28 @@ button {
   margin-top: 12px;
 }
 
-/* Сворачиваемый редактор звонков */
-.bell-editor-details {
-  margin-top: 8px;
-  border-radius: 12px;
-  border: 1px solid rgba(148, 163, 184, 0.22);
-  background: rgba(15, 23, 42, 0.35);
-  overflow: hidden;
-}
-
-.bell-editor-summary {
-  cursor: pointer;
-  padding: 10px 14px;
-  list-style: none;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 6px 12px;
-  user-select: none;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text);
-}
-
-.bell-editor-summary::-webkit-details-marker {
-  display: none;
-}
-
-.bell-editor-summary::before {
-  content: "▸";
-  display: inline-block;
-  margin-right: 6px;
-  color: var(--accent);
-  font-size: 12px;
-  transition: transform 0.15s ease;
-}
-
-.bell-editor-details[open] .bell-editor-summary::before {
-  transform: rotate(90deg);
-}
-
-.bell-editor-summary-title {
+.bell-editor-static-title {
+  margin: 10px 0 0;
+  font-size: 1.05rem;
   font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.02em;
 }
 
-.bell-editor-summary-hint {
-  font-size: 12px;
-  font-weight: 400;
-  color: var(--muted);
+.bell-subpanel-weekdays {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: rgba(15, 23, 42, 0.35);
 }
 
-.bell-editor-body {
-  padding: 4px 14px 14px;
-  border-top: 1px solid rgba(148, 163, 184, 0.15);
-}
-
-.bell-editor-body > .admin-subpanel:first-child {
-  margin-top: 4px;
+.bell-subpanel-weekdays .admin-subpanel-title {
+  margin-bottom: 8px;
 }
 
 .bell-subpanel-template {
-  margin-top: 4px;
+  margin-top: 12px;
 }
 
 .bell-template-fields {
@@ -1081,18 +1414,6 @@ button {
   gap: 4px;
   min-width: 0;
   font-size: 13px;
-}
-
-.bell-weekday-subsection {
-  margin-top: 12px;
-  padding: 12px 14px;
-  border-radius: 12px;
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  background: rgba(15, 23, 42, 0.35);
-}
-
-.bell-weekday-subsection .admin-subpanel-title {
-  margin-bottom: 8px;
 }
 
 .bell-rows-hint {
@@ -1184,76 +1505,6 @@ button {
   min-width: 0;
 }
 
-.program-settings-embed .program-settings-page-header {
-  margin: -2px -4px 0;
-  border-radius: 10px 10px 0 0;
-}
-
-.program-settings-embed .program-settings-page-header-inner {
-  max-width: 100%;
-}
-
-.program-settings-embed .program-settings-subtabs.section-tabs {
-  max-width: 100%;
-}
-
-.program-settings-page-header {
-  flex: 0 0 auto;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.22);
-  background: rgba(15, 23, 42, 0.97);
-  backdrop-filter: blur(10px);
-}
-
-.program-settings-page-header-inner {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 12px 16px;
-  max-width: 1100px;
-  margin: 0 auto;
-  width: 100%;
-  flex-wrap: wrap;
-}
-
-.program-settings-page-header-inner h2 {
-  margin: 0;
-  font-size: 1.1rem;
-  font-weight: 700;
-  min-width: 0;
-}
-
-.program-settings-header-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  margin-left: auto;
-}
-
-.program-settings-tabstrip {
-  border-top: 1px solid rgba(148, 163, 184, 0.14);
-  background: rgba(15, 23, 42, 0.42);
-}
-
-/* Те же визуальные принципы, что у вкладок «Экран / Расписание / Превью» */
-.program-settings-subtabs.section-tabs {
-  flex-direction: row;
-  flex-wrap: wrap;
-  align-items: center;
-  width: 100%;
-  max-width: 960px;
-  margin: 0 auto;
-  padding: 6px 16px 8px;
-  box-sizing: border-box;
-}
-
-.program-settings-subtabs .section-tab-btn {
-  flex: 0 0 auto;
-  width: auto;
-}
-
 .program-settings-footer-actions button {
   flex: 0 0 auto;
 }
@@ -1277,8 +1528,84 @@ button {
 }
 
 .program-settings-pane {
-  max-width: 960px;
+  max-width: 1100px;
   margin: 0 auto;
+}
+
+.program-settings-general-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 18px;
+  align-items: stretch;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.program-settings-general-grid > .program-settings-block {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  align-self: stretch;
+}
+
+.program-settings-news-list-scroll {
+  flex: 1 1 auto;
+  min-height: 200px;
+  max-height: min(52vh, 520px);
+  overflow: auto;
+}
+
+.program-settings-rss-block--framed {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 10px 12px 12px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.22);
+}
+
+@media (max-width: 800px) {
+  .program-settings-general-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.program-settings-block {
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 10px;
+  padding: 10px 12px 12px;
+  background: rgba(15, 23, 42, 0.22);
+  min-width: 0;
+}
+
+.program-settings-block--full {
+  grid-column: 1 / -1;
+}
+
+.program-settings-block .settings-popover-subhead:first-child {
+  margin-top: 0;
+}
+
+.program-settings-rss-sep {
+  margin: 22px 0 14px;
+  border: none;
+  border-top: 1px solid rgba(148, 163, 184, 0.22);
+}
+
+.program-settings-rss-block .rss-sources-list {
+  margin-top: 8px;
+}
+
+.admin-sidebar-logout-btn {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0;
+}
+
+.admin-sidebar-settings .admin-sidebar-logout-btn {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(148, 163, 184, 0.12);
 }
 
 .program-settings-changelog-title {
@@ -1297,6 +1624,17 @@ button {
   gap: 8px 14px;
 }
 
+.program-settings-palette-grid--compact {
+  grid-template-columns: repeat(auto-fill, minmax(128px, 1fr));
+  gap: 4px 8px;
+  font-size: 12px;
+}
+
+.program-settings-palette-grid--compact .toggle-label {
+  gap: 4px;
+  min-height: 0;
+}
+
 .program-settings-palette-grid .toggle-label {
   align-items: flex-start;
 }
@@ -1312,6 +1650,18 @@ button {
   grid-template-columns: minmax(160px, 1fr) minmax(260px, 2fr) auto auto;
   gap: 8px;
   align-items: center;
+}
+
+.program-settings-rss-block .rss-source-row {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.program-settings-rss-block .rss-source-row .toggle-label,
+.program-settings-rss-block .rss-source-row .secondary-btn {
+  align-self: flex-start;
 }
 
 .widget-editor-modal-body .settings-grid {
@@ -1433,7 +1783,7 @@ button {
   line-height: 1.45;
 }
 
-/* Панель «Звук ПК»: сводка на всю ширину, затем три колонки по группам */
+/* Панель «Звук ПК»: введение, затем три колонки (плеер | настройки | статус) */
 .audio-stream-body {
   display: flex;
   flex-direction: column;
@@ -1441,22 +1791,83 @@ button {
   align-items: stretch;
 }
 
-.audio-stream-meta {
-  display: grid;
-  gap: 8px;
+.audio-stream-intro-card {
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: rgba(30, 41, 59, 0.5);
 }
 
-.audio-stream-three-cols {
+.audio-stream-intro-heading {
+  margin: 0 0 8px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.audio-stream-lede {
+  display: grid;
+  gap: 6px;
+}
+
+.audio-stream-main-cols {
   display: grid;
   gap: 14px 16px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  align-items: start;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr) minmax(0, 1fr);
+  align-items: stretch;
 }
 
-@media (max-width: 1050px) {
-  .audio-stream-three-cols {
+@media (max-width: 1100px) {
+  .audio-stream-main-cols {
     grid-template-columns: 1fr;
   }
+}
+
+.audio-stream-panel-col {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  height: 100%;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 12px;
+  padding: 10px 12px 12px;
+  background: rgba(30, 41, 59, 0.45);
+}
+
+.audio-stream-col-heading {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.audio-stream-control-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.audio-stream-control-section {
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.audio-stream-control-section:last-child {
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.audio-stream-control-section--break {
+  padding-top: 2px;
+}
+
+.audio-stream-status-hints {
+  display: grid;
+  gap: 8px;
+  margin-top: 4px;
 }
 
 .audio-stream-group-title {
@@ -1480,9 +1891,71 @@ button {
   gap: 4px;
 }
 
-.audio-stream-col .break-music-player {
-  margin-top: 4px;
-  padding-top: 10px;
+.audio-stream-field-stack > label {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.audio-stream-field-label {
+  display: block;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.audio-stream-field-ffmpeg {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.audio-stream-ffmpeg-row {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.audio-stream-path-input {
+  flex: 1 1 0;
+  min-width: 0 !important;
+  width: auto !important;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.audio-stream-ffmpeg-browse-btn,
+.audio-stream-ffmpeg-clear-btn {
+  flex-shrink: 0;
+  white-space: nowrap;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.audio-stream-ffmpeg-clear-btn {
+  min-width: 34px;
+  padding-left: 8px;
+  padding-right: 8px;
+}
+
+#audio-stream-panel select.standard-input.audio-stream-source-select {
+  width: 100%;
+  min-width: 0 !important;
+  max-width: 100%;
+}
+
+.audio-stream-source-screen-label {
+  min-width: 0;
+}
+
+.audio-stream-panel-col .break-music-player {
+  margin-top: 2px;
+  padding-top: 8px;
 }
 
 /* В aside плеер без искусственного max-width */
@@ -1505,12 +1978,32 @@ button {
   gap: 8px;
 }
 
-#audio-stream-panel .audio-stream-meta {
-  gap: 4px;
+#audio-stream-panel .audio-stream-intro-card {
+  padding: 10px 12px;
 }
 
-#audio-stream-panel .audio-stream-three-cols {
+#audio-stream-panel .audio-stream-main-cols {
   gap: 10px 12px;
+}
+
+#audio-stream-panel .audio-stream-panel-col--player .pc-audio-player {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-width: none;
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+#audio-stream-panel .audio-stream-panel-col--player .pc-player-file-list {
+  flex: 1 1 auto;
+  min-height: 120px;
+  max-height: none;
+}
+
+#audio-stream-panel .audio-stream-panel-col--controls .audio-stream-control-stack {
+  flex: 1 1 auto;
 }
 
 #stats-panel .stats-intro-short {
@@ -2237,6 +2730,39 @@ label.bell-file-upload:hover {
 .widget-actions {
   display: flex;
   gap: 4px;
+  flex-shrink: 0;
+}
+
+/* Иконка «настроить» на карточке виджета (список под «Виджеты») */
+.widget-card-config-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid rgba(34, 197, 94, 0.45);
+  border-radius: 8px;
+  background: rgba(34, 197, 94, 0.16);
+  color: rgba(187, 247, 208, 0.95);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.widget-card-config-btn:hover {
+  background: rgba(34, 197, 94, 0.28);
+  border-color: rgba(74, 222, 128, 0.55);
+  color: rgb(220, 252, 231);
+}
+
+.widget-card-config-btn:focus-visible {
+  outline: 2px solid rgba(74, 222, 128, 0.65);
+  outline-offset: 2px;
+}
+
+.widget-card-config-icon {
+  display: block;
+  flex-shrink: 0;
 }
 
 .widget-body {
@@ -2517,6 +3043,7 @@ label.bell-file-upload:hover {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   gap: 6px;
+  align-items: stretch;
   max-height: 220px;
   overflow-y: auto;
   padding: 6px;
@@ -2526,6 +3053,11 @@ label.bell-file-upload:hover {
 
 .bg-gallery-item {
   position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  align-self: stretch;
   border: 1px solid rgba(148, 163, 184, 0.25);
   border-radius: 10px;
   overflow: hidden;
@@ -2537,14 +3069,17 @@ label.bell-file-upload:hover {
   display: block;
   width: 100%;
   height: 82px;
+  flex: 0 0 auto;
   object-fit: cover;
 }
 
 .bg-gallery-item .bg-gallery-cap {
+  flex: 1 1 auto;
   padding: 4px 6px;
   font-size: 11px;
   color: var(--muted);
   word-break: break-word;
+  min-height: 2.4em;
 }
 
 .bg-gallery-item.active {
@@ -2963,7 +3498,7 @@ label.bell-file-upload:hover {
   padding: 5px 0;
 }
 
-.hint-details .lesson-import-hint {
+.hint-details .schedule-help-list {
   margin: 6px 0 4px;
 }
 

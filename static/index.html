@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>GuardSchool Admin</title>
-  <link rel="stylesheet" id="admin-styles" href="/static/styles.css?v=1.02.001">
+  <link rel="stylesheet" id="admin-styles" href="/static/styles.css?v=1.02.040">
   <script>
     (function () {
       try {
@@ -21,28 +21,42 @@
     <span data-i18n="top.demoBanner">Временная сессия по ссылке «Демо» (/demo/…), это не обычный вход под паролем школы. Чтобы работать в боевом кабинете: «Выйти из демо», затем войдите через /login своим логином и паролем администратора.</span>
     <button type="button" id="demo-session-logout-btn" class="secondary-btn compact-btn" data-i18n="top.demoLogout">Выйти из демо</button>
   </div>
-  <div class="admin-shell">
-    <header class="top-bar">
-      <div class="top-bar-brand">
-        <img class="brand-logo-mini" src="/brand-logo" alt="">
-        <span class="top-bar-title" data-i18n="brand.title">GuardSchool</span>
-      </div>
-      <div class="top-bar-actions">
-        <button type="button" id="save-config-top-btn" class="primary-btn compact-btn" data-i18n="top.save">Сохранить</button>
-      </div>
-      <div class="top-bar-nav-wrap">
-        <div id="tabs" class="top-nav-tabs"></div>
-        <div class="top-bar-emergency-block">
-          <label class="top-bar-emergency">
+  <div class="admin-shell admin-shell--sidebar">
+    <aside class="admin-sidebar" id="admin-sidebar" aria-label="Меню">
+      <div class="admin-sidebar-inner">
+        <div class="admin-sidebar-block">
+          <label class="top-bar-emergency admin-sidebar-emergency">
             <input type="checkbox" id="admin-emergency-mode" />
             <span data-i18n="top.emergencyMode">Аварийный режим</span>
           </label>
-          <div id="emergency-template-bar" class="emergency-template-bar" role="group" aria-label="Шаблоны аварийки"></div>
+          <div id="emergency-template-bar" class="emergency-template-bar emergency-template-bar--sidebar" role="group" aria-label="Шаблоны аварийки"></div>
         </div>
-        <button type="button" id="program-settings-open-btn" class="top-nav-btn top-settings-open-btn" data-i18n="top.settings">Настройки</button>
+        <hr class="admin-sidebar-sep" />
+        <div id="tabs" class="admin-sidebar-screens" role="navigation" aria-label="Экраны"></div>
+        <button type="button" id="save-config-top-btn" class="admin-sidebar-save-btn" data-i18n="top.save">Сохранить</button>
+        <hr class="admin-sidebar-sep" />
+        <div class="admin-sidebar-settings" id="admin-sidebar-settings">
+          <button type="button" id="program-settings-open-btn" class="admin-sidebar-settings-main" data-i18n="top.settings">Настройки</button>
+          <div id="admin-settings-submenu" class="admin-settings-submenu" role="group" data-i18n-aria-label="admin.settingsSubmenuAria">
+            <button type="button" class="admin-settings-submenu-item" data-admin-submenu="program" data-ps-tab="general" data-i18n="programSettings.tabGeneral">Общее</button>
+            <button type="button" class="admin-settings-submenu-item" data-admin-submenu="program" data-ps-tab="school_news" data-i18n="programSettings.tabSchoolNews">Новости</button>
+            <button type="button" class="admin-settings-submenu-item" data-admin-submenu="audio" data-i18n="audio.title">Звук ПК</button>
+            <button type="button" class="admin-settings-submenu-item" data-admin-submenu="program" data-ps-tab="tv" data-i18n="programSettings.tabTv">ТВ (SaaS)</button>
+            <button type="button" class="admin-settings-submenu-item" data-admin-submenu="program" data-ps-tab="emergency" data-i18n="programSettings.tabEmergency">Аварийные шаблоны</button>
+            <button type="button" class="admin-settings-submenu-item" data-admin-submenu="program" data-ps-tab="feedback" data-i18n="programSettings.tabFeedback">Обратная связь</button>
+            <button type="button" class="admin-settings-submenu-item" data-admin-submenu="stats" data-i18n="tabs.stats">Статистика</button>
+            <button type="button" class="admin-settings-submenu-item" data-admin-submenu="program" data-ps-tab="changelog" data-i18n="programSettings.tabChangelog">Изменения в программе</button>
+          </div>
+          <button type="button" id="logout-btn" class="admin-sidebar-logout-btn secondary-btn compact-btn" data-i18n="top.logout">Выйти</button>
+        </div>
+        <hr class="admin-sidebar-sep" />
+        <div class="admin-sidebar-brand">
+          <img class="brand-logo-mini" src="/brand-logo" alt="">
+          <span class="top-bar-title" data-i18n="brand.title">GuardSchool</span>
+        </div>
       </div>
-    </header>
-
+    </aside>
+    <div class="admin-main-column">
     <main class="main-content">
       <div id="section-tabs-panel" class="section-tabs-panel">
         <div id="section-tabs" class="section-tabs"></div>
@@ -50,7 +64,7 @@
 
       <div id="screen-editor-wrap">
       <section class="editor-grid editor-grid-screen">
-        <div class="card editor-card-screen-main" data-section="main">
+        <div class="card editor-card-screen-main" data-section="screen">
           <div class="card-header screen-main-card-header">
             <h2 data-i18n="screen.paramsTitle">Параметры экрана</h2>
             <div class="screen-main-card-actions">
@@ -106,16 +120,12 @@
                 </div>
                 <div id="screen-mobile-widgets" class="class-checkboxes"></div>
               </div>
-              <label><span data-i18n="screen.bellTemplate">Шаблон звонков</span>
-                <span class="tip" data-i18n-title="screen.bellTemplateTip" title="Выбор источника расписания звонков для этого ТВ (начало/конец урока).">?</span>
-                <select id="screen-bell-template" class="standard-input"></select>
-              </label>
             </div>
           </details>
           <p class="hint tv-not-stream-hint" data-i18n="screen.tvHint">Звонки на колонки/линию — «Звук ПК», не в карточке этого экрана.</p>
         </div>
 
-        <div class="card editor-card-screen-bg" data-section="main">
+        <div class="card editor-card-screen-bg" data-section="screen">
           <div class="card-header">
             <h2 data-i18n="bg.title">Фон и читаемость</h2>
           </div>
@@ -127,6 +137,7 @@
                 </span>
                 <input id="screen-background" type="text" readonly class="standard-input bg-file-compact-path" value="">
                 <button id="pick-background-btn" type="button" class="secondary-btn compact-btn" data-i18n="bg.pick">Выбрать</button>
+                <input id="background-input" type="file" accept="image/*" hidden aria-hidden="true">
               </div>
 
               <label class="toggle-label">
@@ -169,122 +180,90 @@
           </div>
         </div>
 
-        <div class="card span-2 editor-card-widgets" data-section="main">
+        <div class="card span-2 editor-card-widgets" data-section="widgets">
           <h2 class="card-subtitle-screen" data-i18n="widgets.title">Виджеты</h2>
           <div id="widget-list" class="widget-list widget-list-grid"></div>
         </div>
 
-        <div class="card span-2 schedule-lessons-card" data-section="schedule">
+        <div class="card span-2 schedule-lessons-card" data-section="lessons">
           <div class="card-header schedule-card-header">
             <h2 data-i18n="schedule.lessonsTitle">Уроки и Excel</h2>
           </div>
-          <details class="hint-details schedule-help-details">
-            <summary data-i18n="schedule.helpSummary">Справка: колонки, import, приоритет данных</summary>
-            <p class="hint lesson-import-hint" data-i18n-html="schedule.helpHtml">
-              <strong>По датам</strong> — «Дата», «Класс», «Урок1»… или <code>data/import/schedule.xlsx</code>.
-              <strong>По неделе</strong> — «День недели», «Класс», уроки; <code>full_schedule.xlsx</code> в import.
-              <strong>Образец</strong> — отличие от полного → подсветка на ТВ. Приоритет: ручная замена → образец → датированное/полное.
-            </p>
-          </details>
-
-          <section class="admin-subpanel schedule-subpanel-import" aria-labelledby="schedule-import-title">
-            <h3 id="schedule-import-title" class="admin-subpanel-title" data-i18n="schedule.importTitle">Импорт из Excel</h3>
-            <p class="hint admin-subpanel-lead" data-i18n-html="schedule.importLead">Файлы в <code>data/import</code> подхватываются автоматически; здесь — ручная загрузка.</p>
-            <div class="lesson-uploads-grid">
-              <div class="lesson-upload-cell">
-                <label class="compact-field lesson-file-field"><span data-i18n="schedule.fileDated">Расписание по датам</span><input id="schedule-input-dated" type="file" accept=".xlsx,.xlsm,.xltx,.xltm"></label>
-                <button type="button" class="secondary-btn compact-btn lesson-sample-btn" data-import-excel-sample="dated" data-i18n="schedule.downloadSample">Скачать образец</button>
-              </div>
-              <div class="lesson-upload-cell">
-                <label class="compact-field lesson-file-field"><span data-i18n="schedule.fileFull">Полное (неделя)</span><input id="full-schedule-input" type="file" accept=".xlsx,.xlsm,.xltx,.xltm"></label>
-                <button type="button" class="secondary-btn compact-btn lesson-sample-btn" data-import-excel-sample="full" data-i18n="schedule.downloadSample">Скачать образец</button>
-              </div>
-              <div class="lesson-upload-cell">
-                <label class="compact-field lesson-file-field"><span data-i18n="schedule.fileSample">Образец изменений</span><input id="schedule-sample-input" type="file" accept=".xlsx,.xlsm,.xltx,.xltm"></label>
-                <button type="button" class="secondary-btn compact-btn lesson-sample-btn" data-import-excel-sample="sample" data-i18n="schedule.downloadSample">Скачать образец</button>
-              </div>
-              <div class="lesson-upload-cell">
-                <label class="compact-field lesson-file-field"><span data-i18n="schedule.fileHolidays">События (праздники)</span><input id="holidays-input" type="file" accept=".xlsx,.xlsm,.xltx,.xltm"></label>
-                <button type="button" class="secondary-btn compact-btn lesson-sample-btn" data-import-excel-sample="holidays" data-i18n="schedule.downloadSample">Скачать образец</button>
-              </div>
-              <div class="lesson-upload-cell">
-                <label class="compact-field lesson-file-field"><span data-i18n="schedule.fileAnnounce">Объявления</span><input id="announcements-input" type="file" accept=".xlsx,.xlsm,.xltx,.xltm"></label>
-                <button type="button" class="secondary-btn compact-btn lesson-sample-btn" data-import-excel-sample="announcements" data-i18n="schedule.downloadSample">Скачать образец</button>
-              </div>
-              <div class="lesson-upload-cell">
-                <label class="compact-field lesson-file-field"><span data-i18n="schedule.fileMarquee">Бегущая строка</span><input id="marquee-input" type="file" accept=".xlsx,.xlsm,.xltx,.xltm"></label>
-                <button type="button" class="secondary-btn compact-btn lesson-sample-btn" data-import-excel-sample="marquee" data-i18n="schedule.downloadSample">Скачать образец</button>
-              </div>
-            </div>
-          </section>
-
-          <section class="admin-subpanel schedule-subpanel-news" aria-labelledby="school-news-title">
-            <h3 id="school-news-title" class="admin-subpanel-title">Новости школы</h3>
-            <p class="hint admin-subpanel-lead">Публикации для виджета «Новости школы»: достижения, мероприятия, олимпиады, объявления администрации.</p>
-            <div class="override-form-grid">
-              <input id="school-news-id" type="hidden">
-              <label class="override-field override-field-wide"><span class="override-field-label">Заголовок</span><input id="school-news-title-input" class="standard-input" type="text" placeholder="Название новости"></label>
-              <label class="override-field"><span class="override-field-label">Дата</span><input id="school-news-date" class="standard-input" type="date"></label>
-              <label class="override-field override-field-wide">
-                <span class="override-field-label">Обложка (URL или загрузка)</span>
-                <input id="school-news-cover" class="standard-input wide-input" type="text" placeholder="/uploads/... или https://...">
-              </label>
-              <div class="override-form-actions" style="margin-top:-6px">
-                <button id="school-news-cover-pick-btn" type="button" class="secondary-btn compact-btn">Загрузить обложку с ПК</button>
-                <button id="school-news-cover-fetch-btn" type="button" class="secondary-btn compact-btn">Подтянуть обложку по ссылке</button>
-                <input id="school-news-cover-file" type="file" accept="image/*" hidden>
-                <span class="hint" style="align-self:center">до 1 МБ; при удалении новости локальные картинки удаляются.</span>
-              </div>
-              <label class="override-field toggle-label"><input id="school-news-active" type="checkbox" checked><span>Активна</span></label>
-              <div class="override-field override-field-wide">
-                <div class="school-news-editor-head">
-                  <span class="override-field-label">Текст новости</span>
-                </div>
-                <div id="school-news-editor-wrap" class="gs-rich-editor">
-                  <div class="gs-rich-toolbar" role="toolbar" aria-label="Редактор новости">
-                    <button type="button" class="secondary-btn compact-btn" data-gs-cmd="bold"><b>B</b></button>
-                    <button type="button" class="secondary-btn compact-btn" data-gs-cmd="italic"><i>I</i></button>
-                    <button type="button" class="secondary-btn compact-btn" data-gs-cmd="underline"><u>U</u></button>
-                    <span class="gs-rich-sep" aria-hidden="true"></span>
-                    <button type="button" class="secondary-btn compact-btn" data-gs-cmd="insertUnorderedList">• список</button>
-                    <button type="button" class="secondary-btn compact-btn" data-gs-cmd="insertOrderedList">1. список</button>
-                    <span class="gs-rich-sep" aria-hidden="true"></span>
-                    <button type="button" class="secondary-btn compact-btn" data-gs-action="link">Ссылка</button>
-                    <button type="button" class="secondary-btn compact-btn" data-gs-action="unlink">Убрать ссылку</button>
-                    <span class="gs-rich-sep" aria-hidden="true"></span>
-                    <button type="button" class="secondary-btn compact-btn" data-gs-action="clear">Очистить формат</button>
-                  </div>
-                  <div id="school-news-editor" class="gs-rich-surface" contenteditable="true" spellcheck="true" aria-label="Текст новости"></div>
-                </div>
-                <textarea id="school-news-content" class="standard-input wide-input" rows="6" placeholder="Текст новости (служебное поле)" style="display:none"></textarea>
-              </div>
-              <div class="override-form-actions">
-                <button id="school-news-save-btn" type="button" class="primary-btn">Сохранить новость</button>
-                <button id="school-news-reset-btn" type="button" class="secondary-btn">Очистить форму</button>
-              </div>
-            </div>
-            <div id="school-news-list" class="override-list"></div>
-          </section>
-
-          <section class="admin-subpanel schedule-subpanel-zip" aria-labelledby="schedule-zip-title">
-            <h3 id="schedule-zip-title" class="admin-subpanel-title" data-i18n="schedule.zipTitle">Архив недели (ZIP)</h3>
-            <div class="lesson-weekly-actions">
-              <button id="weekly-schedule-export-btn" type="button" class="secondary-btn" data-i18n="schedule.zipExport">Экспорт недели (ZIP)</button>
-              <button id="weekly-schedule-import-btn" type="button" class="secondary-btn" data-i18n="schedule.zipImport">Импорт недели (ZIP)</button>
-              <button id="weekly-schedule-template-btn" type="button" class="secondary-btn" data-i18n="schedule.zipTemplate">Скачать шаблон Excel</button>
-              <input id="weekly-schedule-import-input" type="file" accept=".zip" hidden>
-            </div>
-            <p class="hint admin-subpanel-foot" data-i18n-html="schedule.zipFoot">В архиве: <code>full_schedule.json</code>, <code>schedule_sample.json</code>, шаблон <code>full_schedule_sample.xlsx</code>, <code>README.txt</code>. Достаточно хотя бы одного JSON при импорте.</p>
-          </section>
 
           <section class="admin-subpanel schedule-subpanel-stats" aria-labelledby="schedule-stats-title">
             <h3 id="schedule-stats-title" class="admin-subpanel-title" data-i18n="schedule.statsTitle">Состояние данных</h3>
             <p id="lesson-import-stats" class="hint lesson-stats-text"></p>
           </section>
 
+          <details class="hint-details schedule-help-details">
+            <summary data-i18n="schedule.helpSummary">Кратко: колонки и приоритет</summary>
+            <ul class="schedule-help-list hint">
+              <li data-i18n="schedule.helpLi1">По датам: колонки «Дата», «Класс», уроки по номерам.</li>
+              <li data-i18n="schedule.helpLi2">По неделе: «День недели», «Класс», уроки.</li>
+              <li data-i18n="schedule.helpLi3">Образец: отличия от полного расписания подсвечиваются на ТВ.</li>
+              <li data-i18n="schedule.helpLi4">Приоритет на уроке: ручная замена → образец → датированное или полное.</li>
+            </ul>
+          </details>
+
+          <section class="admin-subpanel schedule-subpanel-import" aria-labelledby="schedule-import-title">
+            <h3 id="schedule-import-title" class="admin-subpanel-title" data-i18n="schedule.importTitle">Файлы Excel</h3>
+            <p class="hint admin-subpanel-lead" data-i18n-html="schedule.importLead">Папка <code>data/import</code> на сервере подхватывается сама; ниже — загрузка с компьютера.</p>
+            <div class="lesson-uploads-grid">
+              <div class="lesson-import-slot">
+                <div class="lesson-import-kind" data-i18n="schedule.fileDated">Расписание по датам</div>
+                <p class="lesson-import-slot-hint hint" data-i18n="schedule.hintDated">Колонки: дата, класс, уроки.</p>
+                <label class="lesson-import-file-wrap"><input id="schedule-input-dated" class="lesson-import-file" type="file" accept=".xlsx,.xlsm,.xltx,.xltm"></label>
+                <button type="button" class="secondary-btn compact-btn lesson-sample-btn" data-import-excel-sample="dated" data-i18n="schedule.downloadSample">Скачать образец</button>
+              </div>
+              <div class="lesson-import-slot">
+                <div class="lesson-import-kind" data-i18n="schedule.fileFull">Полное (неделя)</div>
+                <p class="lesson-import-slot-hint hint" data-i18n="schedule.hintFull">Колонки: день недели, класс, уроки.</p>
+                <label class="lesson-import-file-wrap"><input id="full-schedule-input" class="lesson-import-file" type="file" accept=".xlsx,.xlsm,.xltx,.xltm"></label>
+                <button type="button" class="secondary-btn compact-btn lesson-sample-btn" data-import-excel-sample="full" data-i18n="schedule.downloadSample">Скачать образец</button>
+              </div>
+              <div class="lesson-import-slot">
+                <div class="lesson-import-kind" data-i18n="schedule.fileSample">Образец изменений</div>
+                <p class="lesson-import-slot-hint hint" data-i18n="schedule.hintSample">То же полное расписание плюс отличия для подсветки.</p>
+                <label class="lesson-import-file-wrap"><input id="schedule-sample-input" class="lesson-import-file" type="file" accept=".xlsx,.xlsm,.xltx,.xltm"></label>
+                <button type="button" class="secondary-btn compact-btn lesson-sample-btn" data-import-excel-sample="sample" data-i18n="schedule.downloadSample">Скачать образец</button>
+              </div>
+              <div class="lesson-import-slot">
+                <div class="lesson-import-kind" data-i18n="schedule.fileHolidays">События (праздники)</div>
+                <p class="lesson-import-slot-hint hint" data-i18n="schedule.hintHolidays">Даты и подписи событий в сетке.</p>
+                <label class="lesson-import-file-wrap"><input id="holidays-input" class="lesson-import-file" type="file" accept=".xlsx,.xlsm,.xltx,.xltm"></label>
+                <button type="button" class="secondary-btn compact-btn lesson-sample-btn" data-import-excel-sample="holidays" data-i18n="schedule.downloadSample">Скачать образец</button>
+              </div>
+              <div class="lesson-import-slot">
+                <div class="lesson-import-kind" data-i18n="schedule.fileAnnounce">Объявления</div>
+                <p class="lesson-import-slot-hint hint" data-i18n="schedule.hintAnnounce">Тексты объявлений для виджета.</p>
+                <label class="lesson-import-file-wrap"><input id="announcements-input" class="lesson-import-file" type="file" accept=".xlsx,.xlsm,.xltx,.xltm"></label>
+                <button type="button" class="secondary-btn compact-btn lesson-sample-btn" data-import-excel-sample="announcements" data-i18n="schedule.downloadSample">Скачать образец</button>
+              </div>
+              <div class="lesson-import-slot">
+                <div class="lesson-import-kind" data-i18n="schedule.fileMarquee">Бегущая строка</div>
+                <p class="lesson-import-slot-hint hint" data-i18n="schedule.hintMarquee">Тексты для бегущей строки.</p>
+                <label class="lesson-import-file-wrap"><input id="marquee-input" class="lesson-import-file" type="file" accept=".xlsx,.xlsm,.xltx,.xltm"></label>
+                <button type="button" class="secondary-btn compact-btn lesson-sample-btn" data-import-excel-sample="marquee" data-i18n="schedule.downloadSample">Скачать образец</button>
+              </div>
+              <div class="lesson-import-weekly-span">
+                <div class="lesson-import-weekly-head">
+                  <span class="lesson-import-weekly-label" data-i18n="schedule.zipShortTitle">Неделя (ZIP)</span>
+                  <p class="hint lesson-import-weekly-hint" data-i18n="schedule.zipHintShort">Для импорта достаточно одного JSON внутри архива.</p>
+                </div>
+                <div class="lesson-weekly-actions lesson-weekly-actions--accent">
+                  <button id="weekly-schedule-export-btn" type="button" class="secondary-btn schedule-zip-action-btn" data-i18n="schedule.zipExport">Экспорт недели (ZIP)</button>
+                  <button id="weekly-schedule-import-btn" type="button" class="secondary-btn schedule-zip-action-btn" data-i18n="schedule.zipImport">Импорт недели (ZIP)</button>
+                  <button id="weekly-schedule-template-btn" type="button" class="secondary-btn schedule-zip-action-btn" data-i18n="schedule.zipTemplate">Скачать шаблон Excel</button>
+                  <input id="weekly-schedule-import-input" type="file" accept=".zip" hidden>
+                </div>
+              </div>
+            </div>
+          </section>
+
           <section class="admin-subpanel schedule-subpanel-overrides" aria-labelledby="schedule-override-title">
             <h3 id="schedule-override-title" class="admin-subpanel-title" data-i18n="schedule.overridesTitle">Ручные замены</h3>
             <p class="hint admin-subpanel-lead" data-i18n="schedule.overridesLead">Замена на конкретную дату для класса и номера урока.</p>
+            <p class="hint schedule-overrides-prune-hint" data-i18n="schedule.overridesPruneHint">Замены с прошедшей датой удаляются автоматически (по календарю школы).</p>
             <div class="override-form-grid">
               <label class="override-field"><span class="override-field-label" data-i18n="schedule.date">Дата</span><input id="override-date" class="standard-input" type="date"></label>
               <label class="override-field"><span class="override-field-label" data-i18n="schedule.class">Класс</span><input id="override-class" class="standard-input" type="text" data-i18n-placeholder="schedule.phClass" placeholder="Напр. 7А"></label>
@@ -299,17 +278,21 @@
           </section>
         </div>
 
-        <div class="card span-2 bell-schedule-card" data-section="schedule">
+        <div class="card span-2 bell-schedule-card" data-section="bells">
           <div class="card-header">
             <h2 data-i18n="bells.title">Звонки</h2>
           </div>
 
-          <details class="bell-editor-details">
-            <summary class="bell-editor-summary">
-              <span class="bell-editor-summary-title" data-i18n="bells.editorSummary">Редактор шаблона и интервалов</span>
-              <span class="bell-editor-summary-hint" data-i18n="bells.editorHint">развернуть: звуки, строки по урокам, сохранение</span>
-            </summary>
-            <div class="bell-editor-body">
+          <h3 class="bell-editor-static-title" data-i18n="bells.editorSummary">Редактор шаблона и интервалов</h3>
+
+          <section class="admin-subpanel bell-subpanel-weekdays" aria-labelledby="bell-weekday-title">
+            <h3 id="bell-weekday-title" class="admin-subpanel-title" data-i18n="bells.weekdayTitle">Автовыбор шаблона по дням недели</h3>
+            <div id="bell-weekday-grid" class="weekday-grid"></div>
+          </section>
+
+          <div class="admin-subpanel bell-subpanel-sounds">
+            <div id="bell-sound-panel" class="bell-sound-panel-inner card-subsection"></div>
+          </div>
 
           <section class="admin-subpanel bell-subpanel-template" aria-labelledby="bell-template-settings-title">
             <h3 id="bell-template-settings-title" class="admin-subpanel-title" data-i18n="bells.templateSection">Шаблон и даты</h3>
@@ -327,16 +310,7 @@
             <p class="hint admin-subpanel-foot" data-i18n="bells.templateFoot">Если указать последний урок (например 5), звонки начала/конца для больших номеров в шаблоне не звучат — чтобы после 5-го не было «начала 6-го».</p>
           </section>
 
-          <div class="card-subsection bell-weekday-subsection">
-            <h3 class="admin-subpanel-title" data-i18n="bells.weekdayTitle">Автовыбор шаблона по дням недели</h3>
-            <div id="bell-weekday-grid" class="weekday-grid"></div>
-          </div>
-
           <p class="hint bell-rows-hint" data-i18n="bells.rowsHint">В поле «Урок»: только цифры (1–8…) — связь с колонками Excel; текст без одних цифр — внеурочный интервал (пятиминутка, линейка…). На экране без цифр в фразе минуты подставляются автоматически.</p>
-
-          <div class="admin-subpanel bell-subpanel-sounds">
-            <div id="bell-sound-panel" class="card-subsection bell-sound-panel-inner"></div>
-          </div>
 
           <div id="bell-rows" class="bell-rows"></div>
           <div class="bell-actions">
@@ -346,9 +320,6 @@
             <button id="save-bell-template-btn" type="button" class="primary-btn" data-i18n="bells.save">Сохранить звонки</button>
           </div>
           <div id="bell-template-list" class="override-list bell-template-strip"></div>
-
-            </div>
-          </details>
         </div>
 
         <div class="card span-2" data-section="preview">
@@ -364,155 +335,218 @@
 
       <section id="program-settings-panel" class="editor-grid program-settings-embed" hidden aria-hidden="true">
         <div class="card span-2 program-settings-card">
-          <header class="program-settings-page-header">
-            <div class="program-settings-page-header-inner">
-              <h2 id="program-settings-modal-title" data-i18n="programSettings.title">Настройки программы</h2>
-              <div class="program-settings-header-actions">
-                <button type="button" id="save-config-btn" class="primary-btn compact-btn" data-i18n="top.save">Сохранить</button>
-                <button type="button" class="secondary-btn compact-btn" data-close-program-settings data-i18n="modal.close">Закрыть</button>
-              </div>
-            </div>
-            <div class="program-settings-tabstrip">
-              <nav class="section-tabs program-settings-subtabs" role="tablist" aria-label="Разделы настроек">
-                <button type="button" class="section-tab-btn program-settings-subtab active" role="tab" data-ps-tab="general" aria-selected="true" data-i18n="programSettings.tabGeneral">Общее</button>
-                <button type="button" class="section-tab-btn program-settings-subtab" role="tab" data-ps-tab="tv" aria-selected="false" data-i18n="programSettings.tabTv">ТВ (SaaS)</button>
-                <button type="button" class="section-tab-btn program-settings-subtab" role="tab" data-ps-tab="emergency" aria-selected="false" data-i18n="programSettings.tabEmergency">Аварийные шаблоны</button>
-                <button type="button" class="section-tab-btn program-settings-subtab" role="tab" data-ps-tab="feedback" aria-selected="false" data-i18n="programSettings.tabFeedback">Обратная связь</button>
-                <button type="button" class="section-tab-btn program-settings-subtab" role="tab" data-ps-tab="changelog" aria-selected="false" data-i18n="programSettings.tabChangelog">Изменения</button>
-              </nav>
-            </div>
-          </header>
           <div class="program-settings-page-scroll">
             <div id="program-settings-pane-general" class="program-settings-pane" data-ps-pane="general" role="tabpanel">
-              <div class="settings-popover-grid program-settings-pane-grid">
-                <h4 class="settings-popover-subhead" data-i18n="regional.title">Язык, время и пояс</h4>
-                <label class="settings-row"><span data-i18n="top.lang">Язык</span>
-                  <select id="admin-locale-select" class="standard-input wide-input" title="Language">
-                    <option value="ru">Русский</option>
-                    <option value="en">English</option>
-                  </select>
-                </label>
-                <label class="settings-row"><span data-i18n="regional.timezone">Часовой пояс</span>
-                  <select id="admin-timezone" class="standard-input wide-input" title="IANA timezone"></select>
-                </label>
-                <label class="settings-row" data-i18n-title="regional.offsetHint"><span data-i18n="regional.offset">Сдвиг времени (мин)</span>
-                  <input type="number" id="admin-clock-offset" class="standard-input" min="-720" max="720" step="1" value="0">
-                </label>
-                <p class="hint settings-regional-hint" data-i18n="regional.offsetHint">Добавляется к «настенному» времени на ТВ (если часы устройства неточны). Диапазон ±720 мин.</p>
+              <div class="program-settings-general-grid">
+                <section class="program-settings-block" aria-labelledby="ps-regional-head">
+                  <h4 id="ps-regional-head" class="settings-popover-subhead" data-i18n="regional.title">Язык, время и пояс</h4>
+                  <label class="settings-row"><span data-i18n="top.lang">Язык</span>
+                    <select id="admin-locale-select" class="standard-input wide-input" title="Language">
+                      <option value="ru">Русский</option>
+                      <option value="en">English</option>
+                    </select>
+                  </label>
+                  <label class="settings-row"><span data-i18n="regional.timezone">Часовой пояс</span>
+                    <select id="admin-timezone" class="standard-input wide-input" title="IANA timezone"></select>
+                  </label>
+                  <label class="settings-row" data-i18n-title="regional.offsetHint"><span data-i18n="regional.offset">Сдвиг времени (мин)</span>
+                    <input type="number" id="admin-clock-offset" class="standard-input" min="-720" max="720" step="1" value="0">
+                  </label>
+                  <p class="hint settings-regional-hint" data-i18n="regional.offsetHint">Добавляется к «настенному» времени на ТВ (если часы устройства неточны). Диапазон ±720 мин.</p>
+                </section>
 
-                <h4 class="settings-popover-subhead">Облако / гибрид</h4>
-                <p class="hint">Локальный сервер может подтягивать ZIP с облака по токену. ТВ: параметры URL <code>gs_primary_base</code>, <code>gs_fallback_base</code>, <code>gs_tv_token</code>, <code>gs_poll_timeout_sec</code>.</p>
-                <label class="settings-row"><span>URL облака (синхронизация)</span>
-                  <input type="url" id="cloud-base-url" class="standard-input wide-input" placeholder="https://guarddoc.ru" autocomplete="off">
-                </label>
-                <label class="settings-row"><span>Интервал синхронизации (мин)</span>
-                  <input type="number" id="cloud-sync-interval" class="standard-input" min="1" max="1440" value="5">
-                </label>
-                <label class="settings-row toggle-label"><input type="checkbox" id="cloud-sync-enabled" checked> <span>Включить синхронизацию с облаком</span></label>
-                <label class="settings-row"><span>Токен синхронизации (предпочтительно env GUARDSCHOOL_CLOUD_SYNC_TOKEN на ПК)</span>
-                  <input type="password" id="cloud-sync-token" class="standard-input wide-input" placeholder="" autocomplete="new-password">
-                </label>
-                <label class="settings-row"><span>Primary URL для ТВ (LAN)</span>
-                  <input type="url" id="screen-primary-base" class="standard-input wide-input" placeholder="http://192.168.1.10:8000" autocomplete="off">
-                </label>
-                <label class="settings-row"><span>Fallback URL (облако)</span>
-                  <input type="url" id="screen-fallback-base" class="standard-input wide-input" placeholder="https://guarddoc.ru" autocomplete="off">
-                </label>
-                <label class="settings-row toggle-label"><input type="checkbox" id="screen-fallback-enabled"> <span>Разрешить ТВ fallback на облако</span></label>
-                <label class="settings-row"><span>Таймаут опроса ТВ (сек)</span>
-                  <input type="number" id="screen-poll-timeout" class="standard-input" min="2" max="60" value="5">
-                </label>
-                <h4 class="settings-popover-subhead">RSS источники</h4>
-                <p class="hint">Внешние образовательные/научные/юридические новости для виджета «Мировые новости».</p>
-                <label class="settings-row"><span>Интервал обновления (мин)</span>
+                <section class="program-settings-block" aria-labelledby="ps-cloud-head">
+                  <h4 id="ps-cloud-head" class="settings-popover-subhead" data-i18n="programSettings.cloudTitle">Облако / гибрид</h4>
+                  <p class="hint" data-i18n="programSettings.cloudHint">ZIP с облака по токену; для ТВ — URL в соседнем блоке.</p>
+                  <label class="settings-row"><span data-i18n="programSettings.cloudBase">URL облака (синхронизация)</span>
+                    <input type="url" id="cloud-base-url" class="standard-input wide-input" placeholder="https://guarddoc.ru" autocomplete="off">
+                  </label>
+                  <label class="settings-row"><span data-i18n="programSettings.cloudInterval">Интервал синхронизации (мин)</span>
+                    <input type="number" id="cloud-sync-interval" class="standard-input" min="1" max="1440" value="5">
+                  </label>
+                  <label class="settings-row toggle-label"><input type="checkbox" id="cloud-sync-enabled" checked> <span data-i18n="programSettings.cloudSyncOn">Включить синхронизацию с облаком</span></label>
+                  <label class="settings-row"><span data-i18n="programSettings.cloudToken">Токен синхронизации (предпочтительно env на ПК)</span>
+                    <input type="password" id="cloud-sync-token" class="standard-input wide-input" placeholder="" autocomplete="new-password">
+                  </label>
+                </section>
+
+                <section class="program-settings-block" aria-labelledby="ps-tv-net-head">
+                  <h4 id="ps-tv-net-head" class="settings-popover-subhead" data-i18n="programSettings.tvNetTitle">Сеть для ТВ</h4>
+                  <label class="settings-row"><span data-i18n="programSettings.tvPrimary">Primary URL (LAN)</span>
+                    <input type="url" id="screen-primary-base" class="standard-input wide-input" placeholder="http://192.168.1.10:8000" autocomplete="off">
+                  </label>
+                  <label class="settings-row"><span data-i18n="programSettings.tvFallback">Fallback URL (облако)</span>
+                    <input type="url" id="screen-fallback-base" class="standard-input wide-input" placeholder="https://guarddoc.ru" autocomplete="off">
+                  </label>
+                  <label class="settings-row toggle-label"><input type="checkbox" id="screen-fallback-enabled"> <span data-i18n="programSettings.tvFallbackOn">Разрешить ТВ fallback на облако</span></label>
+                  <label class="settings-row"><span data-i18n="programSettings.tvPollTimeout">Таймаут опроса ТВ (сек)</span>
+                    <input type="number" id="screen-poll-timeout" class="standard-input" min="2" max="60" value="5">
+                  </label>
+                </section>
+
+                <section class="program-settings-block" aria-labelledby="ps-sync-ui-head">
+                  <h4 id="ps-sync-ui-head" class="settings-popover-subhead" data-i18n="programSettings.syncUiTitle">Синхронизация и интерфейс</h4>
+                  <p class="hint" id="sync-status-line">Синхронизация: —</p>
+                  <div class="settings-row settings-btn-row program-settings-footer-actions">
+                    <button type="button" id="sync-now-btn" class="secondary-btn compact-btn" data-i18n="programSettings.syncNow">Синхронизировать сейчас</button>
+                  </div>
+                  <div class="settings-row settings-row-inline">
+                    <label for="ui-font-size-input" class="settings-inline-label" data-i18n="top.fontPx">Шрифт интерфейса (px)</label>
+                    <input type="number" id="ui-font-size-input" class="standard-input settings-fontpx-input" min="12" max="24" value="14" title="12–24">
+                  </div>
+                </section>
+
+                <section class="program-settings-block program-settings-block--full" aria-labelledby="ps-palette-head">
+                  <h4 id="ps-palette-head" class="settings-popover-subhead program-settings-palette-head" data-i18n="programSettings.paletteTitle">Виджеты в списке под «Виджеты»</h4>
+                  <p class="hint program-settings-palette-hint" data-i18n="programSettings.paletteHint">Галочка только для списка карточек «Виджеты»; ТВ и предпросмотр не меняются.</p>
+                  <div id="program-settings-palette-checkboxes" class="program-settings-palette-grid program-settings-palette-grid--compact"></div>
+                </section>
+              </div>
+            </div>
+
+            <div id="program-settings-pane-school_news" class="program-settings-pane" data-ps-pane="school_news" role="tabpanel" hidden>
+              <div class="program-settings-general-grid program-settings-news-grid">
+                <section class="program-settings-block program-settings-news-editor-top">
+                  <h3 class="program-settings-changelog-title" data-i18n="programSettings.tabSchoolNews">Новости</h3>
+                  <p class="hint admin-subpanel-lead" data-i18n="programSettings.schoolNewsLead">Публикации для виджета «Новости школы» на всех экранах: достижения, мероприятия, олимпиады, объявления администрации.</p>
+                  <input id="school-news-id" type="hidden">
+                  <label class="override-field override-field-wide"><span class="override-field-label">Заголовок</span><input id="school-news-title-input" class="standard-input" type="text" placeholder="Название новости"></label>
+                  <label class="override-field"><span class="override-field-label">Дата</span><input id="school-news-date" class="standard-input" type="date"></label>
+                  <label class="override-field override-field-wide">
+                    <span class="override-field-label">Обложка (URL или загрузка)</span>
+                    <input id="school-news-cover" class="standard-input wide-input" type="text" placeholder="/uploads/... или https://...">
+                  </label>
+                  <div class="override-form-actions" style="margin-top:-6px">
+                    <button id="school-news-cover-pick-btn" type="button" class="secondary-btn compact-btn">Загрузить обложку с ПК</button>
+                    <button id="school-news-cover-fetch-btn" type="button" class="secondary-btn compact-btn">Подтянуть обложку по ссылке</button>
+                    <input id="school-news-cover-file" type="file" accept="image/*" hidden>
+                    <span class="hint" style="align-self:center">до 1 МБ; при удалении новости локальные картинки удаляются.</span>
+                  </div>
+                  <label class="override-field toggle-label"><input id="school-news-active" type="checkbox" checked><span>Активна</span></label>
+                </section>
+                <section class="program-settings-block program-settings-news-list-column">
+                  <h4 class="settings-popover-subhead" data-i18n="programSettings.newsListTitle">Опубликовано</h4>
+                  <div id="school-news-list" class="override-list program-settings-news-list-scroll"></div>
+                </section>
+                <section class="program-settings-block program-settings-block--full program-settings-news-editor-bottom">
+                  <div class="override-field override-field-wide">
+                    <div class="school-news-editor-head">
+                      <span class="override-field-label">Текст новости</span>
+                    </div>
+                    <div id="school-news-editor-wrap" class="gs-rich-editor">
+                      <div class="gs-rich-toolbar" role="toolbar" aria-label="Редактор новости">
+                        <button type="button" class="secondary-btn compact-btn" data-gs-cmd="bold"><b>B</b></button>
+                        <button type="button" class="secondary-btn compact-btn" data-gs-cmd="italic"><i>I</i></button>
+                        <button type="button" class="secondary-btn compact-btn" data-gs-cmd="underline"><u>U</u></button>
+                        <span class="gs-rich-sep" aria-hidden="true"></span>
+                        <button type="button" class="secondary-btn compact-btn" data-gs-cmd="insertUnorderedList">• список</button>
+                        <button type="button" class="secondary-btn compact-btn" data-gs-cmd="insertOrderedList">1. список</button>
+                        <span class="gs-rich-sep" aria-hidden="true"></span>
+                        <button type="button" class="secondary-btn compact-btn" data-gs-action="link">Ссылка</button>
+                        <button type="button" class="secondary-btn compact-btn" data-gs-action="unlink">Убрать ссылку</button>
+                        <span class="gs-rich-sep" aria-hidden="true"></span>
+                        <button type="button" class="secondary-btn compact-btn" data-gs-action="clear">Очистить формат</button>
+                      </div>
+                      <div id="school-news-editor" class="gs-rich-surface" contenteditable="true" spellcheck="true" aria-label="Текст новости"></div>
+                    </div>
+                    <textarea id="school-news-content" class="standard-input wide-input" rows="6" placeholder="Текст новости (служебное поле)" style="display:none"></textarea>
+                  </div>
+                  <div class="override-form-actions">
+                    <button id="school-news-save-btn" type="button" class="primary-btn">Сохранить новость</button>
+                    <button id="school-news-reset-btn" type="button" class="secondary-btn">Очистить форму</button>
+                  </div>
+                </section>
+              </div>
+              <hr class="program-settings-rss-sep" />
+              <section class="program-settings-rss-block program-settings-rss-block--framed" aria-labelledby="program-settings-rss-head">
+                <h3 id="program-settings-rss-head" class="program-settings-changelog-title" data-i18n="programSettings.rssBlockTitle">RSS новости</h3>
+                <p class="hint admin-subpanel-lead" data-i18n="programSettings.rssBlockLead">Источники для виджета «RSS-лента» (внешние ленты).</p>
+                <label class="settings-row"><span data-i18n="programSettings.rssRefreshLabel">Интервал обновления (мин)</span>
                   <input type="number" id="rss-refresh-minutes" class="standard-input" min="30" max="60" value="45">
                 </label>
                 <div id="rss-sources-list" class="rss-sources-list"></div>
                 <div class="settings-row settings-btn-row program-settings-footer-actions">
-                  <button type="button" id="rss-source-add-btn" class="secondary-btn compact-btn">+ Источник</button>
-                  <button type="button" id="rss-refresh-now-btn" class="secondary-btn compact-btn">Обновить RSS сейчас</button>
+                  <button type="button" id="rss-source-add-btn" class="secondary-btn compact-btn" data-i18n="programSettings.rssAddSource">+ Источник</button>
+                  <button type="button" id="rss-refresh-now-btn" class="secondary-btn compact-btn" data-i18n="programSettings.rssRefreshNow">Обновить RSS сейчас</button>
                 </div>
-                <p class="hint" id="sync-status-line">Синхронизация: —</p>
-                <div class="settings-row settings-btn-row program-settings-footer-actions">
-                  <button type="button" id="sync-now-btn" class="secondary-btn compact-btn">Синхронизировать сейчас</button>
-                </div>
-
-                <div class="settings-row settings-row-inline">
-                  <label for="ui-font-size-input" class="settings-inline-label" data-i18n="top.fontPx">Шрифт интерфейса (px)</label>
-                  <input type="number" id="ui-font-size-input" class="standard-input settings-fontpx-input" min="12" max="24" value="14" title="12–24">
-                </div>
-
-                <h4 class="settings-popover-subhead program-settings-palette-head" data-i18n="programSettings.paletteTitle">Виджеты в списке под «Виджеты»</h4>
-                <p class="hint program-settings-palette-hint" data-i18n="programSettings.paletteHint">Снятая галочка скрывает тип только в списке под заголовком «Виджеты» (кнопка «Настроить»). На ТВ и в сетке предпросмотра без изменений. Чтобы настроить скрытый блок — отметьте тип снова.</p>
-                <div id="program-settings-palette-checkboxes" class="program-settings-palette-grid"></div>
-
-                <div class="settings-row settings-btn-row program-settings-footer-actions">
-                  <button id="export-data-btn" type="button" class="secondary-btn compact-btn" data-i18n="top.export">Экспорт ZIP</button>
-                  <button id="import-data-btn" type="button" class="secondary-btn compact-btn" data-i18n="top.import">Импорт ZIP</button>
-                  <input id="import-data-input" type="file" accept=".zip" hidden>
-                </div>
-                <h4 class="settings-popover-subhead" data-i18n="programSettings.accountTitle">Аккаунт</h4>
-                <div class="settings-row settings-btn-row program-settings-footer-actions">
-                  <button type="button" id="logout-btn" class="secondary-btn compact-btn" data-i18n="top.logout">Выйти</button>
-                </div>
-                <div class="settings-row settings-test-row">
-                  <span class="settings-inline-label" data-i18n="top.sound">Звук</span>
-                  <button id="settings-test-rupor-btn" type="button" class="secondary-btn" data-i18n="top.soundRupor">Рупор</button>
-                  <button id="settings-test-tv-btn" type="button" class="secondary-btn" data-i18n="top.soundTv">ТВ</button>
-                </div>
-                <pre id="settings-sound-test-result" class="settings-probe-out"></pre>
-                <label class="settings-row" data-i18n="top.bgFile">Фон ТВ (файл)
-                  <input id="background-input" type="file" accept="image/*">
-                </label>
-                <p class="hint settings-file-input-hint" data-i18n="top.filePickerHint">Подпись кнопки выбора файла задаётся браузером/ОС и может не совпадать с языком интерфейса.</p>
-              </div>
+              </section>
             </div>
 
             <div id="program-settings-pane-emergency" class="program-settings-pane" data-ps-pane="emergency" role="tabpanel" hidden>
-              <div class="settings-popover-grid program-settings-pane-grid">
-                <h4 class="settings-popover-subhead" style="margin-top: 0" data-i18n="emergencyTemplates.title">Шаблоны при глобальном аварийном режиме</h4>
-                <p class="hint" data-i18n="emergencyTemplates.intro">При включённой галочке «Аварийный режим» на всех ТВ показывается выбранный шаблон (текст, цвета, звук для всех, картинка по имени экрана). Кнопки шаблонов у галочки сохраняют выбор сразу.</p>
-                <div id="emergency-templates-admin-root"></div>
+              <div class="program-settings-general-grid program-settings-emergency-grid">
+                <section class="program-settings-block">
+                  <h4 class="settings-popover-subhead" style="margin-top: 0" data-i18n="emergencyTemplates.title">Шаблоны при глобальном аварийном режиме</h4>
+                  <p class="hint" data-i18n="emergencyTemplates.intro">При включённой галочке «Аварийный режим» на всех ТВ показывается выбранный шаблон (текст, цвета, звук для всех, картинка по имени экрана). Кнопки шаблонов у галочки сохраняют выбор сразу.</p>
+                </section>
+                <section class="program-settings-block">
+                  <h4 class="settings-popover-subhead" style="margin-top: 0" data-i18n="programSettings.emergencyAsideTitle">Подсказка</h4>
+                  <p class="hint" data-i18n="programSettings.emergencyAsideBody">Редактор шаблонов — в нижнем блоке на всю ширину. Быстрый выбор шаблона у галочки «Аварийный режим» в левой колонке.</p>
+                </section>
+                <section class="program-settings-block program-settings-block--full">
+                  <div id="emergency-templates-admin-root"></div>
+                </section>
               </div>
             </div>
 
             <div id="program-settings-pane-tv" class="program-settings-pane" data-ps-pane="tv" role="tabpanel" hidden>
-              <div class="settings-popover-grid program-settings-pane-grid">
-                <h4 id="tv-access-head" class="settings-popover-subhead" style="margin-top: 0" hidden>Подключение ТВ (SaaS)</h4>
-                <div id="tv-access-wrap" class="settings-row" hidden>
-                  <p class="hint" style="margin-top: 0">
-                    Сгенерируйте короткий код школы, задайте PIN (4–12 цифр) и используйте ссылки для экранов:
-                    <code>/t/&lt;код&gt;/&lt;экран&gt;</code>.
-                    PIN для ТВ хранится <strong>отдельно</strong> от кнопки «Сохранить» вверху: его меняют только поле ниже и «Сохранить PIN».
-                    После «Сгенерировать код» старые ссылки и QR с прежним кодом <strong>перестают работать</strong>.
-                  </p>
-                  <div class="settings-row settings-btn-row" style="justify-content: flex-start; gap: 10px; flex-wrap: wrap">
-                    <button type="button" id="tv-rotate-code-btn" class="secondary-btn">Сгенерировать код</button>
-                    <input id="tv-pin-input" class="standard-input" inputmode="numeric" placeholder="PIN 4–12 цифр" style="max-width: 180px" />
-                    <button type="button" id="tv-set-pin-btn" class="secondary-btn">Сохранить PIN</button>
+              <div class="program-settings-general-grid program-settings-tv-grid">
+                <section id="tv-non-saas-info" class="program-settings-block program-settings-block--full" hidden>
+                  <h3 class="program-settings-changelog-title" data-i18n="programSettings.tvNonSaasTitle">ТВ в облаке (SaaS)</h3>
+                  <p class="hint" data-i18n="programSettings.tvNonSaasBody">Код школы, PIN и ссылки вида <code>/t/…/…</code> доступны только в режиме развёртывания SaaS. Для локальной или гибридной установки адреса опроса ТВ задаются в «Общее» → блок «Сеть для ТВ».</p>
+                </section>
+                <section id="tv-saas-controls" class="program-settings-block program-settings-block--full" hidden>
+                  <h4 id="tv-access-head" class="settings-popover-subhead" style="margin-top: 0" hidden data-i18n="programSettings.tvSaaSHead">Подключение ТВ (SaaS)</h4>
+                  <div id="tv-access-wrap" class="settings-row" hidden>
+                    <p class="hint" style="margin-top: 0" data-i18n-html="programSettings.tvSaaSIntro">
+                      Сгенерируйте короткий код школы, задайте PIN (4–12 цифр) и используйте ссылки для экранов:
+                      <code>/t/&lt;код&gt;/&lt;экран&gt;</code>.
+                      PIN для ТВ хранится <strong>отдельно</strong> от кнопки «Сохранить» вверху: его меняют только поле ниже и «Сохранить PIN».
+                      После «Сгенерировать код» старые ссылки и QR с прежним кодом <strong>перестают работать</strong>.
+                    </p>
+                    <div class="settings-row settings-btn-row" style="justify-content: flex-start; gap: 10px; flex-wrap: wrap">
+                      <button type="button" id="tv-rotate-code-btn" class="secondary-btn" data-i18n="programSettings.tvGenCode">Сгенерировать код</button>
+                      <input id="tv-pin-input" class="standard-input" inputmode="numeric" data-i18n-placeholder="programSettings.tvPinPh" placeholder="PIN 4–12 цифр" style="max-width: 180px" />
+                      <button type="button" id="tv-set-pin-btn" class="secondary-btn" data-i18n="programSettings.tvSavePin">Сохранить PIN</button>
+                    </div>
+                    <label class="hint" style="display: flex; align-items: flex-start; gap: 10px; margin-top: 10px; cursor: pointer; max-width: 720px; line-height: 1.45">
+                      <input type="checkbox" id="tv-pin-bypass" style="margin-top: 3px" />
+                      <span data-i18n-html="programSettings.tvPinBypassLabel">Тест: не показывать страницу ввода PIN — по ссылке <code>/t/…/…</code> сразу открывается экран (защита только секретным кодом в адресе). Выключается этим же чекбоксом.</span>
+                    </label>
+                    <pre id="tv-code-out" class="settings-probe-out" style="white-space: pre-wrap"></pre>
+                    <div id="tv-links-wrap" class="settings-row" style="margin-top: 10px"></div>
                   </div>
-                  <label class="hint" style="display: flex; align-items: flex-start; gap: 10px; margin-top: 10px; cursor: pointer; max-width: 720px; line-height: 1.45">
-                    <input type="checkbox" id="tv-pin-bypass" style="margin-top: 3px" />
-                    <span>Тест: не показывать страницу ввода PIN — по ссылке <code>/t/…/…</code> сразу открывается экран (защита только секретным кодом в адресе). Выключается этим же чекбоксом.</span>
-                  </label>
-                  <pre id="tv-code-out" class="settings-probe-out" style="white-space: pre-wrap"></pre>
-                  <div id="tv-links-wrap" class="settings-row" style="margin-top: 10px"></div>
-                </div>
+                </section>
               </div>
             </div>
 
             <div id="program-settings-pane-changelog" class="program-settings-pane" data-ps-pane="changelog" role="tabpanel" hidden>
-              <div class="settings-popover-grid program-settings-pane-grid program-settings-changelog-wrap">
-                <h3 class="program-settings-changelog-title" data-i18n="section.changelogTitle">Изменения программы</h3>
-                <p class="hint history-lead" data-i18n="history.lead">Здесь только выпуски программы (номер версии в записи). Сохранения расписания и настроек в этот список не попадают.</p>
-                <div id="history-list" class="history-list"></div>
+              <div class="program-settings-general-grid program-settings-changelog-grid">
+                <section class="program-settings-block program-settings-changelog-wrap">
+                  <h3 class="program-settings-changelog-title" data-i18n="section.changelogTitle">Изменения программы</h3>
+                  <p class="hint history-lead" data-i18n="history.lead">Здесь только выпуски программы (номер версии в записи). Сохранения расписания и настроек в этот список не попадают.</p>
+                </section>
+                <section class="program-settings-block">
+                  <h4 class="settings-popover-subhead" style="margin-top: 0" data-i18n="programSettings.changelogAsideTitle">Совет</h4>
+                  <p class="hint" data-i18n="programSettings.changelogAsideBody">После обновления сервера список пополняется автоматически при открытии этой вкладки.</p>
+                </section>
+                <section class="program-settings-block program-settings-block--full">
+                  <div id="history-list" class="history-list"></div>
+                </section>
               </div>
             </div>
             <div id="program-settings-pane-feedback" class="program-settings-pane" data-ps-pane="feedback" role="tabpanel" hidden>
-              <div class="settings-popover-grid program-settings-pane-grid">
-                <h3 class="program-settings-changelog-title">Обратная связь</h3>
-                <p class="hint">Список сообщений с мобильных экранов. Действия: отметить прочитанным, скрыть, заблокировать hash устройства.</p>
-                <div id="feedback-admin-body" class="stats-panel-body"></div>
+              <div class="program-settings-general-grid program-settings-feedback-grid">
+                <section class="program-settings-block">
+                  <h3 class="program-settings-changelog-title" data-i18n="programSettings.tabFeedback">Обратная связь</h3>
+                  <p class="hint" data-i18n="programSettings.feedbackIntro">Список сообщений с мобильных экранов. Действия: отметить прочитанным, скрыть, заблокировать hash устройства.</p>
+                </section>
+                <section class="program-settings-block">
+                  <h4 class="settings-popover-subhead" style="margin-top: 0" data-i18n="programSettings.feedbackAsideTitle">Подсказка</h4>
+                  <p class="hint" data-i18n="programSettings.feedbackAsideBody">Сообщения привязаны к экрану и времени; блокировка по hash устройства действует для новых обращений.</p>
+                </section>
+                <section class="program-settings-block program-settings-block--full">
+                  <div id="feedback-admin-body" class="stats-panel-body"></div>
+                </section>
               </div>
             </div>
           </div>
@@ -525,91 +559,105 @@
             <h2 data-i18n="audio.title">Звук ПК</h2>
           </div>
           <div class="audio-stream-body">
-            <div class="audio-stream-meta">
+            <section class="audio-stream-intro-card" aria-labelledby="audio-stream-intro-heading">
+              <h3 id="audio-stream-intro-heading" class="audio-stream-intro-heading" data-i18n="audio.introBlockTitle">Как устроен звук</h3>
               <div class="audio-stream-lede">
                 <p class="hint hint-tight" data-i18n-html="audio.hint1">На <strong>ТВ</strong> — звук из <strong>браузера</strong>. На <strong>ПК</strong> — <code>ffmpeg</code> (wasapi) или <code>ffplay</code> из той же папки. Сохраните конфиг после правок.</p>
                 <p class="hint hint-tight" data-i18n-html="audio.hint2"><strong>Конец урока</strong> — время «конец» в строке расписания и звук конца (или дефолт шаблона).</p>
               </div>
-              <div id="audio-stream-status-bar" class="stream-status-bar" aria-live="polite" data-i18n="audio.statusLoading">Статус загружается…</div>
-            </div>
+            </section>
 
-            <div class="audio-stream-three-cols">
-              <div class="audio-stream-col">
-                <h3 class="audio-stream-group-title" data-i18n="audio.groupPc">ПК и ffmpeg</h3>
-                <div class="audio-stream-col-stack">
-                  <label class="toggle-label">
-                    <input id="audio-stream-enabled" type="checkbox"> <span data-i18n="audio.enable">Включить автоматические звонки и (опционально) музыку на переменах</span>
-                  </label>
-                  <p class="hint audio-stream-hint-inline" data-i18n-html="audio.hint3"><strong>Без галочки</strong> фоновые звонки на ПК не идут.</p>
-                  <label class="audio-stream-field-ffmpeg"><span data-i18n="audio.ffmpeg">Путь к ffmpeg.exe (необязательно)</span>
-                    <input id="audio-stream-ffmpeg-path" class="standard-input wide-input" type="text" data-i18n-placeholder="audio.ffmpegPh" placeholder="Пусто: PATH, Scoop, Program Files\ffmpeg\bin…">
-                  </label>
-                </div>
-              </div>
-
-              <div class="audio-stream-col">
-                <h3 class="audio-stream-group-title" data-i18n="audio.groupBells">Звонки по расписанию</h3>
-                <div class="audio-stream-col-stack">
-                  <label class="toggle-label">
-                    <input id="audio-stream-use-bell-schedule" type="checkbox"> <span data-i18n="audio.useSchedule">Опираться на расписание звонков выбранного экрана</span>
-                  </label>
-                  <label class="toggle-label">
-                    <input id="audio-stream-use-bell-files" type="checkbox"> <span data-i18n="audio.useBellFiles">Использовать файлы звонков из админки (начало/конец урока)</span>
-                  </label>
-                  <label><span data-i18n="audio.bellVol">Громкость звонков по расписанию, %</span>
-                    <input id="audio-stream-volume" class="standard-input" type="number" min="0" max="100" placeholder="80">
-                  </label>
-                  <p class="hint audio-stream-hint-inline" data-i18n="audio.hintVol">Громкость музыки перемен — ползунок в плеере справа; громкость звонков — поле слева в таблице настроек.</p>
-                  <div class="audio-stream-field-stack">
-                    <label><span data-i18n="audio.sourceScreen">Экран-источник расписания</span>
-                      <select id="audio-stream-source-screen" class="standard-input wide-input"></select>
-                    </label>
-                    <p class="hint audio-stream-hint-inline" data-i18n="audio.sourceEmpty">Пустой пункт — первый экран в списке.</p>
-                  </div>
-                  <div class="audio-stream-field-stack">
-                    <label><span data-i18n="audio.bellWindow">Окно срабатывания звонка (сек, 5–55)</span>
-                      <input id="audio-stream-bell-window" class="standard-input" type="number" min="5" max="55" placeholder="25">
-                    </label>
-                    <p class="hint audio-stream-hint-inline" data-i18n-html="audio.bellWindowHint">Как <code>bell_audio.trigger_sec_window</code> для ТВ. Быстрый тест — <strong>Настройки → Рупор / ТВ</strong>.</p>
-                  </div>
-                </div>
-              </div>
-
-              <div class="audio-stream-col">
-                <h3 class="audio-stream-group-title" data-i18n="audio.groupBreak">Перемены и плеер</h3>
-                <div class="audio-stream-col-stack">
-                  <label class="toggle-label">
-                    <input id="audio-stream-break-music" type="checkbox"> <span data-i18n-html="audio.breakMusic">Фон на переменах — файлы из <code>data/break_music</code></span>
-                  </label>
-                  <div id="break-music-player" class="break-music-player break-music-player--in-audio">
-                    <h4 class="card-subtitle audio-break-queue-title" data-i18n="audio.breakQueue">Очередь перемен на ПК</h4>
-                    <p class="hint audio-stream-hint-inline" data-i18n="audio.breakQueueHint">Состояние планировщика; обновляется со строкой статуса.</p>
-                    <div id="break-music-player-list" class="break-music-player-list"></div>
-                  </div>
-                  <div class="pc-audio-player pc-audio-player--aside">
-                    <div class="pc-audio-player-head">
-                      <div class="pc-audio-player-title" data-i18n="audio.playerTitle">Плеер (тест на этом ПК)</div>
+            <div class="audio-stream-main-cols">
+              <section class="audio-stream-panel-col audio-stream-panel-col--player" aria-labelledby="audio-stream-player-heading">
+                <h3 id="audio-stream-player-heading" class="audio-stream-col-heading" data-i18n="audio.playerTitle">Плеер (тест на этом ПК)</h3>
+                <div class="pc-audio-player pc-audio-player--aside">
+                  <div class="pc-audio-player-toolbar">
+                    <div class="pc-transport-row">
+                      <button type="button" id="pc-player-prev" class="pc-transport-btn" data-i18n-title="audio.prev" title="Предыдущий трек">⏮</button>
+                      <button type="button" id="pc-player-play" class="pc-transport-btn pc-transport-play" data-i18n-title="audio.play" title="Воспроизвести">▶</button>
+                      <button type="button" id="audio-stream-stop-btn" class="pc-transport-btn" data-i18n-title="audio.stop" title="Стоп">⏹</button>
+                      <button type="button" id="pc-player-next" class="pc-transport-btn" data-i18n-title="audio.next" title="Следующий трек">⏭</button>
                     </div>
-                    <div class="pc-audio-player-toolbar">
-                      <div class="pc-transport-row">
-                        <button type="button" id="pc-player-prev" class="pc-transport-btn" data-i18n-title="audio.prev" title="Предыдущий трек">⏮</button>
-                        <button type="button" id="pc-player-play" class="pc-transport-btn pc-transport-play" data-i18n-title="audio.play" title="Воспроизвести">▶</button>
-                        <button type="button" id="audio-stream-stop-btn" class="pc-transport-btn" data-i18n-title="audio.stop" title="Стоп">⏹</button>
-                        <button type="button" id="pc-player-next" class="pc-transport-btn" data-i18n-title="audio.next" title="Следующий трек">⏭</button>
+                    <div class="pc-audio-vol pc-audio-vol--block">
+                      <span class="pc-audio-vol-label" data-i18n="audio.volBreak">Громкость музыки (перемена)</span>
+                      <div class="pc-audio-vol-controls">
+                        <input id="audio-stream-break-music-vol" type="range" class="pc-vol-range" min="0" max="100" value="40">
+                        <span id="pc-player-vol-display" class="pc-vol-num">40</span>
                       </div>
-                      <div class="pc-audio-vol pc-audio-vol--block">
-                        <span class="pc-audio-vol-label" data-i18n="audio.volBreak">Громкость музыки (перемена)</span>
-                        <div class="pc-audio-vol-controls">
-                          <input id="audio-stream-break-music-vol" type="range" class="pc-vol-range" min="0" max="100" value="40">
-                          <span id="pc-player-vol-display" class="pc-vol-num">40</span>
+                    </div>
+                  </div>
+                  <div id="pc-player-file-list" class="pc-player-file-list"></div>
+                </div>
+              </section>
+
+              <section class="audio-stream-panel-col audio-stream-panel-col--controls" aria-labelledby="audio-stream-controls-heading">
+                <h3 id="audio-stream-controls-heading" class="audio-stream-col-heading" data-i18n="audio.colControls">Управление</h3>
+                <div class="audio-stream-control-stack">
+                  <div class="audio-stream-control-section">
+                    <h4 class="audio-stream-group-title" data-i18n="audio.groupPc">ПК и ffmpeg</h4>
+                    <div class="audio-stream-col-stack">
+                      <label class="toggle-label">
+                        <input id="audio-stream-enabled" type="checkbox"> <span data-i18n="audio.enable">Включить автоматические звонки и (опционально) музыку на переменах</span>
+                      </label>
+                      <p class="hint audio-stream-hint-inline" data-i18n-html="audio.hint3"><strong>Без галочки</strong> фоновые звонки на ПК не идут.</p>
+                      <div class="audio-stream-field-ffmpeg">
+                        <span class="audio-stream-field-label" data-i18n="audio.ffmpeg">Путь к ffmpeg.exe (необязательно)</span>
+                        <div class="audio-stream-ffmpeg-row">
+                          <input id="audio-stream-ffmpeg-path" class="standard-input audio-stream-path-input" type="text" data-i18n-placeholder="audio.ffmpegPh" placeholder="Пусто: PATH, Scoop, Program Files\ffmpeg\bin…" autocomplete="off" spellcheck="false">
+                          <input id="audio-stream-ffmpeg-file" type="file" accept=".exe,.EXE,application/octet-stream" hidden tabindex="-1" aria-hidden="true">
+                          <button type="button" id="audio-stream-ffmpeg-browse" class="secondary-btn compact-btn audio-stream-ffmpeg-browse-btn" data-i18n="audio.ffmpegBrowse">Выбрать…</button>
+                          <button type="button" id="audio-stream-ffmpeg-clear" class="secondary-btn compact-btn audio-stream-ffmpeg-clear-btn" data-i18n-title="audio.ffmpegClearTitle" title="Очистить путь">×</button>
                         </div>
                       </div>
                     </div>
-                    <p class="hint pc-player-hint hint-tight" data-i18n-html="audio.playerHint">Только файлы из <code>data/break_music</code> — предпрослушивание фона перемен. Звонки по расписанию настраиваются в «Уроки и звонки» и играют автоматически на ПК.</p>
-                    <div id="pc-player-file-list" class="pc-player-file-list"></div>
+                  </div>
+                  <div class="audio-stream-control-section">
+                    <h4 class="audio-stream-group-title" data-i18n="audio.groupBells">Звонки по расписанию</h4>
+                    <div class="audio-stream-col-stack">
+                      <label class="toggle-label">
+                        <input id="audio-stream-use-bell-schedule" type="checkbox"> <span data-i18n="audio.useSchedule">Опираться на расписание звонков выбранного экрана</span>
+                      </label>
+                      <label class="toggle-label">
+                        <input id="audio-stream-use-bell-files" type="checkbox"> <span data-i18n="audio.useBellFiles">Использовать файлы звонков из админки (начало/конец урока)</span>
+                      </label>
+                      <label><span data-i18n="audio.bellVol">Громкость звонков по расписанию, %</span>
+                        <input id="audio-stream-volume" class="standard-input" type="number" min="0" max="100" placeholder="80">
+                      </label>
+                      <div class="audio-stream-field-stack">
+                        <label class="audio-stream-source-screen-label"><span data-i18n="audio.sourceScreen">Экран-источник расписания</span>
+                          <select id="audio-stream-source-screen" class="standard-input audio-stream-source-select"></select>
+                        </label>
+                        <p class="hint audio-stream-hint-inline" data-i18n="audio.sourceEmpty">Пустой пункт — первый экран в списке.</p>
+                      </div>
+                      <div class="audio-stream-field-stack">
+                        <label><span data-i18n="audio.bellWindow">Окно срабатывания звонка (сек, 5–55)</span>
+                          <input id="audio-stream-bell-window" class="standard-input" type="number" min="5" max="55" placeholder="25">
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="audio-stream-control-section audio-stream-control-section--break">
+                    <label class="toggle-label">
+                      <input id="audio-stream-break-music" type="checkbox"> <span data-i18n-html="audio.breakMusic">Фон на переменах — файлы из <code>data/break_music</code></span>
+                    </label>
                   </div>
                 </div>
-              </div>
+              </section>
+
+              <section class="audio-stream-panel-col audio-stream-panel-col--status" aria-labelledby="audio-stream-status-heading">
+                <h3 id="audio-stream-status-heading" class="audio-stream-col-heading" data-i18n="audio.colStatus">Состояние и подсказки</h3>
+                <div id="audio-stream-status-bar" class="stream-status-bar" aria-live="polite" data-i18n="audio.statusLoading">Статус загружается…</div>
+                <div id="break-music-player" class="break-music-player break-music-player--in-audio">
+                  <h4 class="card-subtitle audio-break-queue-title" data-i18n="audio.breakQueue">Очередь перемен на ПК</h4>
+                  <p class="hint audio-stream-hint-inline" data-i18n="audio.breakQueueHint">Состояние планировщика; обновляется со строкой статуса.</p>
+                  <div id="break-music-player-list" class="break-music-player-list"></div>
+                </div>
+                <div class="audio-stream-status-hints">
+                  <p class="hint audio-stream-hint-inline" data-i18n="audio.hintVol">Громкость музыки перемен — ползунок в плеере слева; громкость звонков — поле выше в центральной колонке.</p>
+                  <p class="hint audio-stream-hint-inline" data-i18n-html="audio.bellWindowHint">Как <code>bell_audio.trigger_sec_window</code> для ТВ. Быстрый тест звука — раздел «Звук ПК» в боковом меню.</p>
+                  <p class="hint pc-player-hint hint-tight" data-i18n-html="audio.playerHint">Только файлы из <code>data/break_music</code> — предпрослушивание фона перемен. Звонки по расписанию настраиваются в «Уроки и звонки» и играют автоматически на ПК.</p>
+                </div>
+              </section>
             </div>
           </div>
         </div>
@@ -632,6 +680,17 @@
         </div>
       </section>
     </main>
+    <footer class="admin-footer" id="admin-app-footer">
+      <div class="admin-footer-inner">
+        <div id="admin-footer-stats" class="admin-footer-stats" aria-live="polite">
+          <p id="admin-footer-line-today" class="admin-footer-stat-line"></p>
+          <p id="admin-footer-line-month" class="admin-footer-stat-line"></p>
+          <p id="admin-footer-line-total" class="admin-footer-stat-line"></p>
+        </div>
+        <div class="admin-footer-contacts" data-i18n-html="admin.footerContacts"></div>
+      </div>
+    </footer>
+    </div>
   </div>
 
   <div id="widget-editor-modal" class="widget-editor-modal" hidden aria-hidden="true">
@@ -645,7 +704,7 @@
     </div>
   </div>
 
-  <script src="/static/i18n.js?v=3"></script>
-  <script type="module" src="/static/app.js?v=1.02.033"></script>
+  <script src="/static/i18n.js?v=4"></script>
+  <script type="module" src="/static/app.js?v=1.02.040"></script>
 </body>
 </html>

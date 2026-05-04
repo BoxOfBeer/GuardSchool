@@ -8,8 +8,10 @@ export function tf(key, vars) {
 
 export function getSectionTabs() {
   return [
-    { id: "main", label: t("section.main") },
-    { id: "schedule", label: t("section.schedule") },
+    { id: "screen", label: t("section.screen") },
+    { id: "widgets", label: t("section.widgets") },
+    { id: "lessons", label: t("section.lessons") },
+    { id: "bells", label: t("section.bells") },
     { id: "preview", label: t("section.preview") },
   ];
 }

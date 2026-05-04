@@ -31,10 +31,12 @@ function selectedBellTemplate() {
 }
 
 export function renderBellTemplateOptions() {
+  const el = elements.screenBellTemplate;
+  if (!el) return;
   const screen = currentScreen();
   if (!screen) return;
   const current = screen.bell_schedule_template;
-  elements.screenBellTemplate.innerHTML = state.bells.templates
+  el.innerHTML = state.bells.templates
     .map(
       (item) =>
         `<option value="${escapeHtmlAttr(String(item.id))}" ${item.id === current ? "selected" : ""}>${escapeHtml(String(item.name || ""))}</option>`,

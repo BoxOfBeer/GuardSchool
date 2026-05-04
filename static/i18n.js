@@ -14,7 +14,7 @@
   async function loadLang(code) {
     const c = code === "en" ? "en" : "ru";
     if (!bundles[c]) {
-      const r = await fetch(`/static/locales/${c}.json?v=2`, { cache: "no-store" });
+      const r = await fetch(`/static/locales/${c}.json?v=10`, { cache: "no-store" });
       if (!r.ok) throw new Error(`locales/${c}.json`);
       bundles[c] = await r.json();
     }
@@ -48,6 +48,10 @@
     scope.querySelectorAll("[data-i18n-title]").forEach((el) => {
       const k = el.getAttribute("data-i18n-title");
       if (k) el.setAttribute("title", t(k));
+    });
+    scope.querySelectorAll("[data-i18n-aria-label]").forEach((el) => {
+      const k = el.getAttribute("data-i18n-aria-label");
+      if (k) el.setAttribute("aria-label", t(k));
     });
     scope.querySelectorAll("[data-i18n-html]").forEach((el) => {
       const k = el.getAttribute("data-i18n-html");

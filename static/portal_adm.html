@@ -63,13 +63,20 @@
   </head>
   <body class="portal-skin">
     <div class="wrap">
-      <div class="portal-card">
+      <div class="toolbar actions-row" style="margin-bottom: 12px">
+        <button type="button" class="portal-btn primary" id="adm-tab-lic">Лицензии</button>
+        <button type="button" class="portal-btn" id="adm-tab-cms">Контент портала</button>
+        <div style="flex: 1 1 auto"></div>
+        <a class="portal-btn" href="/">На портал</a>
+      </div>
+
+      <div id="panel-lic">
+        <div class="portal-card">
         <h2 style="margin: 0 0 8px; color: #fff">Лицензии (ADM)</h2>
         <p class="portal-hint" style="margin-top: 0">
           Сессия по cookie браузера. Выйти — кнопка ниже. API те же: <code>/api/provider/licenses</code> (допускается вход по cookie).
         </p>
         <div class="toolbar actions-row">
-          <a class="portal-btn" href="/">На портал</a>
           <button type="button" class="portal-btn" id="logout">Выйти</button>
           <button type="button" class="portal-btn" id="reload">Обновить список</button>
           <div style="flex: 1 1 auto"></div>
@@ -115,9 +122,22 @@
           </thead>
           <tbody id="rows"></tbody>
         </table>
+        </div>
+      </div>
+
+      <div id="panel-cms" hidden>
+        <div class="portal-card">
+          <h2 style="margin: 0 0 8px; color: #fff">Контент портала экосистемы</h2>
+          <p class="portal-hint" style="margin-top: 0">
+            Публичная витрина на главной (<code>/</code>) для домена портала. Данные в файле
+            <code>data/portal_cms.json</code> (глобально для процесса, не в каталоге тенанта).
+          </p>
+          <div id="cms-mount"></div>
+        </div>
       </div>
     </div>
 
+    <script type="module" src="/static/portal_adm_cms.js?v=1"></script>
     <script type="module">
       const out = document.getElementById("out");
       const rows = document.getElementById("rows");

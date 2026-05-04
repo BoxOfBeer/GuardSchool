@@ -256,7 +256,10 @@ export function syncAudioStreamFormFromState() {
   populateAudioStreamSourceScreenSelect();
   const s = state.config.audio_stream;
   if (elements.audioStreamEnabled) elements.audioStreamEnabled.checked = !!s.enabled;
-  if (elements.audioStreamFfmpegPath) elements.audioStreamFfmpegPath.value = s.ffmpeg_path || "";
+  if (elements.audioStreamFfmpegPath) {
+    elements.audioStreamFfmpegPath.value = s.ffmpeg_path || "";
+    elements.audioStreamFfmpegPath.title = elements.audioStreamFfmpegPath.value || "";
+  }
   if (elements.audioStreamUseBellSchedule) elements.audioStreamUseBellSchedule.checked = s.use_bell_schedule !== false;
   if (elements.audioStreamUseBellFiles) elements.audioStreamUseBellFiles.checked = s.use_bell_sound_files !== false;
   if (elements.audioStreamVolume) elements.audioStreamVolume.value = String(s.volume_percent ?? 80);
@@ -277,6 +280,7 @@ export function readAudioStreamFormIntoState() {
   s.break_music_on_breaks = !!(elements.audioStreamBreakMusic && elements.audioStreamBreakMusic.checked);
   s.break_music_volume_percent = Math.max(0, Math.min(100, Number(elements.audioStreamBreakMusicVol && elements.audioStreamBreakMusicVol.value) || s.break_music_volume_percent));
   s.bell_trigger_sec_window = Math.max(5, Math.min(55, Number(elements.audioStreamBellWindow && elements.audioStreamBellWindow.value) || s.bell_trigger_sec_window));
+  if (elements.audioStreamFfmpegPath) elements.audioStreamFfmpegPath.title = elements.audioStreamFfmpegPath.value || "";
 }
 
 let audioStreamFormWired = false;
@@ -313,6 +317,32 @@ export function bindAudioStreamFormOnce() {
       } catch (err) {
         if (elements.audioStreamStatusBar) elements.audioStreamStatusBar.textContent = String(err.message || err);
       }
+    });
+  }
+  if (elements.audioStreamFfmpegBrowse && elements.audioStreamFfmpegFile) {
+    elements.audioStreamFfmpegBrowse.addEventListener("click", () => elements.audioStreamFfmpegFile.click());
+  }
+  if (elements.audioStreamFfmpegFile) {
+    elements.audioStreamFfmpegFile.addEventListener("change", (e) => {
+      const inp = /** @type {HTMLInputElement} */ (e.target);
+      const f = inp.files && inp.files[0];
+      let path = "";
+      if (f && typeof f.path === "string" && f.path.trim()) path = f.path.trim();
+      const rawVal = (inp.value || "").trim();
+      if (!path && rawVal && !/fakepath/i.test(rawVal)) path = rawVal;
+      if (path && elements.audioStreamFfmpegPath) {
+        elements.audioStreamFfmpegPath.value = path;
+        readAudioStreamFormIntoState();
+      } else if (f) {
+        alert(t("audio.ffmpegPickManual"));
+      }
+      inp.value = "";
+    });
+  }
+  if (elements.audioStreamFfmpegClear) {
+    elements.audioStreamFfmpegClear.addEventListener("click", () => {
+      if (elements.audioStreamFfmpegPath) elements.audioStreamFfmpegPath.value = "";
+      readAudioStreamFormIntoState();
     });
   }
 }

@@ -1,0 +1,253 @@
+/* Витрина портала экосистемы GuardDoc (контент из /api/portal/cms) */
+.portal-eco-wrap {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 28px 18px 72px;
+}
+
+.portal-eco-hero {
+  display: grid;
+  gap: 14px;
+  padding: 22px 20px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 16px;
+  background: rgba(10, 28, 52, 0.72);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(6px);
+}
+
+.portal-eco-brand {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(158, 197, 255, 0.95);
+}
+
+.portal-eco-hero h1 {
+  margin: 0;
+  font-size: clamp(1.35rem, 3vw, 1.85rem);
+  line-height: 1.25;
+  color: #fff;
+}
+
+.portal-eco-lead {
+  margin: 0;
+  color: rgba(244, 247, 255, 0.92);
+  line-height: 1.55;
+  font-size: 15px;
+}
+
+.portal-eco-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-top: 6px;
+}
+
+.portal-eco-btn {
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 12px;
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #f4f7ff;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.portal-eco-btn.primary {
+  background: #f4f7ff;
+  color: #0b1f3d;
+  border-color: #f4f7ff;
+}
+
+.portal-eco-btn .ext {
+  opacity: 0.65;
+  font-size: 12px;
+}
+
+.portal-eco-section {
+  margin-top: 28px;
+}
+
+.portal-eco-section h2 {
+  margin: 0 0 12px;
+  font-size: 1.15rem;
+  color: #fff;
+}
+
+.portal-eco-prose {
+  margin: 0;
+  color: rgba(244, 247, 255, 0.9);
+  line-height: 1.55;
+  font-size: 14px;
+}
+
+.portal-eco-prose + .portal-eco-prose {
+  margin-top: 10px;
+}
+
+.portal-eco-split {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 18px;
+  margin-top: 22px;
+}
+
+@media (min-width: 880px) {
+  .portal-eco-split {
+    grid-template-columns: 1fr 300px;
+    align-items: start;
+  }
+}
+
+.portal-eco-apps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.portal-app-card {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  padding: 16px;
+  background: rgba(10, 28, 52, 0.55);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 100%;
+}
+
+.portal-app-card h3 {
+  margin: 0;
+  font-size: 17px;
+  color: #fff;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.portal-app-tag {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.portal-app-tag.live {
+  background: rgba(52, 211, 153, 0.18);
+  border-color: rgba(52, 211, 153, 0.45);
+  color: #b8f5d9;
+}
+
+.portal-app-tag.soon {
+  background: rgba(251, 191, 36, 0.15);
+  border-color: rgba(251, 191, 36, 0.45);
+  color: #fde9b0;
+}
+
+.portal-app-tag.planned {
+  background: rgba(148, 163, 184, 0.15);
+  color: #e2e8f0;
+}
+
+.portal-app-tag.platform {
+  background: rgba(96, 165, 250, 0.18);
+  border-color: rgba(96, 165, 250, 0.4);
+  color: #dbeafe;
+}
+
+.portal-app-card .summary {
+  margin: 0;
+  font-size: 14px;
+  color: rgba(244, 247, 255, 0.9);
+  line-height: 1.45;
+}
+
+.portal-app-card .detail {
+  margin: 0;
+  font-size: 13px;
+  color: rgba(244, 247, 255, 0.78);
+  line-height: 1.5;
+  flex: 1 1 auto;
+}
+
+.portal-app-card .portal-eco-btn {
+  align-self: flex-start;
+  margin-top: 4px;
+}
+
+.portal-eco-demo {
+  border: 1px solid rgba(96, 165, 250, 0.28);
+  border-radius: 14px;
+  padding: 18px;
+  background: rgba(15, 40, 78, 0.55);
+}
+
+.portal-eco-demo h2 {
+  margin: 0 0 10px;
+}
+
+.portal-eco-demo ul {
+  margin: 10px 0 14px;
+  padding-left: 1.15rem;
+  color: rgba(244, 247, 255, 0.88);
+  line-height: 1.45;
+  font-size: 14px;
+}
+
+.portal-eco-aside {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  padding: 16px;
+  background: rgba(8, 22, 44, 0.55);
+}
+
+.portal-eco-aside h3 {
+  margin: 0 0 10px;
+  font-size: 14px;
+  color: rgba(244, 247, 255, 0.92);
+}
+
+.portal-eco-aside ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.portal-eco-aside a {
+  font-weight: 600;
+}
+
+.portal-eco-foot {
+  margin-top: 28px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 12px;
+  line-height: 1.5;
+  color: rgba(244, 247, 255, 0.65);
+}
+
+.portal-eco-loading,
+.portal-eco-error {
+  text-align: center;
+  padding: 48px 16px;
+  color: rgba(244, 247, 255, 0.85);
+}
+
+.portal-eco-error {
+  color: #fecaca;
+}
