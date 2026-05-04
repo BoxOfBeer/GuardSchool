@@ -77,6 +77,8 @@ const WIDGET_TYPE_KEYS = new Set([
   "marquee",
   "emergency",
   "image",
+  "checkin_submit",
+  "checkin_monitor",
 ]);
 
 /** Порядок чекбоксов «показывать в списке виджетов» в настройках программы. */
@@ -95,6 +97,8 @@ const PALETTE_TYPES_ORDER = [
   "marquee",
   "emergency",
   "image",
+  "checkin_submit",
+  "checkin_monitor",
 ];
 
 function ensureAdminPaletteHidden() {
@@ -1673,6 +1677,10 @@ function duplicateCurrentScreen() {
         });
         w.settings.childSlideSec = ncs;
       }
+    }
+    if (w.type === "checkin_submit" && w.settings && w.settings.monitor_widget_id) {
+      const mid = String(w.settings.monitor_widget_id || "").trim();
+      if (mid && idMap.has(mid)) w.settings.monitor_widget_id = idMap.get(mid);
     }
   });
   const ns = JSON.parse(JSON.stringify(src));

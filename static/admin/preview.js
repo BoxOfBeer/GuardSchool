@@ -246,6 +246,8 @@ export function renderPreview() {
     const index = screen.widgets.findIndex((w) => w.id === widget.id);
     const item = document.createElement("div");
     item.className = `screen-widget draggable ${state.drag?.widgetIndex === index ? "dragging" : ""}`;
+    item.dataset.widgetId = String(widget.id);
+    item.dataset.widgetType = String(widget.type);
     if (widget.type === "emergency") {
       item.classList.add("screen-widget--emergency");
       item.style.gridColumn = "1 / -1";
@@ -303,8 +305,12 @@ export function renderPreview() {
     rss_news,
     display,
     background_gallery: previewGallery,
+    checkin_admin_preview: true,
   };
   G.updateAllClocks(elements.preview);
+  if (G.bindCheckinWidgets) {
+    G.bindCheckinWidgets(elements.preview, window.__lastScreenPayload);
+  }
 
   clearTimeout(window.__previewResyncTimer);
   if (!document.hidden) {

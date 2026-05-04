@@ -57,6 +57,15 @@
 
   function clearAllTimers() {
     clearCarouselTimeouts();
+    try {
+      const prev = global.__gsCheckinMonitorTimers || [];
+      for (let i = 0; i < prev.length; i++) {
+        try {
+          global.clearInterval(prev[i]);
+        } catch (_) {}
+      }
+      global.__gsCheckinMonitorTimers = [];
+    } catch (_) {}
   }
 
   function getDisplayFromPayload() {
@@ -854,6 +863,44 @@
     if (widget.type === "rss_news") {
       return buildRssNews(widget, rssNews);
     }
+    if (widget.type === "checkin_submit") {
+      const ws = widget.settings || {};
+      const title = escapeHtml(String(ws.labels && ws.labels.module_title ? ws.labels.module_title : "Оперативная отметка"));
+      return `<div class="gs-checkin-submit" data-gs-checkin-role="submit" style="height:100%;display:flex;flex-direction:column;gap:8px;padding:10px;overflow:auto;box-sizing:border-box;font-size:clamp(12px,1.4vmin,18px);">
+        <div class="gs-checkin-submit-title" style="font-weight:700">${title}</div>
+        <label style="display:flex;flex-direction:column;gap:4px;"><span data-lbl="device">${escapeHtml(String(ws.labels && ws.labels.device_name ? ws.labels.device_name : "Подпись"))}</span>
+          <input type="text" class="gs-checkin-device standard-input" maxlength="200" style="width:100%;box-sizing:border-box;" /></label>
+        <label style="display:flex;flex-direction:column;gap:4px;"><span data-lbl="place">${escapeHtml(String(ws.labels && ws.labels.place ? ws.labels.place : "Место"))}</span>
+          <select class="gs-checkin-place standard-input" style="width:100%;"></select></label>
+        <div class="gs-checkin-levels-wrap"><span data-lbl="state">${escapeHtml(String(ws.labels && ws.labels.state ? ws.labels.state : "Состояние"))}</span>
+          <div class="gs-checkin-levels" style="display:flex;flex-wrap:wrap;gap:10px;margin-top:6px;"></div></div>
+        <label style="display:flex;flex-direction:column;gap:4px;"><span data-lbl="comment">${escapeHtml(String(ws.labels && ws.labels.comment ? ws.labels.comment : "Комментарий"))}</span>
+          <textarea class="gs-checkin-comment standard-input" rows="2" maxlength="4000" style="width:100%;resize:vertical;box-sizing:border-box;"></textarea></label>
+        <button type="button" class="gs-checkin-send primary-btn" style="align-self:flex-start;margin-top:4px;">${escapeHtml(String(ws.labels && ws.labels.submit ? ws.labels.submit : "Отправить"))}</button>
+        <div class="gs-checkin-status hint" style="min-height:1.2em;"></div>
+      </div>`;
+    }
+    if (widget.type === "checkin_monitor") {
+      const ws = widget.settings || {};
+      const pt = escapeHtml(String(ws.panel_title || "Сводка мест"));
+      return `<div class="gs-checkin-monitor" data-gs-checkin-role="monitor" style="height:100%;display:flex;flex-direction:column;gap:8px;padding:10px;overflow:auto;box-sizing:border-box;font-size:clamp(11px,1.25vmin,16px);">
+        <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;">
+          <strong>${pt}</strong>
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+            <label style="display:flex;gap:6px;align-items:center;"><span>Период</span>
+              <select class="gs-checkin-period standard-input">
+                <option value="day">День</option>
+                <option value="week">Неделя</option>
+                <option value="month">Месяц</option>
+              </select>
+            </label>
+            <button type="button" class="gs-checkin-export secondary-btn compact-btn">CSV</button>
+          </div>
+        </div>
+        <div class="gs-checkin-monitor-summary"></div>
+        <div class="gs-checkin-monitor-journal" style="opacity:0.95;"></div>
+      </div>`;
+    }
     return "";
   }
 
@@ -1186,6 +1233,268 @@
     el.style.setProperty("--gs-tv-text-shadow", buildTextOutlineShadow(px, col));
   }
 
+  const CHECKIN_PLACE_ID_RE = /^[a-zA-Z0-9_-]{1,64}$/;
+
+  function sanitizePlacesClient(raw) {
+    const out = [];
+    if (!Array.isArray(raw)) return out;
+    const seen = new Set();
+    for (let i = 0; i < raw.length; i++) {
+      const p = raw[i];
+      if (!p || typeof p !== "object") continue;
+      const id = String(p.id || "").trim();
+      const title = String(p.title || "").trim().slice(0, 200);
+      if (!id || !CHECKIN_PLACE_ID_RE.test(id) || seen.has(id)) continue;
+      seen.add(id);
+      out.push({ id, title: title || id });
+      if (out.length >= 500) break;
+    }
+    return out;
+  }
+
+  function resolveSubmitPlaces(screen, submitWidget) {
+    const st = submitWidget.settings || {};
+    const link = String(st.monitor_widget_id || "").trim();
+    if (link) {
+      const mw = (screen.widgets || []).find((w) => String(w.id) === link && w.type === "checkin_monitor");
+      if (mw) return sanitizePlacesClient((mw.settings || {}).places);
+    }
+    return sanitizePlacesClient(st.places);
+  }
+
+  function bindCheckinWidgets(root, screenPayload) {
+    if (!root || !screenPayload) return;
+    const screen = screenPayload.screen || {};
+    const slug = String(screen.slug || "").trim().toLowerCase();
+    if (!slug) return;
+    try {
+      const prev = global.__gsCheckinMonitorTimers || [];
+      for (let i = 0; i < prev.length; i++) {
+        try {
+          global.clearInterval(prev[i]);
+        } catch (_) {}
+      }
+      global.__gsCheckinMonitorTimers = [];
+    } catch (_) {}
+    const adminPreview = Boolean(screenPayload.checkin_admin_preview);
+    const fetchFn =
+      typeof window.gsCheckinApiFetch === "function"
+        ? window.gsCheckinApiFetch
+        : function (url, opts) {
+            return fetch(url, Object.assign({ credentials: "include" }, opts || {}));
+          };
+
+    function checkinBoardUrl(period, monitorWidgetId) {
+      if (adminPreview) {
+        return `/api/admin/checkin/board?screen_slug=${encodeURIComponent(slug)}&monitor_widget_id=${encodeURIComponent(
+          monitorWidgetId,
+        )}&range=${encodeURIComponent(period)}`;
+      }
+      return `/api/screen/${encodeURIComponent(slug)}/checkin/board?monitor_widget_id=${encodeURIComponent(
+        monitorWidgetId,
+      )}&range=${encodeURIComponent(period)}`;
+    }
+
+    function checkinExportUrl(period, monitorWidgetId) {
+      if (adminPreview) {
+        return `/api/admin/checkin/export.csv?screen_slug=${encodeURIComponent(slug)}&monitor_widget_id=${encodeURIComponent(
+          monitorWidgetId,
+        )}&range=${encodeURIComponent(period)}`;
+      }
+      return `/api/screen/${encodeURIComponent(slug)}/checkin/export.csv?monitor_widget_id=${encodeURIComponent(
+        monitorWidgetId,
+      )}&range=${encodeURIComponent(period)}`;
+    }
+
+    root.querySelectorAll('[data-gs-checkin-role="submit"]').forEach((wrap) => {
+      const block = wrap.closest(".screen-widget");
+      const widgetId = block && block.dataset ? String(block.dataset.widgetId || "") : "";
+      const widget = (screen.widgets || []).find((w) => String(w.id) === widgetId);
+      if (!widget || widget.type !== "checkin_submit") return;
+      const places = resolveSubmitPlaces(screen, widget);
+      const ws = widget.settings || {};
+      const L = ws.labels || {};
+      const sel = wrap.querySelector(".gs-checkin-place");
+      const levelsEl = wrap.querySelector(".gs-checkin-levels");
+      const devInput = wrap.querySelector(".gs-checkin-device");
+      const ta = wrap.querySelector(".gs-checkin-comment");
+      const btn = wrap.querySelector(".gs-checkin-send");
+      const stEl = wrap.querySelector(".gs-checkin-status");
+      if (!sel || !levelsEl || !btn) return;
+      sel.innerHTML = places
+        .map((p) => `<option value="${escapeHtmlAttr(p.id)}">${escapeHtml(p.title || p.id)}</option>`)
+        .join("");
+      const okT = escapeHtml(String(L.ok || "В порядке"));
+      const wT = escapeHtml(String(L.warn || "Внимание"));
+      const aT = escapeHtml(String(L.alert || "Проблема"));
+      levelsEl.innerHTML = `<label><input type="radio" class="gs-checkin-lv" value="ok" checked /> ${okT}</label>
+        <label><input type="radio" class="gs-checkin-lv" value="warn" /> ${wT}</label>
+        <label><input type="radio" class="gs-checkin-lv" value="alert" /> ${aT}</label>`;
+      try {
+        const k = `gs_checkin_dn_${slug}_${widgetId}`;
+        const saved = localStorage.getItem(k);
+        if (saved && devInput) devInput.value = saved;
+      } catch (_) {}
+      btn.onclick = async () => {
+        if (!places.length) {
+          if (stEl) stEl.textContent = "Нет мест в настройках виджета.";
+          return;
+        }
+        const device_name = devInput ? String(devInput.value || "").trim() : "";
+        if (!device_name) {
+          if (stEl) stEl.textContent = "Укажите подпись.";
+          return;
+        }
+        let comment = ta ? String(ta.value || "").trim() : "";
+        const rad = wrap.querySelector(".gs-checkin-lv:checked");
+        const level = rad ? String(rad.value || "ok") : "ok";
+        if (level === "ok") comment = "";
+        if (level === "alert" && !comment) {
+          if (stEl) stEl.textContent = "Нужен комментарий.";
+          return;
+        }
+        let device_hash = "";
+        try {
+          const hk = `gs_checkin_hash_${slug}`;
+          device_hash = localStorage.getItem(hk) || "";
+          if (!device_hash || device_hash.length < 8) {
+            device_hash =
+              typeof crypto !== "undefined" && crypto.randomUUID
+                ? crypto.randomUUID()
+                : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+            localStorage.setItem(hk, device_hash);
+          }
+        } catch (_) {
+          device_hash = `x-${Date.now()}`;
+        }
+        try {
+          localStorage.setItem(`gs_checkin_dn_${slug}_${widgetId}`, device_name);
+        } catch (_) {}
+        if (stEl) stEl.textContent = "";
+        try {
+          const r = await fetchFn("/api/checkin/event", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              screen_slug: slug,
+              submit_widget_id: widgetId,
+              place_id: sel.value,
+              level,
+              comment,
+              device_name,
+              device_hash: device_hash.slice(0, 128),
+            }),
+          });
+          const data = await r.json().catch(() => ({}));
+          if (!r.ok) {
+            const d = data.detail;
+            const msg = Array.isArray(d) ? d.map((x) => (x && x.msg) || "").join(" ") : d || r.statusText;
+            throw new Error(msg);
+          }
+          if (stEl) stEl.textContent = "Отправлено.";
+        } catch (e) {
+          if (stEl) stEl.textContent = e.message || String(e);
+        }
+      };
+    });
+
+    root.querySelectorAll('[data-gs-checkin-role="monitor"]').forEach((wrap) => {
+      const block = wrap.closest(".screen-widget");
+      const widgetId = block && block.dataset ? String(block.dataset.widgetId || "") : "";
+      const widget = (screen.widgets || []).find((w) => String(w.id) === widgetId);
+      if (!widget || widget.type !== "checkin_monitor") return;
+      const periodSel = wrap.querySelector(".gs-checkin-period");
+      const sumEl = wrap.querySelector(".gs-checkin-monitor-summary");
+      const jouEl = wrap.querySelector(".gs-checkin-monitor-journal");
+      const expBtn = wrap.querySelector(".gs-checkin-export");
+      if (!periodSel || !sumEl || !jouEl) return;
+      const timerKey = "_gsCheckinMonTimer";
+      if (wrap[timerKey]) {
+        try {
+          window.clearInterval(wrap[timerKey]);
+        } catch (_) {}
+        wrap[timerKey] = null;
+      }
+      async function refresh() {
+        const period = periodSel.value || "day";
+        try {
+          const url = checkinBoardUrl(period, widgetId);
+          const r = await fetchFn(url);
+          const data = await r.json().catch(() => ({}));
+          if (!r.ok) {
+            sumEl.innerHTML = `<div class="hint">${escapeHtml(String((data && data.detail) || r.statusText))}</div>`;
+            jouEl.innerHTML = "";
+            return;
+          }
+          const summ = (data && data.summary) || [];
+          const noneLbl = escapeHtml(String((data.labels && data.labels.none) || "Нет отметки"));
+          const sRows = summ
+            .map((row) => {
+              if (row.status === "none") {
+                return `<tr><td>${escapeHtml(row.place_title || row.place_id)}</td><td colspan="2">${noneLbl}</td></tr>`;
+              }
+              const ev = row.last_event || {};
+              return `<tr><td>${escapeHtml(row.place_title || row.place_id)}</td><td>${escapeHtml(String(row.status || ""))}</td><td>${escapeHtml(
+                String(ev.created_at || ""),
+              )}</td></tr>`;
+            })
+            .join("");
+          sumEl.innerHTML = `<div class="hint" style="margin-bottom:6px">${escapeHtml(String(data.range_label || ""))}</div><table class="gs-checkin-table" style="width:100%;border-collapse:collapse;font-size:0.92em"><thead><tr><th>Место</th><th>Состояние</th><th>Время UTC</th></tr></thead><tbody>${sRows}</tbody></table>`;
+          const jou = (data && data.journal) || [];
+          const jRows = jou
+            .map(
+              (ev) =>
+                `<tr><td>${escapeHtml(String(ev.created_at || ""))}</td><td>${escapeHtml(String(ev.place_id || ""))}</td><td>${escapeHtml(
+                  String(ev.level || ""),
+                )}</td><td>${escapeHtml(String(ev.device_name || ""))}</td><td>${escapeHtml(
+                  String(ev.comment || "").slice(0, 200),
+                )}</td></tr>`,
+            )
+            .join("");
+          jouEl.innerHTML = `<div style="font-weight:600;margin:8px 0 4px">Журнал</div><table class="gs-checkin-table" style="width:100%;border-collapse:collapse;font-size:0.88em"><thead><tr><th>Время</th><th>Место</th><th>Уровень</th><th>Подпись</th><th>Комментарий</th></tr></thead><tbody>${jRows}</tbody></table>`;
+        } catch (e) {
+          sumEl.innerHTML = `<div class="hint">${escapeHtml(e.message || String(e))}</div>`;
+          jouEl.innerHTML = "";
+        }
+      }
+      periodSel.onchange = () => refresh();
+      if (expBtn) {
+        expBtn.onclick = async () => {
+          const period = periodSel.value || "day";
+          const url = checkinExportUrl(period, widgetId);
+          try {
+            const r = await fetchFn(url);
+            if (!r.ok) {
+              let detail = r.statusText;
+              try {
+                const errBody = await r.json();
+                detail = (errBody && errBody.detail) || detail;
+              } catch (_) {}
+              throw new Error(typeof detail === "string" ? detail : String(detail));
+            }
+            const blob = await r.blob();
+            const a = document.createElement("a");
+            a.href = URL.createObjectURL(blob);
+            a.download = `checkin_${slug}_${widgetId}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(a.href);
+          } catch (e) {
+            if (sumEl) sumEl.innerHTML = `<div class="hint">${escapeHtml(e.message || String(e))}</div>`;
+          }
+        };
+      }
+      refresh();
+      const iv = window.setInterval(refresh, 45000);
+      wrap[timerKey] = iv;
+      try {
+        if (!global.__gsCheckinMonitorTimers) global.__gsCheckinMonitorTimers = [];
+        global.__gsCheckinMonitorTimers.push(iv);
+      } catch (_) {}
+    });
+  }
+
   global.GuardSchoolScreen = {
     clearAllTimers,
     pruneStaleCarouselState,
@@ -1203,5 +1512,6 @@
     applyTvScreenBackground,
     buildTextOutlineShadow,
     applyTvTextOutline,
+    bindCheckinWidgets,
   };
 })(window);

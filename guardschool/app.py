@@ -29,7 +29,7 @@ from urllib.parse import quote, urlparse
 from urllib.request import Request as UrlRequest, urlopen
 
 from fastapi import Body, FastAPI, File, Form, HTTPException, Query, Request, Response, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from .gs_admin_http import admin_msg, admin_ui_lang, session_cookie_secure
 from .gs_class_key import normalize_class
@@ -131,6 +131,20 @@ from .gs_feedback import (
     list_feedback_messages,
     mark_feedback_read,
 )
+from .gs_checkin import (
+    build_summary_for_places,
+    build_summary_for_school_day,
+    ensure_checkin_tables,
+    insert_event as insert_checkin_event,
+    journal_to_csv_bytes,
+    journal_to_csv_bytes_filtered,
+    list_journal_filtered,
+    list_journal_for_school_day,
+    range_bounds_utc,
+    sanitize_checkin_block,
+    sanitize_places_list,
+    school_calendar_date,
+)
 from .gs_portal_cms import load_portal_cms_merged, sanitize_portal_cms_payload, write_portal_cms
 from .saas_db import cleanup_expired_demo_sessions, ensure_public_schema, saas_db_enabled
 from .saas_db import (
@@ -184,6 +198,8 @@ ADMIN_PALETTE_WIDGET_TYPES = frozenset(
         "marquee",
         "emergency",
         "image",
+        "checkin_submit",
+        "checkin_monitor",
     }
 )
 
@@ -881,6 +897,7 @@ def default_config() -> dict[str, Any]:
         "emergency_active_template_id": "",
         "rss_sources": [],
         "rss_refresh_minutes": 45,
+        "checkin": sanitize_checkin_block({}),
     }
 
 
@@ -1374,6 +1391,23 @@ def normalize_widget(widget: dict[str, Any]) -> dict[str, Any]:
         widget["settings"]["imagesRotateSec"] = max(0, min(600, irs))
     if widget["type"] == "rss_news":
         widget["settings"].setdefault("titleFontSize", 18)
+    if widget["type"] == "checkin_submit":
+        widget["settings"].setdefault("places", [])
+        widget["settings"].setdefault("monitor_widget_id", "")
+        widget["settings"].setdefault("labels", {})
+        widget["settings"]["monitor_widget_id"] = str(widget["settings"].get("monitor_widget_id") or "").strip()[:80]
+        if not isinstance(widget["settings"].get("places"), list):
+            widget["settings"]["places"] = []
+        if not isinstance(widget["settings"].get("labels"), dict):
+            widget["settings"]["labels"] = {}
+    if widget["type"] == "checkin_monitor":
+        widget["settings"].setdefault("places", [])
+        widget["settings"].setdefault("panel_title", "Сводка мест")
+        widget["settings"].setdefault("labels", {})
+        if not isinstance(widget["settings"].get("places"), list):
+            widget["settings"]["places"] = []
+        if not isinstance(widget["settings"].get("labels"), dict):
+            widget["settings"]["labels"] = {}
     widget["settings"].setdefault("backdrop", True)
     return widget
 
@@ -1536,6 +1570,7 @@ def load_config() -> dict[str, Any]:
     config["emergency_active_template_id"] = str(config.get("emergency_active_template_id") or "").strip()[:64]
     config["rss_sources"] = sanitize_rss_sources(config.get("rss_sources"))
     config["rss_refresh_minutes"] = sanitize_rss_refresh_minutes(config.get("rss_refresh_minutes", 45))
+    config["checkin"] = sanitize_checkin_block(config.get("checkin"))
     return config
 
 
@@ -1687,11 +1722,84 @@ def sanitize_config(config: dict[str, Any]) -> dict[str, Any]:
     config["emergency_active_template_id"] = str(config.get("emergency_active_template_id") or "").strip()[:64]
     config["rss_sources"] = sanitize_rss_sources(config.get("rss_sources"))
     config["rss_refresh_minutes"] = sanitize_rss_refresh_minutes(config.get("rss_refresh_minutes", 45))
+    config["checkin"] = sanitize_checkin_block(config.get("checkin"))
     return config
 
 
 # Фильтр классов по `screen.selected_classes` и по `?gs_classes=` (настройки устройства на ТВ/телефоне).
 _TEMP_DISABLE_SCREEN_CLASS_FILTER = False
+
+
+def _screen_config_by_slug(config: dict[str, Any], slug_key: str) -> dict[str, Any] | None:
+    for item in config.get("screens") or []:
+        if _normalize_screen_slug_for_api(str(item.get("slug") or "")) == slug_key and item.get("is_active", True):
+            return item
+    return None
+
+
+def _find_submit_widget(screen: dict[str, Any], widget_id: str) -> dict[str, Any] | None:
+    for w in screen.get("widgets") or []:
+        if str(w.get("id")) == str(widget_id).strip() and w.get("type") == "checkin_submit":
+            return w
+    return None
+
+
+def _find_monitor_widget(screen: dict[str, Any], widget_id: str) -> dict[str, Any] | None:
+    for w in screen.get("widgets") or []:
+        if str(w.get("id")) == str(widget_id).strip() and w.get("type") == "checkin_monitor":
+            return w
+    return None
+
+
+def _resolve_checkin_submit_places(screen: dict[str, Any], submit_w: dict[str, Any]) -> list[dict[str, str]]:
+    st = submit_w.get("settings") or {}
+    link = str(st.get("monitor_widget_id") or "").strip()
+    if link:
+        mw = _find_monitor_widget(screen, link)
+        if mw:
+            return sanitize_places_list((mw.get("settings") or {}).get("places"))
+    return sanitize_places_list(st.get("places"))
+
+
+def _checkin_period_normalize(period: str) -> str:
+    p = (period or "day").strip().lower()
+    return p if p in ("day", "week", "month") else "day"
+
+
+def _checkin_board_payload(
+    config: dict[str, Any],
+    tenant_id: str,
+    slug_key: str,
+    monitor_widget_id: str,
+    period: str,
+) -> dict[str, Any]:
+    screen = _screen_config_by_slug(config, slug_key)
+    if not screen:
+        raise HTTPException(status_code=404, detail="Экран не найден.")
+    mw = _find_monitor_widget(screen, monitor_widget_id)
+    if not mw:
+        raise HTTPException(status_code=404, detail="Виджет сводки не найден.")
+    places = sanitize_places_list((mw.get("settings") or {}).get("places"))
+    period_n = _checkin_period_normalize(period)
+    summary_label, summary_items = build_summary_for_places(
+        tenant_id, config, places, period_n, slug_key
+    )
+    pids = {p["id"] for p in places}
+    start_utc, end_utc, range_label = range_bounds_utc(config, period_n)
+    journal = list_journal_filtered(tenant_id, start_utc, end_utc, pids if pids else None, slug_key)
+    raw_labels = (mw.get("settings") or {}).get("labels")
+    labels_out: dict[str, Any] = {}
+    if isinstance(raw_labels, dict):
+        labels_out = {str(k).strip()[:80]: str(v).strip()[:500] for k, v in raw_labels.items() if str(k).strip()}
+    return {
+        "range_label": range_label,
+        "summary_title": summary_label,
+        "summary": summary_items,
+        "journal": journal,
+        "places": places,
+        "labels": labels_out,
+        "period": period_n,
+    }
 
 
 def load_schedule() -> list[dict[str, Any]]:
@@ -2684,6 +2792,7 @@ def build_schedule_payload(
 
 ensure_dirs()
 ensure_feedback_tables()
+ensure_checkin_tables()
 
 from . import bell_rupor_worker
 
@@ -5385,6 +5494,164 @@ async def admin_feedback_block_hash(request: Request) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail="Пустой device_hash.")
     block_feedback_hash(h)
     return {"status": "ok"}
+
+
+@app.post("/api/checkin/event")
+async def api_checkin_post_event(request: Request) -> dict[str, Any]:
+    """Отметка с экрана: нужны slug экрана и id виджета «Отметка» (checkin_submit). Данные привязаны к токену клиента."""
+    body = await request.json()
+    screen_slug_raw = str(body.get("screen_slug") or "").strip()
+    submit_widget_id = str(body.get("submit_widget_id") or "").strip()
+    slug_key = _normalize_screen_slug_for_api(screen_slug_raw)
+    if not slug_key or not submit_widget_id:
+        raise HTTPException(status_code=400, detail="Укажите screen_slug и submit_widget_id.")
+    cfg = load_config()
+    screen = _screen_config_by_slug(cfg, slug_key)
+    if not screen:
+        raise HTTPException(status_code=404, detail="Экран не найден.")
+    submit_w = _find_submit_widget(screen, submit_widget_id)
+    if not submit_w or submit_w.get("enabled") is False:
+        raise HTTPException(status_code=404, detail="Виджет отметки не найден или выключен.")
+    places = _resolve_checkin_submit_places(screen, submit_w)
+    allowed_ids = {p["id"] for p in places}
+    if not allowed_ids:
+        raise HTTPException(status_code=400, detail="Не заданы места: укажите места у виджета или привяжите виджет сводки.")
+    place_id = str(body.get("place_id") or "").strip()
+    level = str(body.get("level") or "").strip().lower()
+    comment = str(body.get("comment") or "").strip()
+    device_name = str(body.get("device_name") or "").strip()
+    device_hash = str(body.get("device_hash") or "").strip()
+    if place_id not in allowed_ids:
+        raise HTTPException(status_code=400, detail="Неизвестное место для этого экрана.")
+    auth = (request.headers.get("authorization") or "").strip()
+    if auth.lower().startswith("bearer "):
+        _require_tv_access_for_screen(request, slug_key)
+    try:
+        from .tenant_ctx import tenant_slug as _checkin_tenant_slug
+
+        tid_ctx = str(_checkin_tenant_slug() or "").strip()
+    except Exception:
+        tid_ctx = ""
+    tenant_id = tid_ctx or str(request.cookies.get(SAAS_TENANT_COOKIE) or "local").strip() or "local"
+    try:
+        saved = insert_checkin_event(
+            tenant_id,
+            device_hash,
+            device_name,
+            place_id,
+            level,
+            comment,
+            screen_slug=slug_key,
+            submit_widget_id=submit_widget_id,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from None
+    return {"status": "ok", **saved}
+
+
+@app.get("/api/screen/{slug}/checkin/board")
+def api_screen_checkin_board(
+    request: Request,
+    slug: str,
+    monitor_widget_id: str = Query(...),
+    period: str = Query("day", alias="range"),
+) -> dict[str, Any]:
+    """Сводка и журнал для виджета «Сводка отметок» на ТВ (по токену доступа к экрану)."""
+    slug_key = _normalize_screen_slug_for_api(slug)
+    if not slug_key:
+        raise HTTPException(status_code=404, detail="Экран не найден.")
+    _require_tv_access_for_screen(request, slug_key)
+    cfg = load_config()
+    tenant_id = str(request.cookies.get(SAAS_TENANT_COOKIE) or "local").strip() or "local"
+    return _checkin_board_payload(cfg, tenant_id, slug_key, monitor_widget_id, period)
+
+
+@app.get("/api/screen/{slug}/checkin/export.csv")
+def api_screen_checkin_export_csv(
+    request: Request,
+    slug: str,
+    monitor_widget_id: str = Query(...),
+    period: str = Query("day", alias="range"),
+) -> Response:
+    slug_key = _normalize_screen_slug_for_api(slug)
+    if not slug_key:
+        raise HTTPException(status_code=404, detail="Экран не найден.")
+    _require_tv_access_for_screen(request, slug_key)
+    cfg = load_config()
+    screen = _screen_config_by_slug(cfg, slug_key)
+    if not screen:
+        raise HTTPException(status_code=404, detail="Экран не найден.")
+    mw = _find_monitor_widget(screen, monitor_widget_id)
+    if not mw:
+        raise HTTPException(status_code=404, detail="Виджет сводки не найден.")
+    places = sanitize_places_list((mw.get("settings") or {}).get("places"))
+    place_titles = {p["id"]: p["title"] for p in places}
+    pids = {p["id"] for p in places}
+    tenant_id = str(request.cookies.get(SAAS_TENANT_COOKIE) or "local").strip() or "local"
+    period_n = _checkin_period_normalize(period)
+    raw = journal_to_csv_bytes_filtered(
+        tenant_id, cfg, period_n, pids if pids else None, slug_key, place_titles
+    )
+    rl = range_bounds_utc(cfg, period_n)[2]
+    return Response(
+        content=raw,
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="checkin_{slug_key}_{monitor_widget_id}_{rl}.csv"'
+        },
+    )
+
+
+@app.get("/api/admin/checkin/board")
+def api_admin_checkin_board(
+    request: Request,
+    screen_slug: str = Query(...),
+    monitor_widget_id: str = Query(...),
+    period: str = Query("day", alias="range"),
+) -> dict[str, Any]:
+    require_auth(request)
+    slug_key = _normalize_screen_slug_for_api(screen_slug)
+    if not slug_key:
+        raise HTTPException(status_code=400, detail="Укажите screen_slug.")
+    cfg = load_config()
+    tenant_id = str(request.cookies.get(SAAS_TENANT_COOKIE) or "local").strip() or "local"
+    return _checkin_board_payload(cfg, tenant_id, slug_key, monitor_widget_id, period)
+
+
+@app.get("/api/admin/checkin/export.csv")
+def api_admin_checkin_export_csv(
+    request: Request,
+    screen_slug: str = Query(...),
+    monitor_widget_id: str = Query(...),
+    period: str = Query("day", alias="range"),
+) -> Response:
+    require_auth(request)
+    slug_key = _normalize_screen_slug_for_api(screen_slug)
+    if not slug_key:
+        raise HTTPException(status_code=400, detail="Укажите screen_slug.")
+    cfg = load_config()
+    screen = _screen_config_by_slug(cfg, slug_key)
+    if not screen:
+        raise HTTPException(status_code=404, detail="Экран не найден.")
+    mw = _find_monitor_widget(screen, monitor_widget_id)
+    if not mw:
+        raise HTTPException(status_code=404, detail="Виджет сводки не найден.")
+    places = sanitize_places_list((mw.get("settings") or {}).get("places"))
+    place_titles = {p["id"]: p["title"] for p in places}
+    pids = {p["id"] for p in places}
+    tenant_id = str(request.cookies.get(SAAS_TENANT_COOKIE) or "local").strip() or "local"
+    period_n = _checkin_period_normalize(period)
+    raw = journal_to_csv_bytes_filtered(
+        tenant_id, cfg, period_n, pids if pids else None, slug_key, place_titles
+    )
+    rl = range_bounds_utc(cfg, period_n)[2]
+    return Response(
+        content=raw,
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="checkin_{slug_key}_{monitor_widget_id}_{rl}.csv"'
+        },
+    )
 
 
 def _tv_pair_pin_entry_file_response() -> FileResponse:

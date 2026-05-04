@@ -21,6 +21,8 @@ const WIDGET_TYPE_KEYS = new Set([
   "marquee",
   "emergency",
   "image",
+  "checkin_submit",
+  "checkin_monitor",
 ]);
 
 let deps = {
@@ -294,6 +296,36 @@ function settingInputs(widget, index) {
     );
     parts.push(`<p class="hint">${t("w.speedSecLegacyHint")}</p>`);
   }
+  if (widget.type === "checkin_monitor") {
+    parts.push(widgetInput(t("w.checkinPanelTitle"), widget.settings.panel_title || "", `widget:${index}:settings.panel_title`, "text", "standard-input"));
+    parts.push(`<p class="hint">${t("w.checkinPlacesHintMonitor")}</p>`);
+  }
+  if (widget.type === "checkin_submit") {
+    parts.push(widgetInput(t("w.checkinMonitorWidgetId"), widget.settings.monitor_widget_id || "", `widget:${index}:settings.monitor_widget_id`, "text", "standard-input"));
+    parts.push(`<p class="hint">${t("w.checkinSubmitLinkHint")}</p>`);
+    parts.push(widgetInput(t("w.checkinLabelModuleTitle"), (widget.settings.labels || {}).module_title || "", `widget:${index}:settings.labels.module_title`, "text", "wide-input"));
+    parts.push(widgetInput(t("w.checkinLabelPlace"), (widget.settings.labels || {}).place || "", `widget:${index}:settings.labels.place`, "text", "standard-input"));
+    parts.push(widgetInput(t("w.checkinLabelDevice"), (widget.settings.labels || {}).device_name || "", `widget:${index}:settings.labels.device_name`, "text", "standard-input"));
+    parts.push(`<p class="hint">${t("w.checkinPlacesHintSubmit")}</p>`);
+  }
+  if (widget.type === "checkin_monitor" || widget.type === "checkin_submit") {
+    const places = Array.isArray(widget.settings.places) ? widget.settings.places : [];
+    const rows = places
+      .map((p, i) => {
+        const idAttr = escapeHtmlAttr(String(p?.id ?? ""));
+        const titleAttr = escapeHtmlAttr(String(p?.title ?? ""));
+        return `<div class="settings-row rss-source-row" style="align-items:flex-end;flex-wrap:wrap;gap:8px">
+          <label>${t("w.checkinPlaceId")}<input class="standard-input" data-key="widget:${index}:settings.places.${i}.id" type="text" value="${idAttr}" placeholder="gate_a" maxlength="64"></label>
+          <label>${t("w.checkinPlaceTitle")}<input class="standard-input wide-input" data-key="widget:${index}:settings.places.${i}.title" type="text" value="${titleAttr}" maxlength="200"></label>
+          <button type="button" class="secondary-btn compact-btn" data-remove-checkin-place="${index}:${i}">${t("w.checkinPlaceRemove")}</button>
+        </div>`;
+      })
+      .join("");
+    parts.push(rows || `<div class="hint">${t("w.checkinNoPlaces")}</div>`);
+    parts.push(
+      `<div class="settings-row"><button type="button" class="secondary-btn compact-btn" data-add-checkin-place="${index}">${t("w.checkinPlaceAdd")}</button></div>`,
+    );
+  }
   return parts.join("");
 }
 
@@ -351,6 +383,23 @@ export function updateWidgetField(path, value) {
         widget.settings.images[idx] = { name: "", url: "" };
       }
       widget.settings.images[idx][sub] = value;
+    } else if (/^places\.\d+\.(id|title)$/.test(key)) {
+      const im = key.match(/^places\.(\d+)\.(id|title)$/);
+      if (!im) return;
+      const idx = Number(im[1]);
+      const sub = im[2];
+      if (!Array.isArray(widget.settings.places)) widget.settings.places = [];
+      while (widget.settings.places.length <= idx) {
+        widget.settings.places.push({ id: "", title: "" });
+      }
+      if (!widget.settings.places[idx] || typeof widget.settings.places[idx] !== "object") {
+        widget.settings.places[idx] = { id: "", title: "" };
+      }
+      widget.settings.places[idx][sub] = value;
+    } else if (/^labels\.[a-zA-Z0-9_]+$/.test(key)) {
+      const sub = key.slice("labels.".length);
+      if (!widget.settings.labels || typeof widget.settings.labels !== "object") widget.settings.labels = {};
+      widget.settings.labels[sub] = value;
     } else if (key === "charsPerMin") {
       const num = Number(value);
       if (value === "" || value == null || !Number.isFinite(num)) {
@@ -459,6 +508,34 @@ export function removeWidgetImageSlot(widgetIndex, slotIndex) {
   deps.renderPreview();
 }
 
+export function addCheckinPlaceSlot(widgetIndex) {
+  const sc = screen();
+  if (!sc) return;
+  const w = sc.widgets[widgetIndex];
+  if (!w || (w.type !== "checkin_submit" && w.type !== "checkin_monitor")) return;
+  if (!w.settings) w.settings = {};
+  if (!Array.isArray(w.settings.places)) w.settings.places = [];
+  if (w.settings.places.length >= 500) return;
+  w.settings.places.push({ id: "", title: "" });
+  deps.render();
+  if (state.widgetModalWidgetId === w.id) syncWidgetModal();
+  deps.renderPreview();
+}
+
+export function removeCheckinPlaceSlot(widgetIndex, slotIndex) {
+  const sc = screen();
+  if (!sc) return;
+  const w = sc.widgets[widgetIndex];
+  if (!w || (w.type !== "checkin_submit" && w.type !== "checkin_monitor")) return;
+  if (!w.settings || !Array.isArray(w.settings.places)) return;
+  const i = Number(slotIndex);
+  if (!Number.isFinite(i) || i < 0 || i >= w.settings.places.length) return;
+  w.settings.places.splice(i, 1);
+  deps.render();
+  if (state.widgetModalWidgetId === w.id) syncWidgetModal();
+  deps.renderPreview();
+}
+
 function bindWidgetEditorEvents(root, index) {
   const sc = screen();
   if (!sc) return;
@@ -528,6 +605,16 @@ function bindWidgetEditorEvents(root, index) {
       const raw = String(button.dataset.removeImageSlot || "");
       const [wi, si] = raw.split(":");
       removeWidgetImageSlot(Number(wi), Number(si));
+    };
+  });
+  root.querySelectorAll("[data-add-checkin-place]").forEach((button) => {
+    button.onclick = () => addCheckinPlaceSlot(Number(button.dataset.addCheckinPlace));
+  });
+  root.querySelectorAll("[data-remove-checkin-place]").forEach((button) => {
+    button.onclick = () => {
+      const raw = String(button.dataset.removeCheckinPlace || "");
+      const [wi, si] = raw.split(":");
+      removeCheckinPlaceSlot(Number(wi), Number(si));
     };
   });
 }

@@ -319,6 +319,15 @@ function getGsTvBearer() {
   }
 }
 
+/** Fetch для API отметок на ТВ: Bearer из `?gs_tv_token=` / localStorage и cookies сессии. */
+window.gsCheckinApiFetch = function gsCheckinApiFetch(url, init) {
+  const i = init || {};
+  const headers = new Headers(i.headers || {});
+  const bearer = getGsTvBearer();
+  if (bearer) headers.set("Authorization", "Bearer " + bearer);
+  return fetch(url, Object.assign({}, i, { credentials: "include", headers: headers }));
+};
+
 /** Плавающая шестерёнка и фильтр классов на устройстве — только при mobile_mode экрана (см. get_screen / screenPollUrl). */
 function gsShowScreenDeviceGear(screen) {
   return Boolean(screen && screen.mobile_mode);
@@ -593,6 +602,8 @@ const GS_DEVICE_WIDGET_TYPE_LABELS = {
   rss_news: "RSS-лента",
   marquee: "Бегущая строка",
   image: "Фон / картинка",
+  checkin_submit: "Оперативная отметка",
+  checkin_monitor: "Сводка отметок",
 };
 
 function getGsGridForPoll(slug) {
@@ -1148,6 +1159,9 @@ function shouldSoftRefreshWidget(widget, scheduleChanged, staticChanged) {
   if (t === "text" || t === "emergency" || t === "blank") {
     return staticChanged;
   }
+  if (t === "checkin_submit" || t === "checkin_monitor") {
+    return staticChanged;
+  }
   return scheduleChanged || staticChanged;
 }
 
@@ -1443,6 +1457,9 @@ function render(screenPayload) {
   }
 
   GRef.updateAllClocks(root);
+  if (typeof GRef.bindCheckinWidgets === "function") {
+    GRef.bindCheckinWidgets(root, screenPayload);
+  }
   window.__lastScheduleSig = scheduleSig;
   window.__lastStaticSig = staticSig;
 }
