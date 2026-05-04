@@ -3968,6 +3968,25 @@ def portal_register_page(request: Request) -> Response:
     return FileResponse(STATIC_DIR / "portal_register.html")
 
 
+@app.get("/guardschool")
+def portal_guardschool_legacy_redirect(request: Request) -> Response:
+    """Старая ссылка: контент перенесён в CMS → страница /about/guardschool."""
+    if not _is_guarddoc_portal(request):
+        raise HTTPException(status_code=404, detail="Not found")
+    return RedirectResponse("/about/guardschool", status_code=302)
+
+
+@app.get("/about/{slug}", response_class=HTMLResponse)
+def portal_about_cms_page(request: Request, slug: str) -> Response:
+    """Публичные страницы раздела «О продукте»: контент в portal_cms.json → pages.{slug}."""
+    if not _is_guarddoc_portal(request):
+        raise HTTPException(status_code=404, detail="Not found")
+    sk = str(slug or "").strip().lower()
+    if not sk or not re.match(r"^[a-z0-9][a-z0-9-]*$", sk):
+        raise HTTPException(status_code=404, detail="Not found")
+    return FileResponse(STATIC_DIR / "about_page.html")
+
+
 @app.get("/provider")
 def portal_provider_redirect(request: Request) -> Response:
     """Старая ссылка: провайдерский UI перенесён на /ADM."""

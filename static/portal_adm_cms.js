@@ -42,11 +42,13 @@ function parsePipeLines(text) {
     if (parts.length < 2) continue;
     const label = parts[0];
     const href = parts[1];
-    const flag = parts[2];
+    const flag = (parts[2] || "").toLowerCase();
     if (!label || !href) continue;
     const row = { label, href };
-    const extFlag = flag === "1" || flag === "true" || flag === "ext" || flag === "yes";
-    if (extFlag || /^https?:\/\//i.test(href)) row.external = true;
+    if (flag === "demo") row.role = "demo";
+    else if (flag === "register" || flag === "reg") row.role = "register";
+    else if (flag === "1" || flag === "true" || flag === "ext" || flag === "yes") row.external = true;
+    else if (/^https?:\/\//i.test(href)) row.external = true;
     out.push(row);
   }
   return out;
@@ -58,7 +60,9 @@ function formatPipeLines(items) {
     .filter((x) => x && x.label && x.href)
     .map((x) => {
       let line = `${x.label}|${x.href}`;
-      if (x.external) line += "|1";
+      if (x.role === "demo") line += "|demo";
+      else if (x.role === "register") line += "|register";
+      else if (x.external) line += "|1";
       return line;
     })
     .join("\n");
@@ -157,6 +161,170 @@ function renderAppRows(apps) {
   wireAppRemove();
 }
 
+function blockTypeFields(t, b) {
+  const x = b || {};
+  if (t === "h2" || t === "p") {
+    return `<label class="portal-label">Текст</label><textarea class="portal-field" data-bf="text" rows="${
+      t === "h2" ? 2 : 5
+    }" style="width:100%">${esc(x.text || "")}</textarea>`;
+  }
+  if (t === "badge") {
+    const v = ["success", "neutral", "warning"].includes(x.variant) ? x.variant : "neutral";
+    return `<div class="toolbar inputs-row" style="margin-top:8px">
+      <div class="grow compact">
+        <label class="portal-label">Вариант</label>
+        <select class="portal-field" data-bf="badge-variant">
+          ${["success", "neutral", "warning"]
+            .map((opt) => `<option value="${opt}" ${opt === v ? "selected" : ""}>${opt}</option>`)
+            .join("")}
+        </select>
+      </div>
+    </div>
+    <label class="portal-label">Текст метки</label>
+    <input class="portal-field" data-bf="badge-text" value="${esc(x.text || "")}" style="width:100%" />`;
+  }
+  if (t === "figure") {
+    return `<label class="portal-label">URL изображения (https…, /static/…, /uploads/…)</label>
+    <input class="portal-field" data-bf="fig-src" value="${esc(x.src || "")}" style="width:100%" />
+    <label class="portal-label">Подпись над картинкой (необяз.)</label>
+    <input class="portal-field" data-bf="fig-title" value="${esc(x.title || "")}" style="width:100%" />
+    <label class="portal-label">Подпись под картинкой</label>
+    <textarea class="portal-field" data-bf="fig-caption" rows="2" style="width:100%">${esc(x.caption || "")}</textarea>
+    <label class="portal-label">alt для доступности</label>
+    <input class="portal-field" data-bf="fig-alt" value="${esc(x.alt || "")}" style="width:100%" />`;
+  }
+  if (t === "ul") {
+    const lines = Array.isArray(x.items) ? x.items.join("\n") : "";
+    return `<label class="portal-label">Строки списка (одна строка — один пункт)</label>
+    <textarea class="portal-field" data-bf="ul-items" rows="6" style="width:100%">${esc(lines)}</textarea>`;
+  }
+  return `<label class="portal-label">Текст</label><textarea class="portal-field" data-bf="text" rows="4" style="width:100%">${esc(
+    x.text || "",
+  )}</textarea>`;
+}
+
+function blockRowHtml(b, idx, pg) {
+  const raw = (b && b.type) || "p";
+  const t = ["h2", "p", "badge", "figure", "ul"].includes(raw) ? raw : "p";
+  return `<div class="portal-card" data-cms-block-row data-pg="${pg}" style="margin-top:12px;padding:12px">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+      <strong style="color:#fff">Блок ${idx + 1}</strong>
+      <button type="button" class="portal-btn danger cms-block-remove">Удалить</button>
+    </div>
+    <label class="portal-label">Тип</label>
+    <select class="portal-field" data-bf="type">
+      ${["h2", "p", "badge", "figure", "ul"]
+        .map((v) => `<option value="${v}" ${t === v ? "selected" : ""}>${v}</option>`)
+        .join("")}
+    </select>
+    <div data-bf-host>${blockTypeFields(t, b)}</div>
+  </div>`;
+}
+
+function wirePageBlockHandlers(pg) {
+  const host = $(`cms-blocks-${pg}-host`);
+  if (!host) return;
+  if (host.dataset.delegation === "1") return;
+  host.dataset.delegation = "1";
+  host.addEventListener("change", (ev) => {
+    const sel = ev.target.closest('[data-bf="type"]');
+    if (!sel || !host.contains(sel)) return;
+    const row = sel.closest("[data-cms-block-row]");
+    if (!row) return;
+    const t = sel.value;
+    const hostFields = row.querySelector("[data-bf-host]");
+    if (hostFields) hostFields.innerHTML = blockTypeFields(t, {});
+  });
+  host.addEventListener("click", (ev) => {
+    const btn = ev.target.closest(".cms-block-remove");
+    if (!btn || !host.contains(btn)) return;
+    const row = btn.closest("[data-cms-block-row]");
+    row?.remove();
+    if (!host.querySelector("[data-cms-block-row]")) {
+      host.innerHTML = blockRowHtml({ type: "p", text: "" }, 0, pg);
+    }
+  });
+}
+
+function collectBlocksFromDom(pg) {
+  const host = $(`cms-blocks-${pg}-host`);
+  if (!host) return [];
+  const out = [];
+  host.querySelectorAll("[data-cms-block-row]").forEach((row) => {
+    const t = (row.querySelector('[data-bf="type"]')?.value || "p").toLowerCase();
+    if (t === "h2" || t === "p") {
+      const text = (row.querySelector('[data-bf="text"]')?.value || "").trim();
+      if (text) out.push({ type: t, text });
+      return;
+    }
+    if (t === "badge") {
+      const text = (row.querySelector('[data-bf="badge-text"]')?.value || "").trim();
+      let variant = (row.querySelector('[data-bf="badge-variant"]')?.value || "neutral").toLowerCase();
+      if (!["success", "neutral", "warning"].includes(variant)) variant = "neutral";
+      if (text) out.push({ type: "badge", text, variant });
+      return;
+    }
+    if (t === "figure") {
+      const src = (row.querySelector('[data-bf="fig-src"]')?.value || "").trim();
+      const title = (row.querySelector('[data-bf="fig-title"]')?.value || "").trim();
+      const caption = (row.querySelector('[data-bf="fig-caption"]')?.value || "").trim();
+      const alt = (row.querySelector('[data-bf="fig-alt"]')?.value || "").trim();
+      if (src || title || caption || alt) {
+        out.push({ type: "figure", src, title, caption, alt });
+      }
+      return;
+    }
+    if (t === "ul") {
+      const raw = row.querySelector('[data-bf="ul-items"]')?.value || "";
+      const items = raw
+        .split("\n")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (items.length) out.push({ type: "ul", items });
+    }
+  });
+  return out;
+}
+
+function collectPage(pg) {
+  const title = ($(`cms-pg-${pg}-title`)?.value || "").trim();
+  if (!title) return null;
+  const meta_description = ($(`cms-pg-${pg}-meta`)?.value || "").trim();
+  const vbOn = $(`cms-pg-${pg}-vb-on`)?.checked;
+  const vbText = ($(`cms-pg-${pg}-vb-text`)?.value || "").trim();
+  let vbVar = ($(`cms-pg-${pg}-vb-var`)?.value || "neutral").toLowerCase();
+  if (!["success", "neutral", "warning"].includes(vbVar)) vbVar = "neutral";
+  let version_badge = null;
+  if (vbOn && vbText) {
+    version_badge = { text: vbText, variant: vbVar };
+  }
+  const blocks = collectBlocksFromDom(pg);
+  return { title, meta_description, version_badge, blocks };
+}
+
+function fillPageSection(pg, page) {
+  const p = page || {};
+  const tEl = $(`cms-pg-${pg}-title`);
+  const mEl = $(`cms-pg-${pg}-meta`);
+  if (tEl) tEl.value = p.title || "";
+  if (mEl) mEl.value = p.meta_description || "";
+  const vb = p.version_badge;
+  const vbOn = $(`cms-pg-${pg}-vb-on`);
+  if (vbOn) {
+    vbOn.checked = !!(vb && vb.text);
+    const vbt = $(`cms-pg-${pg}-vb-text`);
+    const vbv = $(`cms-pg-${pg}-vb-var`);
+    if (vbt) vbt.value = vb?.text || "";
+    if (vbv) vbv.value = ["success", "neutral", "warning"].includes(vb?.variant) ? vb.variant : "neutral";
+  }
+  const host = $(`cms-blocks-${pg}-host`);
+  if (!host) return;
+  host.dataset.delegation = "";
+  const blocks = Array.isArray(p.blocks) && p.blocks.length ? p.blocks : [{ type: "p", text: "" }];
+  host.innerHTML = blocks.map((b, i) => blockRowHtml(b, i, pg)).join("");
+  wirePageBlockHandlers(pg);
+}
+
 function fillForm(cms) {
   $("cms-meta-title").value = cms.meta?.page_title || "";
   $("cms-meta-desc").value = cms.meta?.description || "";
@@ -181,6 +349,17 @@ function fillForm(cms) {
   if ($("cms-shell-title")) $("cms-shell-title").value = cms.shell?.nav_title || "";
   if ($("cms-shell-sub")) $("cms-shell-sub").value = cms.shell?.nav_subtitle || "";
   if ($("cms-shell-nav")) $("cms-shell-nav").value = formatPipeLines(cms.shell?.nav);
+
+  const fl = cms.footer_legal || {};
+  if ($("cms-fl-copyright")) $("cms-fl-copyright").value = fl.copyright || "";
+  if ($("cms-fl-privacy")) $("cms-fl-privacy").value = fl.privacy_text || "";
+  if ($("cms-fl-cookies")) $("cms-fl-cookies").value = fl.cookies_text || "";
+  if ($("cms-fl-contacts")) $("cms-fl-contacts").value = fl.contacts_text || "";
+  if ($("cms-fl-links")) $("cms-fl-links").value = formatPipeLines(fl.extra_links);
+
+  fillPageSection("gs", cms.pages?.guardschool);
+  fillPageSection("demo", cms.pages?.["guardschool-demo"]);
+
   renderAppRows(cms.applications);
 }
 
@@ -190,6 +369,12 @@ function collectCms() {
     href: $("cms-hero-p-href").value.trim(),
     external: $("cms-hero-p-ext").checked,
   };
+  const pages = {};
+  const pgGs = collectPage("gs");
+  const pgDemo = collectPage("demo");
+  if (pgGs) pages.guardschool = pgGs;
+  if (pgDemo) pages["guardschool-demo"] = pgDemo;
+
   const cms = {
     shell: {
       nav_title: $("cms-shell-title").value.trim(),
@@ -230,6 +415,14 @@ function collectCms() {
       items: parsePipeLines($("cms-aside-items").value),
     },
     footer: { note: $("cms-foot").value.trim() },
+    footer_legal: {
+      copyright: ($("cms-fl-copyright")?.value || "").trim(),
+      privacy_text: ($("cms-fl-privacy")?.value || "").trim(),
+      cookies_text: ($("cms-fl-cookies")?.value || "").trim(),
+      contacts_text: ($("cms-fl-contacts")?.value || "").trim(),
+      extra_links: parsePipeLines($("cms-fl-links")?.value || ""),
+    },
+    pages,
   };
   return cms;
 }
@@ -264,12 +457,15 @@ function mountForm() {
     <nav class="cms-editor-rail" aria-label="К разделам формы">
       <a href="#cms-section-meta">Мета / SEO</a>
       <a href="#cms-section-shell">Левое меню</a>
+      <a href="#cms-section-page-gs">/about/guardschool</a>
+      <a href="#cms-section-page-demo">/about/guardschool-demo</a>
       <a href="#cms-section-hero">Герой</a>
       <a href="#cms-section-eco">О платформе</a>
       <a href="#cms-section-apps">Приложения</a>
       <a href="#cms-section-demo">Песочница</a>
       <a href="#cms-section-extras">Доп. ссылки</a>
-      <a href="#cms-section-foot">Подвал</a>
+      <a href="#cms-section-foot">Подвал главной</a>
+      <a href="#cms-section-legal">Юридический блок</a>
     </nav>
     <div class="cms-editor-main">
     <div class="toolbar actions-row" style="margin-top:0">
@@ -296,6 +492,44 @@ function mountForm() {
     <label class="portal-label">Пункты меню (по одной строке)</label>
     <textarea class="portal-field cms-monospace" id="cms-shell-nav" rows="8" style="width:100%"></textarea>
 
+    <h3 id="cms-section-page-gs" class="cms-section-title">Страница <code>/about/guardschool</code></h3>
+    <p class="portal-hint">Полный текст, метка версии, изображения и списки — блоками ниже. Публичный URL задаётся заголовком страницы.</p>
+    <div class="toolbar inputs-row">
+      <div class="grow"><label class="portal-label">Заголовок (h1 / вкладка)</label><input class="portal-field" id="cms-pg-gs-title" /></div>
+    </div>
+    <label class="portal-label">Meta description этой страницы</label>
+    <textarea class="portal-field" id="cms-pg-gs-meta" rows="2" style="width:100%"></textarea>
+    <div class="toolbar inputs-row" style="margin-top:8px;align-items:flex-end">
+      <div class="grow compact"><label class="portal-label"><input type="checkbox" id="cms-pg-gs-vb-on" /> Показать метку (версия / статус)</label></div>
+      <div class="grow"><label class="portal-label">Текст метки</label><input class="portal-field" id="cms-pg-gs-vb-text" placeholder="Версия актуальна" /></div>
+      <div class="grow compact">
+        <label class="portal-label">Стиль</label>
+        <select class="portal-field" id="cms-pg-gs-vb-var"><option value="success">success</option><option value="neutral">neutral</option><option value="warning">warning</option></select>
+      </div>
+    </div>
+    <label class="portal-label">Блоки контента</label>
+    <div id="cms-blocks-gs-host"></div>
+    <button type="button" class="portal-btn" id="cms-add-block-gs">+ Блок</button>
+
+    <h3 id="cms-section-page-demo" class="cms-section-title">Страница <code>/about/guardschool-demo</code></h3>
+    <p class="portal-hint">Описание демо-песочницы — отдельная страница в том же разделе <code>/about/</code>.</p>
+    <div class="toolbar inputs-row">
+      <div class="grow"><label class="portal-label">Заголовок</label><input class="portal-field" id="cms-pg-demo-title" /></div>
+    </div>
+    <label class="portal-label">Meta description</label>
+    <textarea class="portal-field" id="cms-pg-demo-meta" rows="2" style="width:100%"></textarea>
+    <div class="toolbar inputs-row" style="margin-top:8px;align-items:flex-end">
+      <div class="grow compact"><label class="portal-label"><input type="checkbox" id="cms-pg-demo-vb-on" /> Показать метку</label></div>
+      <div class="grow"><label class="portal-label">Текст метки</label><input class="portal-field" id="cms-pg-demo-vb-text" /></div>
+      <div class="grow compact">
+        <label class="portal-label">Стиль</label>
+        <select class="portal-field" id="cms-pg-demo-vb-var"><option value="success">success</option><option value="neutral">neutral</option><option value="warning">warning</option></select>
+      </div>
+    </div>
+    <label class="portal-label">Блоки контента</label>
+    <div id="cms-blocks-demo-host"></div>
+    <button type="button" class="portal-btn" id="cms-add-block-demo">+ Блок</button>
+
     <h3 id="cms-section-hero" class="cms-section-title">Герой</h3>
     <div class="toolbar inputs-row">
       <div class="grow compact"><label class="portal-label">Бренд (строчка сверху)</label><input class="portal-field" id="cms-hero-brand" /></div>
@@ -312,8 +546,8 @@ function mountForm() {
       </div>
     </div>
     <p class="portal-hint">Для кнопки «войти в GuardSchool» укажите <code>https://…/login</code> — иначе корень школьного сайта редиректит на <code>/setup</code> (пока нет учётки).</p>
-    <label class="portal-label">Доп. кнопки — по одной строке: <code>подпись|/путь</code> или <code>подпись|https://…</code></label>
-    <textarea class="portal-field cms-monospace" id="cms-hero-secondary" rows="3" style="width:100%"></textarea>
+    <label class="portal-label">Доп. кнопки — строка: <code>подпись|/путь</code>. Для стиля кнопки добавьте третье поле: <code>|demo</code> (акцент демо) или <code>|register</code> (контур). Внешняя вкладка: <code>|1</code>.</label>
+    <textarea class="portal-field cms-monospace" id="cms-hero-secondary" rows="4" style="width:100%"></textarea>
 
     <h3 id="cms-section-eco" class="cms-section-title">Блок «экосистема»</h3>
     <label class="portal-label">Заголовок секции</label>
@@ -346,8 +580,21 @@ function mountForm() {
     <textarea class="portal-field cms-monospace" id="cms-aside-items" rows="4" style="width:100%"></textarea>
     <p class="portal-hint">Если список пуст — блок на сайте не показывается.</p>
 
-    <h3 id="cms-section-foot" class="cms-section-title">Подвал</h3>
+    <h3 id="cms-section-foot" class="cms-section-title">Подвал главной (короткая строка)</h3>
     <textarea class="portal-field" id="cms-foot" rows="3" style="width:100%"></textarea>
+
+    <h3 id="cms-section-legal" class="cms-section-title">Юридический блок (конфиденциальность, cookie, контакты)</h3>
+    <p class="portal-hint">Показывается на главной и на страницах <code>/about/…</code> внизу макета.</p>
+    <label class="portal-label">Копирайт</label>
+    <input class="portal-field" id="cms-fl-copyright" style="width:100%" />
+    <label class="portal-label">Конфиденциальность</label>
+    <textarea class="portal-field" id="cms-fl-privacy" rows="4" style="width:100%"></textarea>
+    <label class="portal-label">Файлы cookie</label>
+    <textarea class="portal-field" id="cms-fl-cookies" rows="4" style="width:100%"></textarea>
+    <label class="portal-label">Контакты</label>
+    <textarea class="portal-field" id="cms-fl-contacts" rows="3" style="width:100%"></textarea>
+    <label class="portal-label">Доп. ссылки — строки <code>подпись|/путь</code></label>
+    <textarea class="portal-field cms-monospace" id="cms-fl-links" rows="3" style="width:100%"></textarea>
     </div>
     </div>
   `;
@@ -359,6 +606,16 @@ function mountForm() {
     const n = host.querySelectorAll("[data-cms-app-row]").length;
     host.insertAdjacentHTML("beforeend", appRowHtml({}, n));
     wireAppRemove();
+  });
+  $("cms-add-block-gs").addEventListener("click", () => {
+    const host = $("cms-blocks-gs-host");
+    const n = host.querySelectorAll("[data-cms-block-row]").length;
+    host.insertAdjacentHTML("beforeend", blockRowHtml({ type: "p", text: "" }, n, "gs"));
+  });
+  $("cms-add-block-demo").addEventListener("click", () => {
+    const host = $("cms-blocks-demo-host");
+    const n = host.querySelectorAll("[data-cms-block-row]").length;
+    host.insertAdjacentHTML("beforeend", blockRowHtml({ type: "p", text: "" }, n, "demo"));
   });
 }
 

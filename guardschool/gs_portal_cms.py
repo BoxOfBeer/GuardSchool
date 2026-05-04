@@ -1,4 +1,4 @@
-"""Публичный контент портала экосистемы GuardDoc (JSON в глобальном data/, без маппинга тенанта)."""
+"""Публичный контент портала GuardDoc: data/portal_cms.json (глобально, без тенанта)."""
 from __future__ import annotations
 
 import json
@@ -9,15 +9,21 @@ from typing import Any
 
 from .gs_paths import PORTAL_CMS_PATH
 
-_MAX_STR = 6000
+_MAX_STR = 12000
 _MAX_URL = 2048
 _MAX_APPS = 16
 _MAX_BULLETS = 24
 _MAX_ACTIONS = 8
-_MAX_SHELL_NAV = 16
+_MAX_SHELL_NAV = 24
+_MAX_SHOWCASE_SHOTS = 18
+_MAX_PANEL_PARAS = 10
+_MAX_BLOCKS = 80
+_MAX_UL_ITEMS = 40
 
-# Корень школьного хоста редиректит на /setup, если нет auth.json — в ссылках используем /login.
 _SCHOOL_HOST_ROOT_RE = re.compile(r"^https?://school\.guarddoc\.ru/?$", re.I)
+
+PAGE_SLUG_GUARDSCHOOL = "guardschool"
+PAGE_SLUG_GUARDSCHOOL_DEMO = "guardschool-demo"
 
 
 def _clip(s: str, n: int = _MAX_STR) -> str:
@@ -26,11 +32,22 @@ def _clip(s: str, n: int = _MAX_STR) -> str:
 
 
 def normalize_guardschool_entry_url(url: str | None) -> str:
-    """school.guarddoc.ru/ → …/login (избегаем редиректа на /setup у анонимного корня)."""
     u = str(url or "").strip()
     if _SCHOOL_HOST_ROOT_RE.match(u):
         return "https://school.guarddoc.ru/login"
     return u
+
+
+def _safe_image_url(raw: str | None) -> str:
+    u = str(raw or "").strip()
+    if not u:
+        return ""
+    if u.startswith("/") and not u.startswith("//"):
+        if re.match(r"^/(static|uploads)/", u):
+            return u[:_MAX_URL]
+    if re.match(r"^https?://", u, re.I):
+        return u[:_MAX_URL]
+    return ""
 
 
 def _safe_href(raw: str | None) -> str:
@@ -46,14 +63,117 @@ def _safe_href(raw: str | None) -> str:
     return ""
 
 
+def _default_page_guardschool() -> dict[str, Any]:
+    return {
+        "title": "О GuardSchool",
+        "meta_description": (
+            "GuardSchool: информационные экраны для школы, админка, расписание и виджеты в браузере."
+        ),
+        "version_badge": {"text": "Версия актуальна", "variant": "success"},
+        "blocks": [
+            {"type": "p", "text": _clip(_default_about_guardschool_intro())},
+            {"type": "h2", "text": "Что это"},
+            {
+                "type": "p",
+                "text": (
+                    "GuardSchool — веб-приложение для информационных экранов: кабинет администратора и публичные "
+                    "страницы для телевизоров в коридоре, столовой, на входе. Работает в браузере, без отдельного "
+                    "приложения на каждый экран — достаточно открыть ссылку."
+                ),
+            },
+            {
+                "type": "p",
+                "text": (
+                    "В админке собирается сетка виджетов: расписание (день, неделя, полное), объявления, бегущая строка, "
+                    "часы, фоновое изображение или видео, звонки, медиа. Разные экраны для корпусов, «аварийные» шаблоны "
+                    "для важных сообщений. Данные можно импортировать из Excel или вести вручную."
+                ),
+            },
+            {"type": "h2", "text": "Скриншоты"},
+            {
+                "type": "p",
+                "text": (
+                    "Добавьте свои картинки ниже (блоки «Изображение») — например ссылки на файлы в облаке или "
+                    "пути вида /static/… после загрузки в репозиторий."
+                ),
+            },
+        ],
+    }
+
+
+def _default_about_guardschool_intro() -> str:
+    return (
+        "Ниже вы можете обновлять текст и изображения из админки портала без правок кода — в том числе "
+        "метку версии (например «Актуально») и галерею интерфейса."
+    )
+
+
+def _default_page_guardschool_demo() -> dict[str, Any]:
+    return {
+        "title": "Демо GuardSchool",
+        "meta_description": "Как устроена пробная песочница GuardSchool: срок, одноразовый вход, изоляция данных.",
+        "version_badge": None,
+        "blocks": [
+            {"type": "h2", "text": "Временный доступ"},
+            {
+                "type": "p",
+                "text": (
+                    "Демо — отдельная «песочница» с примером данных GuardSchool. Вы получаете одноразовую ссылку; "
+                    "вход по лицензии не нужен. Данные не смешиваются с реальными школами."
+                ),
+            },
+            {
+                "type": "badge",
+                "text": "Сессия обычно до 1 часа — точное время задаёт провайдер на сервере",
+                "variant": "warning",
+            },
+            {"type": "h2", "text": "Что учитывать"},
+            {
+                "type": "ul",
+                "items": [
+                    "Один переход по токену может быть одноразовым — при необходимости запросите новое демо с главной.",
+                    "После теста зарегистрируйте школу по ключу и входите через страницу /login школьного хоста.",
+                    "Корень школьного сайта без учётной записи может перенаправлять на настройку — используйте вход.",
+                ],
+            },
+            {
+                "type": "p",
+                "text": (
+                    "Запустить песочницу можно с главной портала кнопкой «Демо-песочница» или по прямой ссылке "
+                    "сервиса try-demo после настройки провайдера."
+                ),
+            },
+        ],
+    }
+
+
+def _default_footer_legal() -> dict[str, Any]:
+    return {
+        "copyright": "© GuardDoc. Все права на материалы сайта защищены.",
+        "privacy_text": (
+            "Мы обрабатываем персональные данные в объёме, необходимом для работы сервисов экосистемы GuardDoc "
+            "(регистрация, вход, лицензирование). Подробности обработки уточняйте у оператора вашей организации "
+            "или по контактам ниже."
+        ),
+        "cookies_text": (
+            "Сайт может использовать cookie и локальное хранилище браузера для сессии входа, языка интерфейса "
+            "и устойчивости настроек. Отключение cookie может ограничить работу личного кабинета."
+        ),
+        "contacts_text": (
+            "По вопросам лицензий и доступа используйте контакты, указанные вашей организацией или провайдером GuardDoc."
+        ),
+        "extra_links": [],
+    }
+
+
 def default_portal_cms() -> dict[str, Any]:
     return {
-        "version": 1,
+        "version": 2,
         "meta": {
             "page_title": "GuardDoc — экосистема приложений для школ",
             "description": (
-                "GuardDoc объединяет специализированные сервисы: электронные табло, расписание, "
-                "коммуникации и рабочие инструменты. Один портал доступа, разные продукты."
+                "GuardDoc объединяет сервисы для школ: GuardSchool для экранов и расписания, GuardNotes и другие "
+                "приложения на общей платформе."
             ),
             "portal_public_url": "https://guarddoc.ru",
         },
@@ -61,21 +181,22 @@ def default_portal_cms() -> dict[str, Any]:
             "nav_title": "GuardDoc",
             "nav_subtitle": "Экосистема для школ",
             "nav": [
-                {"label": "Обзор", "href": "#portal-main-top"},
-                {"label": "О платформе", "href": "#section-ecosystem"},
-                {"label": "Приложения", "href": "#section-apps"},
-                {"label": "Пробный доступ", "href": "#section-demo"},
-                {"label": "Регистрация школы", "href": "/register"},
+                {"label": "Главная", "href": "/"},
+                {"label": "О GuardSchool", "href": "/about/guardschool"},
+                {"label": "Демо GuardSchool", "href": "/about/guardschool-demo"},
+                {"label": "Регистрация", "href": "/register"},
                 {"label": "Вход в GuardSchool", "href": "https://school.guarddoc.ru/login", "external": True},
             ],
+            "about_program": {"title": "", "paragraphs": []},
+            "demo_notice": {"title": "", "paragraphs": []},
         },
         "hero": {
             "brand": "GuardDoc",
-            "title": "Платформа для школ, а не один «монолит»",
+            "title": "Платформа для школ: несколько приложений — один портал",
             "lead": (
-                "Здесь собраны приложения одной экосистемы: GuardSchool уже доступен для экранов и "
-                "администрирования, GuardNotes и другие модули дополняют сценарии работы сотрудников. "
-                "Регистрация — по кнопке ниже; вход в GuardSchool и пробная песочница — в меню слева."
+                "GuardDoc объединяет сервисы вроде GuardSchool (экраны и расписание) и будущие продукты вроде "
+                "GuardNotes. Здесь — общая точка входа: зачем экосистема, как попробовать демо и как подключить школу. "
+                "Подробности о продукте и о демо — на отдельных страницах в разделе /about/."
             ),
             "primary_action": {
                 "label": "Войти в GuardSchool",
@@ -83,19 +204,20 @@ def default_portal_cms() -> dict[str, Any]:
                 "external": True,
             },
             "secondary_actions": [
-                {"label": "Регистрация школы", "href": "/register"},
+                {"label": "Демо-песочница", "href": "/try-demo", "role": "demo"},
+                {"label": "Регистрация школы", "href": "/register", "role": "register"},
             ],
         },
         "ecosystem": {
-            "heading": "Несколько приложений — одна логика доступа",
+            "heading": "Зачем этот сайт",
             "paragraphs": [
                 (
-                    "Мы не позиционируем GuardDoc как «одну программу со всем сразу». Каждый продукт "
-                    "решает свой класс задач; вместе они образуют экосистему для образовательной организации."
+                    "Экосистема GuardDoc даёт школе специализированные приложения на общей инфраструктуре: лицензии, "
+                    "регистрация, единый стиль портала. Вы подключаете то, что нужно: чаще всего начинают с GuardSchool."
                 ),
                 (
-                    "Вы можете начать с GuardSchool (экраны, расписание, звонки), позже подключить GuardNotes "
-                    "(заметки и документы для персонала) и следить за появлением новых модулей."
+                    "Технические и юридические детали продуктов — на страницах раздела «О продукте» (/about/…); "
+                    "главная остаётся коротким обзором."
                 ),
             ],
         },
@@ -105,10 +227,9 @@ def default_portal_cms() -> dict[str, Any]:
                 "name": "GuardSchool",
                 "tag": "Доступно",
                 "tag_style": "live",
-                "summary": "Информационные экраны, недельное и полное расписание, объявления, звонки, медиа.",
+                "summary": "Экраны, расписание, звонки, объявления и медиа в браузере.",
                 "detail": (
-                    "Основной продукт для электронных табло и админки контента. Работает в браузере: "
-                    "настройка сетки экранов, экстренные шаблоны, импорт расписания."
+                    "Полноценное описание, скриншоты и актуальные пометки — на странице «О GuardSchool» (редактируется в CMS)."
                 ),
                 "url": "https://school.guarddoc.ru/login",
                 "url_label": "Войти",
@@ -118,11 +239,8 @@ def default_portal_cms() -> dict[str, Any]:
                 "name": "GuardNotes",
                 "tag": "В разработке",
                 "tag_style": "soon",
-                "summary": "Заметки, черновики и личные материалы для сотрудников школы.",
-                "detail": (
-                    "Отдельное приложение для документооборота «вне экрана»: проекты, списки, обмен внутри коллектива. "
-                    "Планируется как следующий крупный модуль экосистемы."
-                ),
+                "summary": "Заметки и документы для персонала школы.",
+                "detail": "Планируется как отдельный модуль экосистемы.",
                 "url": "",
                 "url_label": "",
             },
@@ -131,37 +249,33 @@ def default_portal_cms() -> dict[str, Any]:
                 "name": "GuardDoc (ядро)",
                 "tag": "Платформа",
                 "tag_style": "platform",
-                "summary": "Общий вход, учёт лицензий и будущие сервисы на одной инфраструктуре.",
-                "detail": (
-                    "Техническая и коммерческая оболочка: регистрация, выдача ключей, демо-песочницы. "
-                    "Эта страница — часть портала GuardDoc."
-                ),
+                "summary": "Лицензии, регистрация школ, общий портал.",
+                "detail": "Инфраструктура для всех приложений GuardDoc.",
                 "url": "",
                 "url_label": "",
             },
         ],
         "demo": {
-            "heading": "Пробная песочница",
-            "intro": (
-                "Изолированная копия с примером данных: интерфейс GuardSchool без влияния на реальные школы. "
-                "Сессия ограничена по времени; для постоянной работы оформите регистрацию и получите свой поддомен."
-            ),
+            "heading": "Попробовать",
+            "intro": "Кратко: изолированная песочница с примером данных. Подробности — на странице «Демо GuardSchool».",
             "bullets": [
-                "Отдельный временный тенант — ваши правки не затрагивают продакшн других клиентов.",
-                "После теста войдите под логином администратора на школьном хосте (раздел «Вход в GuardSchool»).",
+                "Запуск демо — с главной кнопкой «Демо-песочница».",
+                "Срок и правила — в разделе /about/guardschool-demo.",
             ],
             "action": {"label": "Открыть песочницу", "href": "/try-demo"},
         },
-        "links_column": {
-            "heading": "Ещё",
-            "items": [],
-        },
+        "links_column": {"heading": "", "items": []},
         "footer": {
             "note": (
-                "GuardDoc — экосистема продуктов. Условия и функциональность конкретного приложения "
-                "могут отличаться; актуальные сведения — на страницах соответствующих сервисов."
+                "Краткий обзор экосистемы. Юридическая информация и контакты — в подвале страницы (редактируются в CMS)."
             ),
         },
+        "footer_legal": _default_footer_legal(),
+        "pages": {
+            PAGE_SLUG_GUARDSCHOOL: _default_page_guardschool(),
+            PAGE_SLUG_GUARDSCHOOL_DEMO: _default_page_guardschool_demo(),
+        },
+        "showcase": {"guardschool": {}},
     }
 
 
@@ -182,7 +296,6 @@ def _merge_defaults(stored: dict[str, Any]) -> dict[str, Any]:
 
 
 def _normalize_merged_cms_urls(d: dict[str, Any]) -> None:
-    """Подмена устаревших ссылок school…/ → …/login после merge и при сохранении."""
     hero = d.get("hero")
     if isinstance(hero, dict):
         pa = hero.get("primary_action")
@@ -200,6 +313,91 @@ def _normalize_merged_cms_urls(d: dict[str, Any]) -> None:
             app["url"] = normalize_guardschool_entry_url(u)
 
 
+def _migrate_legacy_to_pages(d: dict[str, Any]) -> None:
+    """Перенос старых showcase / сайдбара в pages, если страницы ещё пустые."""
+    pages = d.setdefault("pages", {})
+    shell = d.setdefault("shell", {})
+
+    gs = pages.get(PAGE_SLUG_GUARDSCHOOL)
+    if not isinstance(gs, dict):
+        gs = {}
+        pages[PAGE_SLUG_GUARDSCHOOL] = gs
+    migrated_gs = False
+    if not gs.get("blocks"):
+        blocks: list[dict[str, Any]] = []
+        ap = shell.get("about_program") or {}
+        for para in ap.get("paragraphs") or []:
+            t = _clip(para)
+            if t:
+                blocks.append({"type": "p", "text": t})
+        sh = (d.get("showcase") or {}).get("guardschool") or {}
+        if sh.get("intro"):
+            blocks.append({"type": "p", "text": _clip(sh["intro"])})
+        for para in sh.get("paragraphs") or []:
+            t = _clip(para)
+            if t:
+                blocks.append({"type": "p", "text": t})
+        for shot in sh.get("screenshots") or []:
+            if not isinstance(shot, dict):
+                continue
+            src = _safe_image_url(str(shot.get("src") or ""))
+            if not src:
+                continue
+            blocks.append(
+                {
+                    "type": "figure",
+                    "src": src,
+                    "title": _clip(shot.get("title"), 200),
+                    "caption": _clip(shot.get("caption")),
+                    "alt": _clip(shot.get("title"), 300),
+                }
+            )
+        if not gs.get("title") and sh.get("page_title"):
+            gs["title"] = _clip(sh.get("page_title"), 200)
+        if blocks:
+            gs["blocks"] = blocks[:_MAX_BLOCKS]
+            migrated_gs = True
+        if not gs.get("title"):
+            gs["title"] = "О GuardSchool"
+        if not gs.get("meta_description") and sh.get("meta_description"):
+            gs["meta_description"] = _clip(sh.get("meta_description"))
+
+    demo_p = pages.get(PAGE_SLUG_GUARDSCHOOL_DEMO)
+    if not isinstance(demo_p, dict):
+        demo_p = {}
+        pages[PAGE_SLUG_GUARDSCHOOL_DEMO] = demo_p
+    migrated_demo = False
+    if not demo_p.get("blocks"):
+        blocks2: list[dict[str, Any]] = []
+        dn = shell.get("demo_notice") or {}
+        for para in dn.get("paragraphs") or []:
+            t = _clip(para)
+            if t:
+                blocks2.append({"type": "p", "text": t})
+        demo_sec = d.get("demo") or {}
+        if demo_sec.get("intro"):
+            blocks2.insert(0, {"type": "p", "text": _clip(demo_sec["intro"])})
+        items_demo: list[str] = []
+        for b in demo_sec.get("bullets") or []:
+            t = _clip(b)
+            if t:
+                items_demo.append(t)
+        if items_demo:
+            blocks2.append({"type": "ul", "items": items_demo})
+        if blocks2:
+            demo_p["blocks"] = blocks2[:_MAX_BLOCKS]
+            migrated_demo = True
+        if not demo_p.get("title"):
+            demo_p["title"] = "Демо GuardSchool"
+
+    d.setdefault("footer_legal", _default_footer_legal())
+
+    if migrated_gs:
+        shell["about_program"] = {"title": "", "paragraphs": []}
+    if migrated_demo:
+        shell["demo_notice"] = {"title": "", "paragraphs": []}
+
+
 def load_portal_cms_merged() -> dict[str, Any]:
     path: Path = PORTAL_CMS_PATH
     if not path.is_file():
@@ -213,8 +411,22 @@ def load_portal_cms_merged() -> dict[str, Any]:
         _normalize_merged_cms_urls(out)
         return out
     merged = _merge_defaults(raw if isinstance(raw, dict) else {})
+    try:
+        _migrate_legacy_to_pages(merged)
+    except Exception:
+        pass
     _normalize_merged_cms_urls(merged)
     return merged
+
+
+def get_portal_page(slug: str) -> dict[str, Any] | None:
+    """Одна страница /about/{slug} из merged CMS."""
+    cms = load_portal_cms_merged()
+    pages = cms.get("pages")
+    if not isinstance(pages, dict):
+        return None
+    p = pages.get(slug.strip().lower())
+    return deepcopy(p) if isinstance(p, dict) else None
 
 
 def _sanitize_action(item: Any) -> dict[str, str | bool] | None:
@@ -228,6 +440,77 @@ def _sanitize_action(item: Any) -> dict[str, str | bool] | None:
     out: dict[str, str | bool] = {"label": label, "href": href}
     if ext:
         out["external"] = True
+    role = str(item.get("role") or "").strip().lower()
+    if role in ("demo", "register"):
+        out["role"] = role
+    return out
+
+
+def _sanitize_block(b: Any) -> dict[str, Any] | None:
+    if not isinstance(b, dict):
+        return None
+    t = str(b.get("type") or "").strip().lower()
+    if t == "h2":
+        tx = _clip(b.get("text"), 500)
+        return {"type": "h2", "text": tx} if tx else None
+    if t == "p":
+        tx = _clip(b.get("text"))
+        return {"type": "p", "text": tx} if tx else None
+    if t == "badge":
+        v = str(b.get("variant") or "neutral").lower()
+        if v not in ("success", "neutral", "warning"):
+            v = "neutral"
+        tx = _clip(b.get("text"), 400)
+        return {"type": "badge", "text": tx, "variant": v} if tx else None
+    if t == "figure":
+        src = _safe_image_url(str(b.get("src") or ""))
+        if not src:
+            return None
+        return {
+            "type": "figure",
+            "src": src,
+            "title": _clip(b.get("title"), 200),
+            "caption": _clip(b.get("caption")),
+            "alt": _clip(b.get("alt"), 400),
+        }
+    if t == "ul":
+        raw_items = b.get("items")
+        items: list[str] = []
+        if isinstance(raw_items, list):
+            for x in raw_items[:_MAX_UL_ITEMS]:
+                s = _clip(str(x))
+                if s:
+                    items.append(s)
+        return {"type": "ul", "items": items} if items else None
+    return None
+
+
+def _sanitize_page(page: Any) -> dict[str, Any] | None:
+    if not isinstance(page, dict):
+        return None
+    title = _clip(page.get("title"), 200)
+    if not title:
+        return None
+    out: dict[str, Any] = {
+        "title": title,
+        "meta_description": _clip(page.get("meta_description")),
+    }
+    vb = page.get("version_badge")
+    if isinstance(vb, dict) and _clip(vb.get("text")):
+        v = str(vb.get("variant") or "neutral").lower()
+        if v not in ("success", "neutral", "warning"):
+            v = "neutral"
+        out["version_badge"] = {"text": _clip(vb.get("text"), 200), "variant": v}
+    else:
+        out["version_badge"] = None
+    blocks_in = page.get("blocks")
+    blocks: list[dict[str, Any]] = []
+    if isinstance(blocks_in, list):
+        for b in blocks_in[:_MAX_BLOCKS]:
+            sb = _sanitize_block(b)
+            if sb:
+                blocks.append(sb)
+    out["blocks"] = blocks
     return out
 
 
@@ -253,8 +536,68 @@ def _sanitize_app(item: Any) -> dict[str, Any] | None:
     }
 
 
+def _sanitize_showcase_guardschool(gs: Any) -> dict[str, Any]:
+    out: dict[str, Any] = {
+        "page_title": "",
+        "meta_description": "",
+        "intro": "",
+        "paragraphs": [],
+        "screenshots": [],
+    }
+    if not isinstance(gs, dict):
+        return out
+    out["page_title"] = _clip(gs.get("page_title"), 200)
+    out["meta_description"] = _clip(gs.get("meta_description"))
+    out["intro"] = _clip(gs.get("intro"))
+    ps = gs.get("paragraphs")
+    if isinstance(ps, list):
+        out["paragraphs"] = [_clip(p) for p in ps[:12] if _clip(p)]
+    shots = gs.get("screenshots")
+    if isinstance(shots, list):
+        clean_sh: list[dict[str, Any]] = []
+        for shot in shots[:_MAX_SHOWCASE_SHOTS]:
+            if not isinstance(shot, dict):
+                continue
+            src = _safe_image_url(str(shot.get("src") or ""))
+            tit = _clip(shot.get("title"), 200)
+            cap = _clip(shot.get("caption"))
+            if not src and not tit and not cap:
+                continue
+            clean_sh.append({"title": tit, "caption": cap, "src": src})
+        out["screenshots"] = clean_sh
+    return out
+
+
+def _sanitize_showcase_root(raw: Any) -> dict[str, Any]:
+    base = deepcopy(default_portal_cms()["showcase"])
+    if not isinstance(raw, dict):
+        return base
+    gs = raw.get("guardschool")
+    base["guardschool"] = _sanitize_showcase_guardschool(gs)
+    return base
+
+
+def _sanitize_footer_legal(raw: Any) -> dict[str, Any]:
+    base = _default_footer_legal()
+    if not isinstance(raw, dict):
+        return base
+    base["copyright"] = _clip(raw.get("copyright"), 500)
+    base["privacy_text"] = _clip(raw.get("privacy_text"))
+    base["cookies_text"] = _clip(raw.get("cookies_text"))
+    base["contacts_text"] = _clip(raw.get("contacts_text"))
+    links: list[dict[str, str]] = []
+    for it in (raw.get("extra_links") or [])[:12]:
+        if not isinstance(it, dict):
+            continue
+        lab = _clip(it.get("label"), 200)
+        hf = _safe_href(str(it.get("href") or ""))
+        if lab and hf:
+            links.append({"label": lab, "href": hf})
+    base["extra_links"] = links
+    return base
+
+
 def sanitize_portal_cms_payload(raw: Any) -> dict[str, Any]:
-    """Принимает произвольный JSON от провайдера и возвращает безопасную структуру."""
     if not isinstance(raw, dict):
         return deepcopy(default_portal_cms())
     out = deepcopy(default_portal_cms())
@@ -296,17 +639,19 @@ def sanitize_portal_cms_payload(raw: Any) -> dict[str, Any]:
         out["ecosystem"]["heading"] = _clip(eco.get("heading"), 300)
         paras = eco.get("paragraphs")
         if isinstance(paras, list):
-            out["ecosystem"]["paragraphs"] = [_clip(p) for p in paras[:12] if _clip(p)]
+            clean = [_clip(p) for p in paras[:12] if _clip(p)]
+            if clean:
+                out["ecosystem"]["paragraphs"] = clean
 
     apps = raw.get("applications")
     if isinstance(apps, list):
-        clean: list[dict[str, Any]] = []
+        clean_a: list[dict[str, Any]] = []
         for it in apps[:_MAX_APPS]:
-            a = _sanitize_app(it)
-            if a:
-                clean.append(a)
-        if clean:
-            out["applications"] = clean
+            ap = _sanitize_app(it)
+            if ap:
+                clean_a.append(ap)
+        if clean_a:
+            out["applications"] = clean_a
 
     demo = raw.get("demo")
     if isinstance(demo, dict):
@@ -314,7 +659,7 @@ def sanitize_portal_cms_payload(raw: Any) -> dict[str, Any]:
         out["demo"]["intro"] = _clip(demo.get("intro"))
         bl = demo.get("bullets")
         if isinstance(bl, list):
-            out["demo"]["bullets"] = [_clip(b) for b in bl[:_MAX_BULLETS] if _clip(b)]
+            out["demo"]["bullets"] = [_clip(x) for x in bl[:_MAX_BULLETS] if _clip(x)]
         act = demo.get("action")
         if isinstance(act, dict):
             lb = _clip(act.get("label"), 120)
@@ -341,6 +686,8 @@ def sanitize_portal_cms_payload(raw: Any) -> dict[str, Any]:
     if isinstance(foot, dict):
         out["footer"]["note"] = _clip(foot.get("note"))
 
+    out["footer_legal"] = _sanitize_footer_legal(raw.get("footer_legal"))
+
     shell = raw.get("shell")
     if isinstance(shell, dict):
         out["shell"]["nav_title"] = _clip(shell.get("nav_title"), 120)
@@ -354,8 +701,39 @@ def sanitize_portal_cms_payload(raw: Any) -> dict[str, Any]:
                     nv.append(a)
             if nv:
                 out["shell"]["nav"] = nv
+        ap = shell.get("about_program")
+        if isinstance(ap, dict):
+            out["shell"]["about_program"]["title"] = _clip(ap.get("title"), 200)
+            ps = ap.get("paragraphs")
+            if isinstance(ps, list):
+                clean_p = [_clip(p) for p in ps[:_MAX_PANEL_PARAS] if _clip(p)]
+                if clean_p:
+                    out["shell"]["about_program"]["paragraphs"] = clean_p
+        dn = shell.get("demo_notice")
+        if isinstance(dn, dict):
+            out["shell"]["demo_notice"]["title"] = _clip(dn.get("title"), 200)
+            ps2 = dn.get("paragraphs")
+            if isinstance(ps2, list):
+                clean_d = [_clip(p) for p in ps2[:_MAX_PANEL_PARAS] if _clip(p)]
+                if clean_d:
+                    out["shell"]["demo_notice"]["paragraphs"] = clean_d
 
-    out["version"] = 1
+    pages_raw = raw.get("pages")
+    if isinstance(pages_raw, dict):
+        new_pages: dict[str, Any] = {}
+        for slug, pg in pages_raw.items():
+            sk = str(slug or "").strip().lower()
+            if not sk or not re.match(r"^[a-z0-9][a-z0-9-]*$", sk):
+                continue
+            sp = _sanitize_page(pg)
+            if sp:
+                new_pages[sk] = sp
+        if new_pages:
+            out["pages"] = new_pages
+
+    out["showcase"] = _sanitize_showcase_root(raw.get("showcase"))
+
+    out["version"] = 2
     _normalize_merged_cms_urls(out)
     return out
 

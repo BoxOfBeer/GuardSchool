@@ -36,13 +36,59 @@ function renderShellNav(shell) {
         )}</a>`,
     )
     .join("");
-  return `<aside class="portal-sidebar" aria-label="Навигация по разделам">
+  return `<aside class="portal-sidebar" aria-label="Навигация">
     <div class="portal-sidebar-brand">
       <span class="portal-sidebar-title">${esc(title)}</span>
       ${sub ? `<span class="portal-sidebar-sub">${esc(sub)}</span>` : ""}
     </div>
-    <nav class="portal-sidebar-nav">${links}</nav>
+    <nav class="portal-sidebar-nav" aria-label="Разделы">${links}</nav>
   </aside>`;
+}
+
+function renderLegalFooter(fl) {
+  if (!fl) return "";
+  const cr = (fl.copyright || "").trim();
+  const pr = (fl.privacy_text || "").trim();
+  const ck = (fl.cookies_text || "").trim();
+  const ct = (fl.contacts_text || "").trim();
+  const links = Array.isArray(fl.extra_links) ? fl.extra_links.filter((x) => x && x.label && x.href) : [];
+  if (!cr && !pr && !ck && !ct && !links.length) return "";
+  const extra = links
+    .map((l) => `<a class="portal-legal-link" href="${escAttr(l.href)}">${esc(l.label)}</a>`)
+    .join(" · ");
+  return `<footer class="portal-legal-foot" role="contentinfo">
+    ${cr ? `<p class="portal-legal-copy">${esc(cr)}</p>` : ""}
+    <div class="portal-legal-columns">
+      ${
+        pr
+          ? `<section class="portal-legal-block"><h3 class="portal-legal-h">Конфиденциальность</h3><p class="portal-legal-p">${esc(
+              pr,
+            )}</p></section>`
+          : ""
+      }
+      ${
+        ck
+          ? `<section class="portal-legal-block"><h3 class="portal-legal-h">Файлы cookie</h3><p class="portal-legal-p">${esc(
+              ck,
+            )}</p></section>`
+          : ""
+      }
+      ${
+        ct
+          ? `<section class="portal-legal-block"><h3 class="portal-legal-h">Контакты</h3><p class="portal-legal-p">${esc(
+              ct,
+            )}</p></section>`
+          : ""
+      }
+    </div>
+    ${extra ? `<p class="portal-legal-extra">${extra}</p>` : ""}
+  </footer>`;
+}
+
+function secondaryBtnClass(a) {
+  if (a.role === "demo") return "portal-eco-btn portal-eco-btn--demo";
+  if (a.role === "register") return "portal-eco-btn portal-eco-btn--outline";
+  return "portal-eco-btn";
 }
 
 function renderActions(actions, primary) {
@@ -60,14 +106,15 @@ function renderActions(actions, primary) {
     for (const a of actions) {
       if (!a || !a.label || !a.href) continue;
       const ext = a.external ? '<span class="ext" aria-hidden="true">↗</span>' : "";
+      const cls = secondaryBtnClass(a);
       parts.push(
-        `<a class="portal-eco-btn" href="${escAttr(a.href)}" ${navLinkAttrs(a.href, a.external)}>${esc(
+        `<a class="${cls}" href="${escAttr(a.href)}" ${navLinkAttrs(a.href, a.external)}>${esc(
           a.label,
         )}${ext}</a>`,
       );
     }
   }
-  return `<div class="portal-eco-actions">${parts.join("")}</div>`;
+  return `<div class="portal-eco-actions portal-eco-actions--triple">${parts.join("")}</div>`;
 }
 
 function renderAppCard(app) {
@@ -82,10 +129,14 @@ function renderAppCard(app) {
     `<a class="portal-eco-btn" href="${escAttr(url)}"${navLinkAttrs(url, true)}>${esc(
       urlLabel,
     )}<span class="ext" aria-hidden="true"> ↗</span></a>`;
+  const detailMore =
+    app.id === "guardschool"
+      ? ` <a class="portal-inline-more" href="/about/guardschool">Подробнее →</a>`
+      : "";
   return `<article class="portal-app-card">
     <h3>${esc(app.name)} ${tagText}</h3>
     <p class="summary">${esc(app.summary)}</p>
-    <p class="detail">${esc(app.detail)}</p>
+    <p class="detail">${esc(app.detail)}${detailMore}</p>
     ${link || ""}
   </article>`;
 }
@@ -116,6 +167,7 @@ function render(cms) {
   const demo = cms.demo || {};
   const aside = cms.links_column || {};
   const foot = cms.footer || {};
+  const fl = cms.footer_legal || {};
 
   const paras = Array.isArray(eco.paragraphs)
     ? eco.paragraphs.map((p) => `<p class="portal-eco-prose">${esc(p)}</p>`).join("")
@@ -169,6 +221,7 @@ function render(cms) {
       </section>
 
       <footer class="portal-eco-foot">${esc(foot.note || "")}</footer>
+      ${renderLegalFooter(fl)}
     </div>
   </div>`;
 }
