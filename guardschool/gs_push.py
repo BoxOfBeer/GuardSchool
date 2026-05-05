@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import sqlite3
@@ -249,6 +250,27 @@ def vapid_private_key() -> str:
         env_var="GUARDSCHOOL_VAPID_PRIVATE_KEY",
         file_var="GUARDSCHOOL_VAPID_PRIVATE_KEY_FILE",
     )
+
+
+def vapid_application_server_key() -> str:
+    """Base64URL (без padding) некомпрессированной точки P-256 для PushManager.subscribe."""
+    pem = vapid_public_key()
+    if not pem.strip():
+        return ""
+    try:
+        from cryptography.hazmat.primitives.asymmetric import ec
+        from cryptography.hazmat.primitives.serialization import load_pem_public_key
+
+        pub = load_pem_public_key(pem.encode("utf-8"))
+        if not isinstance(pub, ec.EllipticCurvePublicKey) or pub.curve.name != "secp256r1":
+            return ""
+        nums = pub.public_numbers()
+        x = nums.x.to_bytes(32, "big")
+        y = nums.y.to_bytes(32, "big")
+        raw = b"\x04" + x + y
+        return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+    except Exception:
+        return ""
 
 
 def vapid_subject() -> str:

@@ -155,6 +155,7 @@ from .gs_push import (
     list_subscriptions as list_push_subscriptions,
     rate_limit_decide as push_rate_limit_decide,
     upsert_subscription as upsert_push_subscription,
+    vapid_application_server_key,
     vapid_private_key,
     vapid_public_key,
     vapid_subject,
@@ -6116,7 +6117,12 @@ def api_push_vapid_public_key(request: Request, slug: str) -> dict[str, Any]:
     if not slug_key:
         raise HTTPException(status_code=404, detail="Экран не найден.")
     _require_tv_access_for_screen(request, slug_key)
-    return {"status": "ok", "public_key": vapid_public_key(), "enabled": _push_enabled_on_server()}
+    return {
+        "status": "ok",
+        "public_key": vapid_public_key(),
+        "application_server_key": vapid_application_server_key(),
+        "enabled": _push_enabled_on_server(),
+    }
 
 
 @app.get("/api/screen/{slug}/tv-pair-link")
@@ -6216,7 +6222,9 @@ def _tv_pair_pin_entry_file_response() -> FileResponse:
 
 
 def _push_enabled_on_server() -> bool:
-    return bool(vapid_public_key() and vapid_private_key())
+    return bool(
+        vapid_public_key() and vapid_private_key() and vapid_application_server_key(),
+    )
 
 
 def _notify_push_to_screen(*, tenant_id: str, screen_slug: str, topic: str, title: str, body: str, url: str) -> None:

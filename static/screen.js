@@ -547,8 +547,16 @@ function ensureDeviceSettingsUi() {
         const data = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error(data.detail || `HTTP ${r.status}`);
         if (!data.enabled) throw new Error("Push не настроен на сервере (нет VAPID ключей).");
-        if (!data.public_key) throw new Error("Пустой VAPID public key.");
-        return String(data.public_key);
+        const appKey =
+          data.application_server_key != null ? String(data.application_server_key).trim() : "";
+        const pemFallback =
+          appKey ||
+          (!String(data.public_key || "").includes("BEGIN")
+            ? String(data.public_key || "").trim()
+            : "");
+        const keyMat = appKey || pemFallback;
+        if (!keyMat) throw new Error("Пустой VAPID application_server_key (обновите сервер).");
+        return keyMat;
       }
 
       async function subscribePush() {
