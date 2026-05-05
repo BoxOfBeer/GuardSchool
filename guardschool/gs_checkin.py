@@ -35,6 +35,8 @@ def _migrate_checkin_columns(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE checkin_events ADD COLUMN screen_slug TEXT NOT NULL DEFAULT ''")
     if "submit_widget_id" not in cols:
         conn.execute("ALTER TABLE checkin_events ADD COLUMN submit_widget_id TEXT NOT NULL DEFAULT ''")
+    if "confirmed_at" not in cols:
+        conn.execute("ALTER TABLE checkin_events ADD COLUMN confirmed_at TEXT")
 
 
 def ensure_checkin_tables() -> None:
@@ -154,6 +156,63 @@ def _utc_iso(dt: datetime) -> str:
     return dt.astimezone(timezone.utc).replace(microsecond=0).isoformat()
 
 
+def _parse_iso_utc(s: str) -> datetime | None:
+    raw = (s or "").strip()
+    if not raw:
+        return None
+    try:
+        if raw.endswith("Z"):
+            raw = raw[:-1] + "+00:00"
+        dt = datetime.fromisoformat(raw)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+    except Exception:
+        return None
+
+
+def school_wall_datetime(config: dict[str, Any], dt_utc: datetime) -> datetime:
+    """Мгновенное UTC-время, показанное «как на сервере»: timezone + clock_offset_minutes."""
+    tzname = str((config or {}).get("timezone") or "Europe/Moscow").strip()
+    z = _tz_for_school(tzname)
+    try:
+        off = int((config or {}).get("clock_offset_minutes") or 0)
+    except (TypeError, ValueError):
+        off = 0
+    off = max(-720, min(720, off))
+    if dt_utc.tzinfo is None:
+        dt_utc = dt_utc.replace(tzinfo=timezone.utc)
+    local = dt_utc.astimezone(z) + timedelta(minutes=off)
+    return local
+
+
+def format_created_local_parts(config: dict[str, Any], created_at_iso: str) -> tuple[str, str]:
+    """ДД.ММ.ГГГГ и ЧЧ:ММ в логике «время школы» (как в остальном сервере)."""
+    dtu = _parse_iso_utc(created_at_iso)
+    if not dtu:
+        return "", ""
+    local = school_wall_datetime(config, dtu)
+    d_str = f"{local.day:02d}.{local.month:02d}.{local.year:04d}"
+    t_str = f"{local.hour:02d}:{local.minute:02d}"
+    return d_str, t_str
+
+
+def enrich_checkin_event_for_client(config: dict[str, Any], row: dict[str, Any]) -> dict[str, Any]:
+    out = dict(row)
+    d, t = format_created_local_parts(config, out.get("created_at") or "")
+    out["created_date"] = d
+    out["created_time"] = t
+    conf = (out.get("confirmed_at") or "").strip()
+    if conf:
+        cd, ct = format_created_local_parts(config, conf)
+        out["confirmed_date"] = cd
+        out["confirmed_time"] = ct
+    else:
+        out["confirmed_date"] = ""
+        out["confirmed_time"] = ""
+    return out
+
+
 def list_journal_filtered(
     tenant_id: str,
     start_utc: datetime,
@@ -180,7 +239,7 @@ def list_journal_filtered(
         rows = conn.execute(
             f"""
             SELECT id, tenant_id, device_hash, device_name, place_id, level, comment, created_at,
-                   screen_slug, submit_widget_id
+                   screen_slug, submit_widget_id, confirmed_at
             FROM checkin_events
             WHERE {where_sql}
             ORDER BY created_at DESC, id DESC
@@ -215,6 +274,7 @@ def _row_to_dict(r: sqlite3.Row) -> dict[str, Any]:
         "created_at": col("created_at"),
         "screen_slug": col("screen_slug"),
         "submit_widget_id": col("submit_widget_id"),
+        "confirmed_at": col("confirmed_at"),
     }
 
 
@@ -297,15 +357,16 @@ def build_summary_for_school_day(tenant_id: str, config: dict[str, Any]) -> tupl
 
 DEFAULT_CHECKIN_LABELS: dict[str, str] = {
     "module_title": "Оперативные отметки",
-    "actor": "Подпись",
+    "actor": "Имя",
     "place": "Место",
     "ok": "Всё в порядке",
     "warn": "Нужно внимание",
     "alert": "Проблема",
     "none": "Нет отметки",
     "comment": "Комментарий",
-    "device_name": "Имя для сводки",
+    "device_name": "Имя",
     "submit": "Отправить отметку",
+    "save": "Сохранить",
     "summary_title": "Сводка по местам",
     "journal_title": "Журнал отметок",
     "export_csv": "Скачать CSV за сегодня",
@@ -469,3 +530,103 @@ def journal_to_csv_bytes(config: dict[str, Any], tenant_id: str) -> bytes:
                 if pid:
                     place_titles[pid] = str(p.get("title") or "").strip()[:200]
     return journal_to_csv_bytes_filtered(tenant_id, config, "day", None, None, place_titles)
+
+
+def set_checkin_event_confirmed(
+    tenant_id: str,
+    event_id: int,
+    *,
+    screen_slug: str,
+    allowed_place_ids: set[str],
+) -> str | None:
+    """Проставить подтверждение; возвращает confirmed_at (уже был или новый) либо None."""
+    tid = (tenant_id or "local").strip() or "local"
+    ss = (screen_slug or "").strip().lower()
+    ts = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT id, tenant_id, place_id, screen_slug, confirmed_at FROM checkin_events WHERE id = ?",
+            (int(event_id),),
+        ).fetchone()
+        if not row:
+            return None
+        if str(row["tenant_id"] or "") != tid:
+            return None
+        if str(row["screen_slug"] or "").strip().lower() != ss:
+            return None
+        pid = str(row["place_id"] or "")
+        if allowed_place_ids and pid not in allowed_place_ids:
+            return None
+        prev = (row["confirmed_at"] or "").strip() if row["confirmed_at"] is not None else ""
+        if prev:
+            return prev
+        conn.execute("UPDATE checkin_events SET confirmed_at = ? WHERE id = ?", (ts, int(event_id)))
+    return ts
+
+
+def confirm_all_unconfirmed_in_range(
+    tenant_id: str,
+    config: dict[str, Any],
+    screen_slug: str,
+    place_ids: set[str],
+    range_key: str,
+) -> int:
+    """Подтвердить все ещё неподтверждённые события журнала за период на экране (по списку мест)."""
+    start_utc, end_utc, _ = range_bounds_utc(config, range_key)
+    ss = (screen_slug or "").strip().lower()
+    rows = list_journal_filtered(
+        tenant_id, start_utc, end_utc, place_ids if place_ids else None, ss
+    )
+    tid = (tenant_id or "local").strip() or "local"
+    ts = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+    n = 0
+    with _connect() as conn:
+        for r in rows:
+            if (r.get("confirmed_at") or "").strip():
+                continue
+            eid = int(r["id"])
+            cur = conn.execute(
+                """
+                UPDATE checkin_events SET confirmed_at = ?
+                WHERE id = ? AND tenant_id = ?
+                  AND (confirmed_at IS NULL OR trim(confirmed_at) = '')
+                """,
+                (ts, eid, tid),
+            )
+            if cur.rowcount:
+                n += 1
+    return n
+
+
+def get_checkin_events_status_for_device(
+    tenant_id: str,
+    screen_slug: str,
+    submit_widget_id: str,
+    device_hash: str,
+    event_ids: list[int],
+) -> list[dict[str, Any]]:
+    tid = (tenant_id or "local").strip() or "local"
+    ss = (screen_slug or "").strip().lower()
+    sw = str(submit_widget_id or "").strip()[:80]
+    h = str(device_hash or "").strip()[:128]
+    ids: list[int] = []
+    for x in event_ids:
+        try:
+            ids.append(int(x))
+        except (TypeError, ValueError):
+            continue
+    ids = ids[:24]
+    if not ids:
+        return []
+    ph = ",".join("?" * len(ids))
+    params: list[Any] = [tid, ss, sw, h, *ids]
+    with _connect() as conn:
+        rows = conn.execute(
+            f"""
+            SELECT id, confirmed_at FROM checkin_events
+            WHERE tenant_id = ? AND lower(trim(screen_slug)) = ? AND submit_widget_id = ?
+              AND device_hash = ? AND id IN ({ph})
+            """,
+            params,
+        ).fetchall()
+    return [{"id": int(r["id"]), "confirmed_at": str(r["confirmed_at"] or "").strip()} for r in rows]

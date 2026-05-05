@@ -306,6 +306,7 @@ function settingInputs(widget, index) {
     parts.push(widgetInput(t("w.checkinLabelModuleTitle"), (widget.settings.labels || {}).module_title || "", `widget:${index}:settings.labels.module_title`, "text", "wide-input"));
     parts.push(widgetInput(t("w.checkinLabelPlace"), (widget.settings.labels || {}).place || "", `widget:${index}:settings.labels.place`, "text", "standard-input"));
     parts.push(widgetInput(t("w.checkinLabelDevice"), (widget.settings.labels || {}).device_name || "", `widget:${index}:settings.labels.device_name`, "text", "standard-input"));
+    parts.push(widgetInput(t("w.checkinLabelSave"), (widget.settings.labels || {}).save || "", `widget:${index}:settings.labels.save`, "text", "standard-input"));
     parts.push(`<p class="hint">${t("w.checkinPlacesHintSubmit")}</p>`);
   }
   if (widget.type === "checkin_monitor" || widget.type === "checkin_submit") {

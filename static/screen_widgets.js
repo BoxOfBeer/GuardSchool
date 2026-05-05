@@ -866,9 +866,10 @@
     if (widget.type === "checkin_submit") {
       const ws = widget.settings || {};
       const title = escapeHtml(String(ws.labels && ws.labels.module_title ? ws.labels.module_title : "Оперативная отметка"));
+      const saveLbl = escapeHtml(String(ws.labels && ws.labels.save ? ws.labels.save : "Сохранить"));
       return `<div class="gs-checkin-submit" data-gs-checkin-role="submit" style="height:100%;display:flex;flex-direction:column;gap:8px;padding:10px;overflow:auto;box-sizing:border-box;font-size:clamp(12px,1.4vmin,18px);">
         <div class="gs-checkin-submit-title" style="font-weight:700">${title}</div>
-        <label style="display:flex;flex-direction:column;gap:4px;"><span data-lbl="device">${escapeHtml(String(ws.labels && ws.labels.device_name ? ws.labels.device_name : "Подпись"))}</span>
+        <label style="display:flex;flex-direction:column;gap:4px;"><span data-lbl="device">${escapeHtml(String(ws.labels && ws.labels.device_name ? ws.labels.device_name : "Имя"))}</span>
           <input type="text" class="gs-checkin-device standard-input" maxlength="200" style="width:100%;box-sizing:border-box;" /></label>
         <label style="display:flex;flex-direction:column;gap:4px;"><span data-lbl="place">${escapeHtml(String(ws.labels && ws.labels.place ? ws.labels.place : "Место"))}</span>
           <select class="gs-checkin-place standard-input" style="width:100%;"></select></label>
@@ -876,7 +877,11 @@
           <div class="gs-checkin-levels" style="display:flex;flex-wrap:wrap;gap:10px;margin-top:6px;"></div></div>
         <label style="display:flex;flex-direction:column;gap:4px;"><span data-lbl="comment">${escapeHtml(String(ws.labels && ws.labels.comment ? ws.labels.comment : "Комментарий"))}</span>
           <textarea class="gs-checkin-comment standard-input" rows="2" maxlength="4000" style="width:100%;resize:vertical;box-sizing:border-box;"></textarea></label>
-        <button type="button" class="gs-checkin-send primary-btn" style="align-self:flex-start;margin-top:4px;">${escapeHtml(String(ws.labels && ws.labels.submit ? ws.labels.submit : "Отправить"))}</button>
+        <div class="gs-checkin-actions" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:4px;">
+          <button type="button" class="gs-checkin-send primary-btn">${escapeHtml(String(ws.labels && ws.labels.submit ? ws.labels.submit : "Отправить"))}</button>
+          <button type="button" class="gs-checkin-save secondary-btn compact-btn">${saveLbl}</button>
+        </div>
+        <div class="gs-checkin-recent" style="font-size:0.92em;line-height:1.35;"></div>
         <div class="gs-checkin-status hint" style="min-height:1.2em;"></div>
       </div>`;
     }
@@ -894,6 +899,7 @@
                 <option value="month">Месяц</option>
               </select>
             </label>
+            <button type="button" class="gs-checkin-confirm-all secondary-btn compact-btn">Подтвердить всех</button>
             <button type="button" class="gs-checkin-export secondary-btn compact-btn">CSV</button>
           </div>
         </div>
@@ -1306,6 +1312,24 @@
       )}&range=${encodeURIComponent(period)}`;
     }
 
+    function checkinEventsStatusUrl(submitWidgetId, deviceHash, idList) {
+      const ids = (idList || []).join(",");
+      const q = `submit_widget_id=${encodeURIComponent(submitWidgetId)}&device_hash=${encodeURIComponent(deviceHash)}&ids=${encodeURIComponent(ids)}`;
+      if (adminPreview) {
+        return `/api/admin/checkin/events-status?screen_slug=${encodeURIComponent(slug)}&${q}`;
+      }
+      return `/api/screen/${encodeURIComponent(slug)}/checkin/events-status?${q}`;
+    }
+
+    function checkinConfirmApiUrl(isAll) {
+      if (adminPreview) {
+        return isAll ? "/api/admin/checkin/confirm-all" : "/api/admin/checkin/confirm";
+      }
+      return isAll
+        ? `/api/screen/${encodeURIComponent(slug)}/checkin/confirm-all`
+        : `/api/screen/${encodeURIComponent(slug)}/checkin/confirm`;
+    }
+
     root.querySelectorAll('[data-gs-checkin-role="submit"]').forEach((wrap) => {
       const block = wrap.closest(".screen-widget");
       const widgetId = block && block.dataset ? String(block.dataset.widgetId || "") : "";
@@ -1319,40 +1343,22 @@
       const devInput = wrap.querySelector(".gs-checkin-device");
       const ta = wrap.querySelector(".gs-checkin-comment");
       const btn = wrap.querySelector(".gs-checkin-send");
+      const saveBtn = wrap.querySelector(".gs-checkin-save");
+      const recentEl = wrap.querySelector(".gs-checkin-recent");
       const stEl = wrap.querySelector(".gs-checkin-status");
       if (!sel || !levelsEl || !btn) return;
+      const radioName = `gs-checkin-lv-${slug}-${widgetId}`;
       sel.innerHTML = places
         .map((p) => `<option value="${escapeHtmlAttr(p.id)}">${escapeHtml(p.title || p.id)}</option>`)
         .join("");
       const okT = escapeHtml(String(L.ok || "В порядке"));
       const wT = escapeHtml(String(L.warn || "Внимание"));
       const aT = escapeHtml(String(L.alert || "Проблема"));
-      levelsEl.innerHTML = `<label><input type="radio" class="gs-checkin-lv" value="ok" checked /> ${okT}</label>
-        <label><input type="radio" class="gs-checkin-lv" value="warn" /> ${wT}</label>
-        <label><input type="radio" class="gs-checkin-lv" value="alert" /> ${aT}</label>`;
-      try {
-        const k = `gs_checkin_dn_${slug}_${widgetId}`;
-        const saved = localStorage.getItem(k);
-        if (saved && devInput) devInput.value = saved;
-      } catch (_) {}
-      btn.onclick = async () => {
-        if (!places.length) {
-          if (stEl) stEl.textContent = "Нет мест в настройках виджета.";
-          return;
-        }
-        const device_name = devInput ? String(devInput.value || "").trim() : "";
-        if (!device_name) {
-          if (stEl) stEl.textContent = "Укажите подпись.";
-          return;
-        }
-        let comment = ta ? String(ta.value || "").trim() : "";
-        const rad = wrap.querySelector(".gs-checkin-lv:checked");
-        const level = rad ? String(rad.value || "ok") : "ok";
-        if (level === "ok") comment = "";
-        if (level === "alert" && !comment) {
-          if (stEl) stEl.textContent = "Нужен комментарий.";
-          return;
-        }
+      levelsEl.innerHTML = `<label><input type="radio" name="${escapeHtmlAttr(radioName)}" class="gs-checkin-lv" value="ok" checked /> ${okT}</label>
+        <label><input type="radio" name="${escapeHtmlAttr(radioName)}" class="gs-checkin-lv" value="warn" /> ${wT}</label>
+        <label><input type="radio" name="${escapeHtmlAttr(radioName)}" class="gs-checkin-lv" value="alert" /> ${aT}</label>`;
+
+      function readDeviceHash() {
         let device_hash = "";
         try {
           const hk = `gs_checkin_hash_${slug}`;
@@ -1367,6 +1373,174 @@
         } catch (_) {
           device_hash = `x-${Date.now()}`;
         }
+        const tail = device_hash.slice(0, 24);
+        return {
+          device_hash,
+          tail,
+          formKey: `gs_checkin_form_${slug}_${widgetId}_${tail}`,
+          placeKey: `gs_checkin_place_${slug}_${widgetId}_${tail}`,
+          recentKey: `gs_checkin_recent_${slug}_${widgetId}_${tail}`,
+        };
+      }
+
+      function loadRecentStorage() {
+        const ctx = readDeviceHash();
+        try {
+          const raw = localStorage.getItem(ctx.recentKey);
+          const arr = raw ? JSON.parse(raw) : [];
+          return { ctx, list: Array.isArray(arr) ? arr.slice(0, 3) : [] };
+        } catch (_) {
+          return { ctx, list: [] };
+        }
+      }
+
+      function saveRecentStorage(ctx, list) {
+        try {
+          localStorage.setItem(ctx.recentKey, JSON.stringify(list.slice(0, 3)));
+        } catch (_) {}
+      }
+
+      function applySavedForm() {
+        const ctx = readDeviceHash();
+        try {
+          const raw = localStorage.getItem(ctx.formKey);
+          if (raw && devInput && ta) {
+            const o = JSON.parse(raw);
+            if (o && typeof o === "object") {
+              if (o.device_name != null) devInput.value = String(o.device_name);
+              if (o.comment != null) ta.value = String(o.comment);
+              const lv = String(o.level || "ok");
+              const safeLv = lv === "warn" || lv === "alert" ? lv : "ok";
+              const inp = wrap.querySelector(`.gs-checkin-lv[value="${safeLv}"]`);
+              if (inp) inp.checked = true;
+              if (o.place_id) {
+                const opt = Array.prototype.find.call(sel.options, (op) => op.value === String(o.place_id));
+                if (opt) sel.value = opt.value;
+              }
+              return ctx;
+            }
+          }
+        } catch (_) {}
+        try {
+          if (devInput) {
+            const k = `gs_checkin_dn_${slug}_${widgetId}`;
+            const saved = localStorage.getItem(k);
+            if (saved) devInput.value = saved;
+          }
+          const sp = localStorage.getItem(ctx.placeKey);
+          if (sp) {
+            const opt = Array.prototype.find.call(sel.options, (op) => op.value === String(sp));
+            if (opt) sel.value = opt.value;
+          }
+        } catch (_) {}
+        return ctx;
+      }
+
+      let hashCtx = applySavedForm();
+
+      sel.addEventListener("change", () => {
+        hashCtx = readDeviceHash();
+        try {
+          localStorage.setItem(hashCtx.placeKey, sel.value);
+        } catch (_) {}
+      });
+
+      function persistForm() {
+        hashCtx = readDeviceHash();
+        const rad = wrap.querySelector(".gs-checkin-lv:checked");
+        const level = rad ? String(rad.value || "ok") : "ok";
+        const payload = {
+          device_name: devInput ? String(devInput.value || "") : "",
+          place_id: sel.value,
+          comment: ta ? String(ta.value || "") : "",
+          level,
+        };
+        try {
+          localStorage.setItem(hashCtx.formKey, JSON.stringify(payload));
+          localStorage.setItem(`gs_checkin_dn_${slug}_${widgetId}`, String(payload.device_name || "").trim());
+          localStorage.setItem(hashCtx.placeKey, payload.place_id);
+          if (stEl) stEl.textContent = "Сохранено.";
+        } catch (_) {
+          if (stEl) stEl.textContent = "Не удалось сохранить.";
+        }
+      }
+
+      if (saveBtn) saveBtn.onclick = () => persistForm();
+
+      async function refreshRecentStatus() {
+        if (!recentEl) return;
+        const { ctx, list } = loadRecentStorage();
+        if (!list.length) {
+          recentEl.innerHTML = "";
+          return;
+        }
+        const ids = list.map((x) => x && x.id).filter(Boolean);
+        if (!ids.length) {
+          recentEl.innerHTML = "";
+          return;
+        }
+        try {
+          const url = checkinEventsStatusUrl(widgetId, ctx.device_hash, ids);
+          const r = await fetchFn(url);
+          const data = await r.json().catch(() => ({}));
+          const items = (data && data.items) || [];
+          const byId = {};
+          items.forEach((it) => {
+            byId[it.id] = it;
+          });
+          const lines = list
+            .map((rec) => {
+              const id = rec && rec.id;
+              if (!id) return "";
+              const it = byId[id];
+              const conf = it && it.confirmed_at;
+              const cd = it && it.confirmed_date;
+              const ct = it && it.confirmed_time;
+              const lab = escapeHtml(String((rec && rec.label) || `#${id}`));
+              const done = conf
+                ? ` <span class="gs-checkin-confirmed">✓ ${escapeHtml(String(cd || ""))} ${escapeHtml(String(ct || ""))}</span>`
+                : "";
+              return `<div class="gs-checkin-recent-row">${lab}${done}</div>`;
+            })
+            .filter(Boolean)
+            .join("");
+          recentEl.innerHTML = lines
+            ? `<div style="font-weight:600;margin-top:6px">Последние отметки</div>${lines}`
+            : "";
+        } catch (_) {
+          recentEl.innerHTML = "";
+        }
+      }
+
+      if (wrap._gsCheckinRecentPoll) {
+        try {
+          window.clearInterval(wrap._gsCheckinRecentPoll);
+        } catch (_) {}
+        wrap._gsCheckinRecentPoll = null;
+      }
+      wrap._gsCheckinRecentPoll = window.setInterval(refreshRecentStatus, 20000);
+      refreshRecentStatus();
+
+      btn.onclick = async () => {
+        if (!places.length) {
+          if (stEl) stEl.textContent = "Нет мест в настройках виджета.";
+          return;
+        }
+        const device_name = devInput ? String(devInput.value || "").trim() : "";
+        if (!device_name) {
+          if (stEl) stEl.textContent = "Укажите имя.";
+          return;
+        }
+        let comment = ta ? String(ta.value || "").trim() : "";
+        const rad = wrap.querySelector(".gs-checkin-lv:checked");
+        const level = rad ? String(rad.value || "ok") : "ok";
+        if (level === "ok") comment = "";
+        if (level === "alert" && !comment) {
+          if (stEl) stEl.textContent = "Нужен комментарий.";
+          return;
+        }
+        hashCtx = readDeviceHash();
+        const device_hash = hashCtx.device_hash;
         try {
           localStorage.setItem(`gs_checkin_dn_${slug}_${widgetId}`, device_name);
         } catch (_) {}
@@ -1392,6 +1566,18 @@
             throw new Error(msg);
           }
           if (stEl) stEl.textContent = "Отправлено.";
+          const pt =
+            (places.find((p) => p.id === sel.value) || {}).title ||
+            sel.options[sel.selectedIndex]?.textContent ||
+            sel.value;
+          const newId = data && data.id;
+          if (newId) {
+            const { ctx, list } = loadRecentStorage();
+            const label = `${pt} — ${device_name}`;
+            const next = [{ id: newId, label }, ...list.filter((x) => x && x.id !== newId)];
+            saveRecentStorage(ctx, next.slice(0, 3));
+            refreshRecentStatus();
+          }
         } catch (e) {
           if (stEl) stEl.textContent = e.message || String(e);
         }
@@ -1407,6 +1593,7 @@
       const sumEl = wrap.querySelector(".gs-checkin-monitor-summary");
       const jouEl = wrap.querySelector(".gs-checkin-monitor-journal");
       const expBtn = wrap.querySelector(".gs-checkin-export");
+      const cfAllBtn = wrap.querySelector(".gs-checkin-confirm-all");
       if (!periodSel || !sumEl || !jouEl) return;
       const timerKey = "_gsCheckinMonTimer";
       if (wrap[timerKey]) {
@@ -1415,47 +1602,142 @@
         } catch (_) {}
         wrap[timerKey] = null;
       }
+      const pl = (widget.settings && widget.settings.labels) || {};
+      const levelTitle = (code) => {
+        const c = String(code || "").toLowerCase();
+        if (c === "ok") return escapeHtml(String(pl.ok || "В порядке"));
+        if (c === "warn") return escapeHtml(String(pl.warn || "Внимание"));
+        if (c === "alert") return escapeHtml(String(pl.alert || "Проблема"));
+        if (c === "none") return escapeHtml(String(pl.none || "Нет отметки"));
+        return escapeHtml(String(code || ""));
+      };
       async function refresh() {
         const period = periodSel.value || "day";
+        let data = {};
         try {
           const url = checkinBoardUrl(period, widgetId);
           const r = await fetchFn(url);
-          const data = await r.json().catch(() => ({}));
+          data = await r.json().catch(() => ({}));
           if (!r.ok) {
             sumEl.innerHTML = `<div class="hint">${escapeHtml(String((data && data.detail) || r.statusText))}</div>`;
             jouEl.innerHTML = "";
             return;
           }
           const summ = (data && data.summary) || [];
+          const placeById = {};
+          (data.places || []).forEach((p) => {
+            if (p && p.id) placeById[p.id] = p.title || p.id;
+          });
           const noneLbl = escapeHtml(String((data.labels && data.labels.none) || "Нет отметки"));
           const sRows = summ
             .map((row) => {
               if (row.status === "none") {
-                return `<tr><td>${escapeHtml(row.place_title || row.place_id)}</td><td colspan="2">${noneLbl}</td></tr>`;
+                return `<tr><td>${escapeHtml(row.place_title || row.place_id)}</td><td colspan="4">${noneLbl}</td></tr>`;
               }
               const ev = row.last_event || {};
-              return `<tr><td>${escapeHtml(row.place_title || row.place_id)}</td><td>${escapeHtml(String(row.status || ""))}</td><td>${escapeHtml(
-                String(ev.created_at || ""),
-              )}</td></tr>`;
+              const hasEv = ev && ev.id;
+              const confBtn =
+                hasEv && !ev.confirmed_at
+                  ? `<button type="button" class="gs-checkin-s-confirm secondary-btn compact-btn" data-checkin-confirm-id="${Number(ev.id)}">Подтвердить</button>`
+                  : hasEv && ev.confirmed_at
+                    ? `<span class="hint">✓</span>`
+                    : "";
+              return `<tr>
+              <td>${escapeHtml(row.place_title || row.place_id)}</td>
+              <td>${levelTitle(row.status)}</td>
+              <td>${escapeHtml(String(ev.created_date || ""))}</td>
+              <td>${escapeHtml(String(ev.created_time || ""))}</td>
+              <td class="gs-checkin-actions-cell">${confBtn}</td>
+            </tr>`;
             })
             .join("");
-          sumEl.innerHTML = `<div class="hint" style="margin-bottom:6px">${escapeHtml(String(data.range_label || ""))}</div><table class="gs-checkin-table" style="width:100%;border-collapse:collapse;font-size:0.92em"><thead><tr><th>Место</th><th>Состояние</th><th>Время UTC</th></tr></thead><tbody>${sRows}</tbody></table>`;
+          sumEl.innerHTML = `<div class="hint" style="margin-bottom:6px">${escapeHtml(String(data.range_label || ""))}</div>
+            <table class="gs-checkin-table gs-checkin-table--boxed"><thead><tr>
+              <th>Место</th><th>Состояние</th><th>Дата</th><th>Время</th><th></th>
+            </tr></thead><tbody>${sRows}</tbody></table>`;
           const jou = (data && data.journal) || [];
           const jRows = jou
-            .map(
-              (ev) =>
-                `<tr><td>${escapeHtml(String(ev.created_at || ""))}</td><td>${escapeHtml(String(ev.place_id || ""))}</td><td>${escapeHtml(
-                  String(ev.level || ""),
-                )}</td><td>${escapeHtml(String(ev.device_name || ""))}</td><td>${escapeHtml(
-                  String(ev.comment || "").slice(0, 200),
-                )}</td></tr>`,
-            )
+            .map((ev) => {
+              const btn =
+                ev.confirmed_at
+                  ? `<span class="hint">✓ ${escapeHtml(String(ev.confirmed_date || ""))} ${escapeHtml(String(ev.confirmed_time || ""))}</span>`
+                  : `<button type="button" class="gs-checkin-j-confirm secondary-btn compact-btn" data-checkin-confirm-id="${Number(ev.id)}">Подтвердить</button>`;
+              return `<tr>
+              <td>${escapeHtml(String(ev.created_date || ""))}</td>
+              <td>${escapeHtml(String(ev.created_time || ""))}</td>
+              <td>${escapeHtml(String(placeById[ev.place_id] || ev.place_id || ""))}</td>
+              <td>${levelTitle(ev.level)}</td>
+              <td>${escapeHtml(String(ev.device_name || ""))}</td>
+              <td>${escapeHtml(String(ev.comment || "").slice(0, 200))}</td>
+              <td class="gs-checkin-actions-cell">${btn}</td>
+            </tr>`;
+            })
             .join("");
-          jouEl.innerHTML = `<div style="font-weight:600;margin:8px 0 4px">Журнал</div><table class="gs-checkin-table" style="width:100%;border-collapse:collapse;font-size:0.88em"><thead><tr><th>Время</th><th>Место</th><th>Уровень</th><th>Подпись</th><th>Комментарий</th></tr></thead><tbody>${jRows}</tbody></table>`;
+          jouEl.innerHTML = `<div style="font-weight:600;margin:8px 0 4px">Журнал</div>
+            <table class="gs-checkin-table gs-checkin-table--boxed"><thead><tr>
+              <th>Дата</th><th>Время</th><th>Место</th><th>Уровень</th><th>Имя</th><th>Комментарий</th><th></th>
+            </tr></thead><tbody>${jRows}</tbody></table>`;
         } catch (e) {
           sumEl.innerHTML = `<div class="hint">${escapeHtml(e.message || String(e))}</div>`;
           jouEl.innerHTML = "";
         }
+      }
+      if (!wrap._gsCheckinConfirmDeleg) {
+        wrap._gsCheckinConfirmDeleg = true;
+        wrap.addEventListener("click", async (e) => {
+          const b = e.target && e.target.closest && e.target.closest("[data-checkin-confirm-id]");
+          if (!b || !wrap.contains(b)) return;
+          const id = Number(b.getAttribute("data-checkin-confirm-id"));
+          if (!id) return;
+          try {
+            const body = adminPreview
+              ? { screen_slug: slug, monitor_widget_id: widgetId, event_id: id }
+              : { monitor_widget_id: widgetId, event_id: id };
+            const r = await fetchFn(checkinConfirmApiUrl(false), {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(body),
+            });
+            if (!r.ok) {
+              let detail = r.statusText;
+              try {
+                const errBody = await r.json();
+                detail = (errBody && errBody.detail) || detail;
+              } catch (_) {}
+              throw new Error(typeof detail === "string" ? detail : String(detail));
+            }
+            await refresh();
+          } catch (err) {
+            if (sumEl) sumEl.innerHTML = `<div class="hint">${escapeHtml(err.message || String(err))}</div>`;
+          }
+        });
+      }
+      if (cfAllBtn && !cfAllBtn.dataset.gsBound) {
+        cfAllBtn.dataset.gsBound = "1";
+        cfAllBtn.onclick = async () => {
+          const period = periodSel.value || "day";
+          try {
+            const body = adminPreview
+              ? { screen_slug: slug, monitor_widget_id: widgetId, range: period }
+              : { monitor_widget_id: widgetId, range: period };
+            const r = await fetchFn(checkinConfirmApiUrl(true), {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(body),
+            });
+            if (!r.ok) {
+              let detail = r.statusText;
+              try {
+                const errBody = await r.json();
+                detail = (errBody && errBody.detail) || detail;
+              } catch (_) {}
+              throw new Error(typeof detail === "string" ? detail : String(detail));
+            }
+            await refresh();
+          } catch (err) {
+            if (sumEl) sumEl.innerHTML = `<div class="hint">${escapeHtml(err.message || String(err))}</div>`;
+          }
+        };
       }
       periodSel.onchange = () => refresh();
       if (expBtn) {

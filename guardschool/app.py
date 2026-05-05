@@ -134,7 +134,10 @@ from .gs_feedback import (
 from .gs_checkin import (
     build_summary_for_places,
     build_summary_for_school_day,
+    confirm_all_unconfirmed_in_range,
+    enrich_checkin_event_for_client,
     ensure_checkin_tables,
+    get_checkin_events_status_for_device,
     insert_event as insert_checkin_event,
     journal_to_csv_bytes,
     journal_to_csv_bytes_filtered,
@@ -144,6 +147,7 @@ from .gs_checkin import (
     sanitize_checkin_block,
     sanitize_places_list,
     school_calendar_date,
+    set_checkin_event_confirmed,
 )
 from .gs_portal_cms import load_portal_cms_merged, sanitize_portal_cms_payload, write_portal_cms
 from .saas_db import cleanup_expired_demo_sessions, ensure_public_schema, saas_db_enabled
@@ -1851,6 +1855,11 @@ def _checkin_board_payload(
     pids = {p["id"] for p in places}
     start_utc, end_utc, range_label = range_bounds_utc(config, period_n)
     journal = list_journal_filtered(tenant_id, start_utc, end_utc, pids if pids else None, slug_key)
+    journal = [enrich_checkin_event_for_client(config, dict(j)) for j in journal]
+    for it in summary_items:
+        le = it.get("last_event")
+        if isinstance(le, dict):
+            it["last_event"] = enrich_checkin_event_for_client(config, dict(le))
     raw_labels = (mw.get("settings") or {}).get("labels")
     labels_out: dict[str, Any] = {}
     if isinstance(raw_labels, dict):
@@ -5717,6 +5726,212 @@ def api_admin_checkin_export_csv(
             "Content-Disposition": f'attachment; filename="checkin_{slug_key}_{monitor_widget_id}_{rl}.csv"'
         },
     )
+
+
+def _checkin_tenant_from_request(request: Request) -> str:
+    try:
+        from .tenant_ctx import tenant_slug as _tid
+
+        tid_ctx = str(_tid() or "").strip()
+    except Exception:
+        tid_ctx = ""
+    return tid_ctx or str(request.cookies.get(SAAS_TENANT_COOKIE) or "local").strip() or "local"
+
+
+@app.post("/api/screen/{slug}/checkin/confirm")
+async def api_screen_checkin_confirm(request: Request, slug: str) -> dict[str, Any]:
+    slug_key = _normalize_screen_slug_for_api(slug)
+    if not slug_key:
+        raise HTTPException(status_code=404, detail="Экран не найден.")
+    _require_tv_access_for_screen(request, slug_key)
+    body = await request.json()
+    monitor_widget_id = str(body.get("monitor_widget_id") or "").strip()
+    try:
+        event_id = int(body.get("event_id"))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Укажите event_id.") from None
+    if not monitor_widget_id:
+        raise HTTPException(status_code=400, detail="Укажите monitor_widget_id.")
+    cfg = load_config()
+    screen = _screen_config_by_slug(cfg, slug_key)
+    if not screen:
+        raise HTTPException(status_code=404, detail="Экран не найден.")
+    mw = _find_monitor_widget(screen, monitor_widget_id)
+    if not mw:
+        raise HTTPException(status_code=404, detail="Виджет сводки не найден.")
+    places = sanitize_places_list((mw.get("settings") or {}).get("places"))
+    allowed = {p["id"] for p in places}
+    tenant_id = _checkin_tenant_from_request(request)
+    ts = set_checkin_event_confirmed(
+        tenant_id, event_id, screen_slug=slug_key, allowed_place_ids=allowed
+    )
+    if ts is None:
+        raise HTTPException(status_code=404, detail="Событие не найдено или недоступно.")
+    return {"status": "ok", "confirmed_at": ts}
+
+
+@app.post("/api/screen/{slug}/checkin/confirm-all")
+async def api_screen_checkin_confirm_all(request: Request, slug: str) -> dict[str, Any]:
+    slug_key = _normalize_screen_slug_for_api(slug)
+    if not slug_key:
+        raise HTTPException(status_code=404, detail="Экран не найден.")
+    _require_tv_access_for_screen(request, slug_key)
+    body = await request.json()
+    monitor_widget_id = str(body.get("monitor_widget_id") or "").strip()
+    period = str(body.get("range") or body.get("period") or "day").strip()
+    if not monitor_widget_id:
+        raise HTTPException(status_code=400, detail="Укажите monitor_widget_id.")
+    cfg = load_config()
+    screen = _screen_config_by_slug(cfg, slug_key)
+    if not screen:
+        raise HTTPException(status_code=404, detail="Экран не найден.")
+    mw = _find_monitor_widget(screen, monitor_widget_id)
+    if not mw:
+        raise HTTPException(status_code=404, detail="Виджет сводки не найден.")
+    places = sanitize_places_list((mw.get("settings") or {}).get("places"))
+    pids = {p["id"] for p in places}
+    period_n = _checkin_period_normalize(period)
+    tenant_id = _checkin_tenant_from_request(request)
+    n = confirm_all_unconfirmed_in_range(tenant_id, cfg, slug_key, pids, period_n)
+    return {"status": "ok", "confirmed_count": n}
+
+
+@app.get("/api/screen/{slug}/checkin/events-status")
+def api_screen_checkin_events_status(
+    request: Request,
+    slug: str,
+    submit_widget_id: str = Query(...),
+    device_hash: str = Query(...),
+    ids: str = Query("", description="Список id через запятую"),
+) -> dict[str, Any]:
+    slug_key = _normalize_screen_slug_for_api(slug)
+    if not slug_key:
+        raise HTTPException(status_code=404, detail="Экран не найден.")
+    _require_tv_access_for_screen(request, slug_key)
+    sw = str(submit_widget_id or "").strip()
+    if not sw:
+        raise HTTPException(status_code=400, detail="Укажите submit_widget_id.")
+    id_parts = [x.strip() for x in (ids or "").split(",") if x.strip()]
+    id_list: list[int] = []
+    for x in id_parts:
+        try:
+            id_list.append(int(x))
+        except ValueError:
+            continue
+    tenant_id = _checkin_tenant_from_request(request)
+    rows = get_checkin_events_status_for_device(tenant_id, slug_key, sw, device_hash, id_list)
+    cfg = load_config()
+    enriched = []
+    for r in rows:
+        e = dict(r)
+        ca = e.get("confirmed_at") or ""
+        ed = enrich_checkin_event_for_client(
+            cfg,
+            {"created_at": "", "confirmed_at": ca},
+        )
+        e["confirmed_date"] = ed.get("confirmed_date") or ""
+        e["confirmed_time"] = ed.get("confirmed_time") or ""
+        enriched.append(e)
+    return {"status": "ok", "items": enriched}
+
+
+@app.post("/api/admin/checkin/confirm")
+async def api_admin_checkin_confirm(request: Request) -> dict[str, Any]:
+    require_auth(request)
+    body = await request.json()
+    screen_slug_raw = str(body.get("screen_slug") or "").strip()
+    slug_key = _normalize_screen_slug_for_api(screen_slug_raw)
+    if not slug_key:
+        raise HTTPException(status_code=400, detail="Укажите screen_slug.")
+    monitor_widget_id = str(body.get("monitor_widget_id") or "").strip()
+    try:
+        event_id = int(body.get("event_id"))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Укажите event_id.") from None
+    if not monitor_widget_id:
+        raise HTTPException(status_code=400, detail="Укажите monitor_widget_id.")
+    cfg = load_config()
+    screen = _screen_config_by_slug(cfg, slug_key)
+    if not screen:
+        raise HTTPException(status_code=404, detail="Экран не найден.")
+    mw = _find_monitor_widget(screen, monitor_widget_id)
+    if not mw:
+        raise HTTPException(status_code=404, detail="Виджет сводки не найден.")
+    places = sanitize_places_list((mw.get("settings") or {}).get("places"))
+    allowed = {p["id"] for p in places}
+    tenant_id = _checkin_tenant_from_request(request)
+    ts = set_checkin_event_confirmed(
+        tenant_id, event_id, screen_slug=slug_key, allowed_place_ids=allowed
+    )
+    if ts is None:
+        raise HTTPException(status_code=404, detail="Событие не найдено или недоступно.")
+    return {"status": "ok", "confirmed_at": ts}
+
+
+@app.post("/api/admin/checkin/confirm-all")
+async def api_admin_checkin_confirm_all(request: Request) -> dict[str, Any]:
+    require_auth(request)
+    body = await request.json()
+    screen_slug_raw = str(body.get("screen_slug") or "").strip()
+    slug_key = _normalize_screen_slug_for_api(screen_slug_raw)
+    if not slug_key:
+        raise HTTPException(status_code=400, detail="Укажите screen_slug.")
+    monitor_widget_id = str(body.get("monitor_widget_id") or "").strip()
+    period = str(body.get("range") or body.get("period") or "day").strip()
+    if not monitor_widget_id:
+        raise HTTPException(status_code=400, detail="Укажите monitor_widget_id.")
+    cfg = load_config()
+    screen = _screen_config_by_slug(cfg, slug_key)
+    if not screen:
+        raise HTTPException(status_code=404, detail="Экран не найден.")
+    mw = _find_monitor_widget(screen, monitor_widget_id)
+    if not mw:
+        raise HTTPException(status_code=404, detail="Виджет сводки не найден.")
+    places = sanitize_places_list((mw.get("settings") or {}).get("places"))
+    pids = {p["id"] for p in places}
+    period_n = _checkin_period_normalize(period)
+    tenant_id = _checkin_tenant_from_request(request)
+    n = confirm_all_unconfirmed_in_range(tenant_id, cfg, slug_key, pids, period_n)
+    return {"status": "ok", "confirmed_count": n}
+
+
+@app.get("/api/admin/checkin/events-status")
+def api_admin_checkin_events_status(
+    request: Request,
+    screen_slug: str = Query(...),
+    submit_widget_id: str = Query(...),
+    device_hash: str = Query(...),
+    ids: str = Query(""),
+) -> dict[str, Any]:
+    require_auth(request)
+    slug_key = _normalize_screen_slug_for_api(screen_slug)
+    if not slug_key:
+        raise HTTPException(status_code=400, detail="Укажите screen_slug.")
+    sw = str(submit_widget_id or "").strip()
+    if not sw:
+        raise HTTPException(status_code=400, detail="Укажите submit_widget_id.")
+    id_parts = [x.strip() for x in (ids or "").split(",") if x.strip()]
+    id_list: list[int] = []
+    for x in id_parts:
+        try:
+            id_list.append(int(x))
+        except ValueError:
+            continue
+    tenant_id = _checkin_tenant_from_request(request)
+    rows = get_checkin_events_status_for_device(tenant_id, slug_key, sw, device_hash, id_list)
+    cfg = load_config()
+    enriched = []
+    for r in rows:
+        e = dict(r)
+        ca = e.get("confirmed_at") or ""
+        ed = enrich_checkin_event_for_client(
+            cfg,
+            {"created_at": "", "confirmed_at": ca},
+        )
+        e["confirmed_date"] = ed.get("confirmed_date") or ""
+        e["confirmed_time"] = ed.get("confirmed_time") or ""
+        enriched.append(e)
+    return {"status": "ok", "items": enriched}
 
 
 def _tv_pair_pin_entry_file_response() -> FileResponse:

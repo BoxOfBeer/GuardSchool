@@ -444,6 +444,40 @@ body {
   text-shadow: none;
 }
 
+.tv-screen .gs-checkin-submit,
+.tv-screen .gs-checkin-submit *,
+.tv-screen .gs-checkin-monitor,
+.tv-screen .gs-checkin-monitor * {
+  text-shadow: none;
+}
+
+.screen-preview .gs-checkin-submit,
+.screen-preview .gs-checkin-submit *,
+.screen-preview .gs-checkin-monitor,
+.screen-preview .gs-checkin-monitor * {
+  text-shadow: none;
+}
+
+.gs-checkin-table.gs-checkin-table--boxed {
+  border-collapse: collapse;
+  width: 100%;
+}
+.gs-checkin-table.gs-checkin-table--boxed th,
+.gs-checkin-table.gs-checkin-table--boxed td {
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  padding: 5px 8px;
+  text-align: left;
+  vertical-align: top;
+}
+.gs-checkin-table.gs-checkin-table--boxed th {
+  background: rgba(15, 23, 42, 0.35);
+  font-weight: 600;
+}
+.gs-checkin-actions-cell {
+  white-space: nowrap;
+  text-align: right;
+}
+
 .screen-section-title {
   margin: 0 0 6px;
   font-size: 18px;
