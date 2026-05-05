@@ -313,21 +313,47 @@ function settingInputs(widget, index) {
   }
   if (widget.type === "checkin_monitor") {
     const places = Array.isArray(widget.settings.places) ? widget.settings.places : [];
-    const rows = places
-      .map((p, i) => {
-        const idAttr = escapeHtmlAttr(String(p?.id ?? ""));
-        const titleAttr = escapeHtmlAttr(String(p?.title ?? ""));
-        return `<div class="settings-row rss-source-row" style="align-items:flex-end;flex-wrap:wrap;gap:8px">
-          <label>${t("w.checkinPlaceId")}<input class="standard-input" data-key="widget:${index}:settings.places.${i}.id" type="text" value="${idAttr}" placeholder="gate_a" maxlength="64"></label>
-          <label>${t("w.checkinPlaceTitle")}<input class="standard-input wide-input" data-key="widget:${index}:settings.places.${i}.title" type="text" value="${titleAttr}" maxlength="200"></label>
-          <button type="button" class="secondary-btn compact-btn" data-remove-checkin-place="${index}:${i}">${t("w.checkinPlaceRemove")}</button>
-        </div>`;
-      })
-      .join("");
-    parts.push(rows || `<div class="hint">${t("w.checkinNoPlaces")}</div>`);
-    parts.push(
-      `<div class="settings-row"><button type="button" class="secondary-btn compact-btn" data-add-checkin-place="${index}">${t("w.checkinPlaceAdd")}</button></div>`,
-    );
+    const syncSlug = String(widget.settings.events_screen_slug || "").trim();
+    const placesLocked = Boolean(syncSlug);
+    const syncMsg = placesLocked
+      ? t("w.checkinPlacesSyncLocked").replace(/\{\{slug\}\}/g, escapeHtml(syncSlug))
+      : "";
+    const dis = placesLocked ? " disabled" : "";
+    const bodyRows = places.length
+      ? places
+          .map((p, i) => {
+            const idAttr = escapeHtmlAttr(String(p?.id ?? ""));
+            const titleAttr = escapeHtmlAttr(String(p?.title ?? ""));
+            const del = placesLocked
+              ? ""
+              : `<td class="checkin-places-actions-col"><button type="button" class="secondary-btn compact-btn" data-remove-checkin-place="${index}:${i}">${t(
+                  "w.checkinPlaceRemove",
+                )}</button></td>`;
+            return `<tr>
+            <td class="checkin-places-code-col"><input class="standard-input" data-key="widget:${index}:settings.places.${i}.id" type="text" value="${idAttr}" placeholder="gate_a" maxlength="64"${dis} aria-label="${escapeHtmlAttr(t("w.checkinPlacesTableCode"))}"></td>
+            <td class="checkin-places-title-col"><input class="standard-input" data-key="widget:${index}:settings.places.${i}.title" type="text" value="${titleAttr}" maxlength="200"${dis} aria-label="${escapeHtmlAttr(t("w.checkinPlacesTableTitle"))}"></td>
+            ${del}
+          </tr>`;
+          })
+          .join("")
+      : `<tr><td colspan="${placesLocked ? 2 : 3}" class="checkin-places-empty"><span class="hint">${escapeHtml(t("w.checkinNoPlaces"))}</span></td></tr>`;
+    const headDel = placesLocked ? "" : `<th class="checkin-places-actions-col" scope="col"></th>`;
+    parts.push(`<div class="checkin-places-editor">
+      ${placesLocked ? `<div class="checkin-places-sync-notice" role="status">${syncMsg}</div>` : ""}
+      <table class="checkin-places-table">
+        <thead><tr>
+          <th scope="col" class="checkin-places-code-col">${escapeHtml(t("w.checkinPlacesTableCode"))}</th>
+          <th scope="col" class="checkin-places-title-col">${escapeHtml(t("w.checkinPlacesTableTitle"))}</th>
+          ${headDel}
+        </tr></thead>
+        <tbody>${bodyRows}</tbody>
+      </table>
+      ${
+        placesLocked
+          ? ""
+          : `<div class="checkin-places-toolbar"><button type="button" class="secondary-btn compact-btn" data-add-checkin-place="${index}">${t("w.checkinPlaceAdd")}</button></div>`
+      }
+    </div>`);
   }
   if (widget.type === "checkin_submit" || widget.type === "checkin_monitor") {
     parts.push(

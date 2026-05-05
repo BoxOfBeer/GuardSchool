@@ -2805,6 +2805,63 @@ label.bell-file-upload:hover {
   grid-column: 1 / -1;
 }
 
+.checkin-places-editor {
+  grid-column: 1 / -1;
+  width: 100%;
+  max-width: 44rem;
+}
+
+.checkin-places-sync-notice {
+  font-size: 13px;
+  line-height: 1.45;
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(56, 189, 248, 0.45);
+  background: rgba(14, 165, 233, 0.12);
+  color: rgba(226, 232, 240, 0.95);
+}
+
+.checkin-places-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.checkin-places-table th,
+.checkin-places-table td {
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.checkin-places-table th {
+  font-weight: 600;
+}
+
+.checkin-places-table .checkin-places-code-col {
+  width: 30%;
+}
+
+.checkin-places-table .checkin-places-actions-col {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.checkin-places-table input.standard-input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.checkin-places-table .checkin-places-empty {
+  padding: 12px 10px;
+}
+
+.checkin-places-toolbar {
+  margin-top: 8px;
+}
+
 .preview-sound-diag {
   font-size: 12px;
   line-height: 1.45;
