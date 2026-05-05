@@ -84,6 +84,52 @@ function getSlug() {
   }
 }
 
+/**
+ * Ключи гибрида (LAN) и токена ТВ в localStorage раньше были глобальными — на одном устройстве
+ * открывали чужой хост/школу и тянули чужой primary + Bearer. Разделяем по host страницы.
+ */
+function gsStorageScopeKey() {
+  try {
+    const h = window.location && window.location.host;
+    return h ? String(h).replace(/[^a-zA-Z0-9._:-]/g, "_") : "default";
+  } catch (_) {
+    return "default";
+  }
+}
+
+function gsScopedKey(suffix) {
+  return `gs_${suffix}__${gsStorageScopeKey()}`;
+}
+
+function readGsStorageScopedMigrate(scopedKey, legacyKey) {
+  try {
+    let v = localStorage.getItem(scopedKey);
+    if (v != null && v !== "") return v;
+    v = localStorage.getItem(legacyKey) || "";
+    if (v) {
+      try {
+        localStorage.setItem(scopedKey, v);
+      } catch (_) {}
+    }
+    return v;
+  } catch (_) {
+    return "";
+  }
+}
+
+/** Отбросить ответ опроса, если slug экрана в JSON не совпадает с адресом (защита от чужого ответа при сбое базы). */
+function screenPollPayloadSlugMatches(p, wantSlug) {
+  try {
+    const want = String(wantSlug || "").trim().toLowerCase();
+    if (!want) return true;
+    const got = p && p.screen && String(p.screen.slug || "").trim().toLowerCase();
+    if (!got) return true;
+    return got === want;
+  } catch (_) {
+    return true;
+  }
+}
+
 /** Удалить все ключи localStorage, начинающиеся с gs_ (токен ТВ, гибрид, gs_client_id, все экраны). */
 function purgeAllGsLocalStorage() {
   try {
@@ -210,13 +256,13 @@ function initGsHybridFromUrl() {
     if (p && p.trim()) {
       window.__GS_PRIMARY_BASE = p.trim().replace(/\/$/, "");
       try {
-        localStorage.setItem("gs_primary_base", window.__GS_PRIMARY_BASE);
+        localStorage.setItem(gsScopedKey("primary_base"), window.__GS_PRIMARY_BASE);
       } catch (_) {}
     }
     if (f && f.trim()) {
       window.__GS_FALLBACK_BASE = f.trim().replace(/\/$/, "");
       try {
-        localStorage.setItem("gs_fallback_base", window.__GS_FALLBACK_BASE);
+        localStorage.setItem(gsScopedKey("fallback_base"), window.__GS_FALLBACK_BASE);
       } catch (_) {}
     }
     if (to != null && String(to).trim() !== "") {
@@ -227,13 +273,17 @@ function initGsHybridFromUrl() {
       const clean = sanitizeGsTvBearerToken(tok);
       if (clean) window.__GS_TV_BEARER_URL = clean;
       try {
-        if (clean) localStorage.setItem("gs_tv_bearer", clean);
+        if (clean) localStorage.setItem(gsScopedKey("tv_bearer"), clean);
       } catch (_) {}
     }
   } catch (_) {}
   try {
-    if (!window.__GS_PRIMARY_BASE) window.__GS_PRIMARY_BASE = localStorage.getItem("gs_primary_base") || "";
-    if (!window.__GS_FALLBACK_BASE) window.__GS_FALLBACK_BASE = localStorage.getItem("gs_fallback_base") || "";
+    if (!window.__GS_PRIMARY_BASE) {
+      window.__GS_PRIMARY_BASE = readGsStorageScopedMigrate(gsScopedKey("primary_base"), "gs_primary_base");
+    }
+    if (!window.__GS_FALLBACK_BASE) {
+      window.__GS_FALLBACK_BASE = readGsStorageScopedMigrate(gsScopedKey("fallback_base"), "gs_fallback_base");
+    }
   } catch (_) {}
 }
 
@@ -258,6 +308,9 @@ function initGsHybridFromUrl() {
         } catch (_) {}
       }
       try {
+        localStorage.removeItem(gsScopedKey("primary_base"));
+        localStorage.removeItem(gsScopedKey("fallback_base"));
+        localStorage.removeItem(gsScopedKey("tv_bearer"));
         localStorage.removeItem("gs_primary_base");
         localStorage.removeItem("gs_fallback_base");
         localStorage.removeItem("gs_tv_bearer");
@@ -302,14 +355,15 @@ function getGsTvBearer() {
     if (fromUrl) {
       window.__GS_TV_BEARER_URL = fromUrl;
       try {
-        localStorage.setItem("gs_tv_bearer", fromUrl);
+        localStorage.setItem(gsScopedKey("tv_bearer"), fromUrl);
       } catch (_) {}
       return fromUrl;
     }
-    const raw = localStorage.getItem("gs_tv_bearer") || "";
+    const raw = readGsStorageScopedMigrate(gsScopedKey("tv_bearer"), "gs_tv_bearer") || "";
     const clean = sanitizeGsTvBearerToken(raw);
     if (!clean && raw.trim()) {
       try {
+        localStorage.removeItem(gsScopedKey("tv_bearer"));
         localStorage.removeItem("gs_tv_bearer");
       } catch (_) {}
     }
@@ -1843,6 +1897,10 @@ async function refresh() {
         const r = await fetchScreenPayload(url, hdr, Math.min(45000, timeoutMs + 5000));
         if (r.ok) {
           const p = await r.json();
+          if (!screenPollPayloadSlugMatches(p, slug)) {
+            lastErr = new Error("screen slug mismatch");
+            continue;
+          }
           lastOkPayload = p;
           lastOkBase = b;
           if (schedulePayloadRowScore(p) > 0) {
@@ -1875,6 +1933,7 @@ async function refresh() {
           const r2 = await fetchScreenPayload(url2, hdr, Math.min(45000, timeoutMs + 5000));
           if (r2.ok) {
             const p2 = await r2.json();
+            if (!screenPollPayloadSlugMatches(p2, slug)) continue;
             const sc = schedulePayloadRowScore(p2);
             if (sc > bestScoreR) {
               bestScoreR = sc;

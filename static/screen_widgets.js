@@ -1585,7 +1585,6 @@
         let comment = ta ? String(ta.value || "").trim() : "";
         const rad = wrap.querySelector(".gs-checkin-lv:checked");
         const level = rad ? String(rad.value || "ok") : "ok";
-        if (level === "ok") comment = "";
         if (level === "alert" && !comment) {
           if (stEl) stEl.textContent = "Нужен комментарий.";
           return;
