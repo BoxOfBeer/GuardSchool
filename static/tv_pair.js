@@ -137,6 +137,19 @@ go.addEventListener("click", async () => {
       const t = sanitizeGsTvBearerToken(String(data.token || ""));
       if (t) localStorage.setItem("gs_tv_bearer", t);
     } catch (_) {}
+    // Для PWA на /screen/<slug>: сохранить код школы, чтобы подцепить tenant-manifest.
+    try {
+      const sl2 = normalizeTvPairText(screen_slug).toLowerCase();
+      const code2 = normalizeTvPairText(code).toLowerCase();
+      if (sl2 && code2) localStorage.setItem(`gs_pwa_tv_code__${sl2}`, code2);
+    } catch (_) {}
+    // Для PWA: сохранить токен под ключом code+slug (чтобы режим /t/... ?pwa=1 работал без новых tokens).
+    try {
+      const t3 = sanitizeGsTvBearerToken(String(data.token || ""));
+      const sl3 = normalizeTvPairText(screen_slug).toLowerCase();
+      const code3 = normalizeTvPairText(code).toLowerCase();
+      if (t3 && sl3 && code3) localStorage.setItem(`gs_pwa_tv_token__${code3}__${sl3}`, t3);
+    } catch (_) {}
     const sl = normalizeTvPairText(screen_slug).toLowerCase();
     let path = data.screen_path || `/screen/${encodeURIComponent(sl)}`;
     try {

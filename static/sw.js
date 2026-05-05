@@ -13,10 +13,9 @@ self.addEventListener("activate", (event) => {
   } catch (_) {}
 });
 
-// Pass-through fetch handler (no caching).
-self.addEventListener("fetch", (event) => {
-  // No-op: default network behavior.
-});
+// ВАЖНО: не добавляем fetch handler.
+// Chrome предупреждает, что no-op fetch handler даёт overhead на навигации.
+// Нам SW нужен для PWA eligibility + push, а не для проксирования fetch/caching.
 
 function safeJsonParse(s) {
   try {

@@ -644,6 +644,31 @@ function gsMaybeAttachSaasManifestForScreenSlug(slug) {
   } catch (_) {}
 }
 
+// Подцепить manifest как можно раньше (до beforeinstallprompt).
+try { gsMaybeAttachSaasManifestForScreenSlug(getSlug()); } catch (_) {}
+
+async function gsTryHydrateSaasCodeForExistingScreenSession() {
+  try {
+    const slug = getSlug();
+    if (!slug) return;
+    const key = `gs_pwa_tv_code__${slug}`;
+    if ((localStorage.getItem(key) || "").trim()) return;
+    const base = String(window.__lastScreenPollBase || "").trim().replace(/\/$/, "");
+    if (!base) return;
+    const url = `${base}/api/screen/${encodeURIComponent(slug)}/tv-pair-link`;
+    const r = await fetch(url, { credentials: "include", headers: (() => { try {
+      const b = getGsTvBearer(); const h = {}; if (b) h.Authorization = `Bearer ${b}`; return h;
+    } catch(_) { return {}; } })() });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) return;
+    const code = String(data.code || "").trim().toLowerCase();
+    if (!code) return;
+    localStorage.setItem(key, code);
+    // Подцепляем manifest сразу, без перезагрузки.
+    gsMaybeAttachSaasManifestForScreenSlug(slug);
+  } catch (_) {}
+}
+
 function ensureFeedbackUi(options) {
   try {
     options = options || {};
@@ -1410,6 +1435,14 @@ function shouldSoftRefreshWidget(widget, scheduleChanged, staticChanged) {
 
 function render(screenPayload) {
   window.__lastScreenPayload = screenPayload;
+  try {
+    // Для уже подключённых устройств: получить /t/<code>/<slug> и сохранить code → manifest → install prompt.
+    // Делаем best-effort и только один раз на сессию.
+    if (!window.__gsTriedHydrateSaasCode) {
+      window.__gsTriedHydrateSaasCode = 1;
+      void gsTryHydrateSaasCodeForExistingScreenSession();
+    }
+  } catch (_) {}
   tickEmergencyTimerState(screenPayload);
   const screenForUi = (screenPayload && screenPayload.screen) || {};
   const deviceUiAllowed = gsShowScreenDeviceGear(screenForUi);

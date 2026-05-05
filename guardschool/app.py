@@ -6119,6 +6119,41 @@ def api_push_vapid_public_key(request: Request, slug: str) -> dict[str, Any]:
     return {"status": "ok", "public_key": vapid_public_key(), "enabled": _push_enabled_on_server()}
 
 
+@app.get("/api/screen/{slug}/tv-pair-link")
+def api_screen_tv_pair_link(request: Request, slug: str) -> dict[str, Any]:
+    """
+    Для уже подключённых /screen/{slug}?gs_tv_token=... устройств:
+    вернуть публичную SaaS-ссылку вида /t/<code>/<slug>, чтобы можно было установить PWA-ярлык без переподключения.
+    """
+    slug_key = _normalize_screen_slug_for_api(slug)
+    if not slug_key:
+        raise HTTPException(status_code=404, detail="Экран не найден.")
+    _require_tv_access_for_screen(request, slug_key)  # в SaaS выставит tenant_ctx.set_tenant_slug(...)
+    if deployment_mode() != "saas" or not saas_db_enabled():
+        raise HTTPException(status_code=404, detail="Not found.")
+    try:
+        from .tenant_ctx import tenant_slug as current_tenant
+
+        ts = str(current_tenant() or "").strip()
+    except Exception:
+        ts = ""
+    if not ts:
+        raise HTTPException(status_code=404, detail="Tenant not resolved.")
+    code_plain = ""
+    with connect_public() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT code_plaintext FROM tv_access WHERE tenant_slug=%s", (ts,))
+            row = cur.fetchone()
+            code_plain = str(row[0] or "").strip() if row else ""
+    if not code_plain:
+        raise HTTPException(status_code=404, detail="TV code is not configured.")
+    return {
+        "status": "ok",
+        "code": code_plain,
+        "url": f"/t/{code_plain}/{slug_key}",
+    }
+
+
 @app.post("/api/screen/{slug}/push/subscribe")
 async def api_push_subscribe(request: Request, slug: str) -> dict[str, Any]:
     slug_key = _normalize_screen_slug_for_api(slug)
