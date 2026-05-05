@@ -811,7 +811,9 @@ function gsMaybeAttachSaasManifestForScreenSlug(slug) {
       link.rel = "manifest";
       document.head.appendChild(link);
     }
-    link.href = `/pwa/t/${encodeURIComponent(code)}/${encodeURIComponent(s)}.webmanifest`;
+    const vv = encodeURIComponent(String(window.__GS_APP_VERSION || "").trim());
+    const q = vv ? `?v=${vv}` : "";
+    link.href = `/pwa/t/${encodeURIComponent(code)}/${encodeURIComponent(s)}.webmanifest${q}`;
   } catch (_) {}
 }
 

@@ -4320,21 +4320,54 @@ def demo_login(token: str, request: Request, response: Response) -> Response:
     return response
 
 
-@app.get("/uploads/{path:path}")
-def uploads_file(path: str) -> Response:
+def _tenant_upload_local_file(full_path_under_uploads_rel: Path) -> FileResponse | None:
+    """Строим FileResponse для файла под UPLOADS тенанта; None если файла нет или путь небезопасен."""
+    import mimetypes
+
     from .tenant_ctx import map_data_path
 
-    # UPLOADS_DIR может быть пере-мапплен на tenant data.
     base = map_data_path(UPLOADS_DIR).resolve()
-    rel = Path(str(path or "").lstrip("/").replace("\\", "/"))
-    # запрет на выход из каталога (..)
+    rel = Path(str(full_path_under_uploads_rel or "").lstrip("/").replace("\\", "/"))
     clean_parts = [p for p in rel.parts if p not in ("..", ".", "")]
+    if not clean_parts:
+        return None
     full = (base / Path(*clean_parts)).resolve()
     if base not in full.parents and full != base:
-        raise HTTPException(status_code=400, detail="Invalid path.")
+        return None
     if not full.is_file():
-        raise HTTPException(status_code=404, detail="Not found.")
-    return FileResponse(full)
+        return None
+    mt, _ = mimetypes.guess_type(str(full))
+    return FileResponse(full, media_type=mt or "application/octet-stream")
+
+
+@app.get("/uploads/{path:path}")
+def uploads_file(request: Request, path: str) -> Response:
+    """
+    В SaaS /uploads/ мапится на tenants/<slug>/data/uploads.
+    Иконки из manifest подгружает Chromium отдельно: иногда контекст тенанта в middleware уже сброшен,
+    но cookie gs_saas_tenant ещё есть — второй раз читаем cookie и подставляем slug.
+    """
+    from .tenant_ctx import set_tenant_slug, tenant_slug
+
+    resp = _tenant_upload_local_file(Path(path))
+    if resp:
+        return resp
+
+    prev = tenant_slug()
+    if deployment_mode() == "saas":
+        ck = _decode_saas_tenant_cookie_value(request.cookies.get(SAAS_TENANT_COOKIE) or "")
+        if ck and ck.strip().lower():
+            try:
+                set_tenant_slug(ck.strip().lower())
+                resp2 = _tenant_upload_local_file(Path(path))
+                if resp2:
+                    return resp2
+            finally:
+                try:
+                    set_tenant_slug(prev)
+                except Exception:
+                    pass
+    raise HTTPException(status_code=404, detail="Not found.")
 
 
 @app.get("/sw.js")
@@ -4639,7 +4672,10 @@ def screen_page(request: Request, slug: str) -> HTMLResponse:
     manifest_line = ""
     if slug_for_manifest and re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", slug_for_manifest):
         tok_q = str(request.query_params.get("gs_tv_token") or "").strip()
-        q = f"?gs_tv_token={quote(tok_q, safe='')}" if tok_q else ""
+        q_parts = [f"v={quote(APP_VERSION, safe='')}"]
+        if tok_q:
+            q_parts.insert(0, f"gs_tv_token={quote(tok_q, safe='')}")
+        q = "?" + "&".join(q_parts)
         manifest_line = (
             f'<link rel="manifest" href="/pwa/screen/{quote(slug_for_manifest, safe="")}.webmanifest{q}" />\n'
         )
