@@ -1476,6 +1476,15 @@ def normalize_widget(widget: dict[str, Any]) -> dict[str, Any]:
             widget["settings"]["places"] = []
         if not isinstance(widget["settings"].get("labels"), dict):
             widget["settings"]["labels"] = {}
+    if widget["type"] in ("checkin_submit", "checkin_monitor"):
+        widget["settings"].setdefault("fontSize", 0)
+        widget["settings"].setdefault("bold", False)
+        try:
+            fs = int(widget["settings"].get("fontSize") or 0)
+        except (TypeError, ValueError):
+            fs = 0
+        widget["settings"]["fontSize"] = max(0, min(48, fs))
+        widget["settings"]["bold"] = bool(widget["settings"].get("bold"))
     widget["settings"].setdefault("backdrop", True)
     return widget
 

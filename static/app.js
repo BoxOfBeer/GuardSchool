@@ -1,5 +1,5 @@
 /* Загружается как модульный dependency до остальных импортов — window.GuardSchoolScreen всегда к моменту init. */
-import "./screen_widgets.js?v=1.02.043";
+import "./screen_widgets.js?v=1.02.044";
 import {
   setPreviewDeps,
   fetchPreviewPayloadOnce,
@@ -929,6 +929,8 @@ function createWidgetStubForPaletteType(typ) {
         monitor_widget_id: "",
         labels: {},
         backdrop: true,
+        fontSize: 0,
+        bold: false,
       },
     };
   }
@@ -947,6 +949,8 @@ function createWidgetStubForPaletteType(typ) {
         panel_title: "Сводка мест",
         labels: {},
         backdrop: true,
+        fontSize: 0,
+        bold: false,
       },
     };
   }

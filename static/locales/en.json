@@ -265,6 +265,8 @@
   "w.checkinLabelPlace": "“Place” field label",
   "w.checkinLabelDevice": "“Name” field label",
   "w.checkinLabelSave": "“Save” button label",
+  "w.checkinFontSize": "Font size (px)",
+  "w.checkinFontSizeHint": "0 — default (adaptive to screen); 10–48 — fixed size.",
   "w.checkinPlaceId": "Place id",
   "w.checkinPlaceTitle": "Title",
   "w.checkinPlaceRemove": "Remove",

@@ -199,6 +199,33 @@
       .replace(/</g, "&lt;");
   }
 
+  function checkinWidgetRootStyle(ws) {
+    const s = ws || {};
+    const n = Number(s.fontSize);
+    const hasFs = Number.isFinite(n) && n >= 10 && n <= 48;
+    const bold = s.bold === true || s.bold === 1;
+    const fw = bold ? 700 : 400;
+    const parts = [
+      "height:100%",
+      "display:flex",
+      "flex-direction:column",
+      "gap:8px",
+      "padding:10px",
+      "overflow:auto",
+      "box-sizing:border-box",
+      `font-weight:${fw}`,
+    ];
+    if (hasFs) parts.push(`font-size:${Math.round(n)}px`);
+    return parts.join(";");
+  }
+
+  function checkinWidgetRootFluidClass(ws) {
+    const s = ws || {};
+    const n = Number(s.fontSize);
+    const hasFs = Number.isFinite(n) && n >= 10 && n <= 48;
+    return hasFs ? "" : " gs-checkin--font-fluid";
+  }
+
   /** Как на сервере: первая буква предмета — заглавная (в т.ч. после BOM/пробелов); дублируем здесь, чтобы ТВ не зависел от перезапуска сервера и кэша. */
   function capitalizeSubjectDisplay(raw) {
     const s = String(raw != null ? raw : "").trim();
@@ -867,32 +894,36 @@
       const ws = widget.settings || {};
       const title = escapeHtml(String(ws.labels && ws.labels.module_title ? ws.labels.module_title : "Оперативная отметка"));
       const saveLbl = escapeHtml(String(ws.labels && ws.labels.save ? ws.labels.save : "Сохранить"));
-      return `<div class="gs-checkin-submit" data-gs-checkin-role="submit" style="height:100%;display:flex;flex-direction:column;gap:8px;padding:10px;overflow:auto;box-sizing:border-box;font-size:clamp(12px,1.4vmin,18px);">
-        <div class="gs-checkin-submit-title" style="font-weight:700">${title}</div>
+      const fluid = checkinWidgetRootFluidClass(ws);
+      const rootStyle = checkinWidgetRootStyle(ws);
+      return `<div class="gs-checkin-submit${fluid}" data-gs-checkin-role="submit" style="${rootStyle}">
+        <div class="gs-checkin-submit-title">${title}</div>
         <label style="display:flex;flex-direction:column;gap:4px;"><span data-lbl="device">${escapeHtml(String(ws.labels && ws.labels.device_name ? ws.labels.device_name : "Имя"))}</span>
           <input type="text" class="gs-checkin-device standard-input" maxlength="200" style="width:100%;box-sizing:border-box;" /></label>
         <label style="display:flex;flex-direction:column;gap:4px;"><span data-lbl="place">${escapeHtml(String(ws.labels && ws.labels.place ? ws.labels.place : "Место"))}</span>
           <select class="gs-checkin-place standard-input" style="width:100%;"></select></label>
         <div class="gs-checkin-levels-wrap"><span data-lbl="state">${escapeHtml(String(ws.labels && ws.labels.state ? ws.labels.state : "Состояние"))}</span>
-          <div class="gs-checkin-levels" style="display:flex;flex-wrap:wrap;gap:10px;margin-top:6px;"></div></div>
+          <div class="gs-checkin-levels"></div></div>
         <label style="display:flex;flex-direction:column;gap:4px;"><span data-lbl="comment">${escapeHtml(String(ws.labels && ws.labels.comment ? ws.labels.comment : "Комментарий"))}</span>
           <textarea class="gs-checkin-comment standard-input" rows="2" maxlength="4000" style="width:100%;resize:vertical;box-sizing:border-box;"></textarea></label>
         <div class="gs-checkin-actions" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:4px;">
           <button type="button" class="gs-checkin-send primary-btn">${escapeHtml(String(ws.labels && ws.labels.submit ? ws.labels.submit : "Отправить"))}</button>
           <button type="button" class="gs-checkin-save secondary-btn compact-btn">${saveLbl}</button>
         </div>
-        <div class="gs-checkin-recent" style="font-size:0.92em;line-height:1.35;"></div>
+        <div class="gs-checkin-recent"></div>
         <div class="gs-checkin-status hint" style="min-height:1.2em;"></div>
       </div>`;
     }
     if (widget.type === "checkin_monitor") {
       const ws = widget.settings || {};
       const pt = escapeHtml(String(ws.panel_title || "Сводка мест"));
-      return `<div class="gs-checkin-monitor" data-gs-checkin-role="monitor" style="height:100%;display:flex;flex-direction:column;gap:8px;padding:10px;overflow:auto;box-sizing:border-box;font-size:clamp(11px,1.25vmin,16px);">
-        <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;">
-          <strong>${pt}</strong>
-          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
-            <label style="display:flex;gap:6px;align-items:center;"><span>Период</span>
+      const fluid = checkinWidgetRootFluidClass(ws);
+      const rootStyle = checkinWidgetRootStyle(ws);
+      return `<div class="gs-checkin-monitor${fluid}" data-gs-checkin-role="monitor" style="${rootStyle}">
+        <div class="gs-checkin-toolbar">
+          <strong class="gs-checkin-panel-heading">${pt}</strong>
+          <div class="gs-checkin-toolbar-actions">
+            <label class="gs-checkin-period-label"><span>Период</span>
               <select class="gs-checkin-period standard-input">
                 <option value="day">День</option>
                 <option value="week">Неделя</option>
@@ -904,7 +935,7 @@
           </div>
         </div>
         <div class="gs-checkin-monitor-summary"></div>
-        <div class="gs-checkin-monitor-journal" style="opacity:0.95;"></div>
+        <div class="gs-checkin-monitor-journal"></div>
       </div>`;
     }
     return "";
@@ -1356,9 +1387,15 @@
       const okT = escapeHtml(String(L.ok || "В порядке"));
       const wT = escapeHtml(String(L.warn || "Внимание"));
       const aT = escapeHtml(String(L.alert || "Проблема"));
-      levelsEl.innerHTML = `<label><input type="radio" name="${escapeHtmlAttr(radioName)}" class="gs-checkin-lv" value="ok" checked /> ${okT}</label>
-        <label><input type="radio" name="${escapeHtmlAttr(radioName)}" class="gs-checkin-lv" value="warn" /> ${wT}</label>
-        <label><input type="radio" name="${escapeHtmlAttr(radioName)}" class="gs-checkin-lv" value="alert" /> ${aT}</label>`;
+      levelsEl.innerHTML = `<label class="gs-checkin-seg gs-checkin-seg--ok"><input type="radio" name="${escapeHtmlAttr(
+        radioName,
+      )}" class="gs-checkin-lv" value="ok" checked /><span>${okT}</span></label>
+        <label class="gs-checkin-seg gs-checkin-seg--warn"><input type="radio" name="${escapeHtmlAttr(
+          radioName,
+        )}" class="gs-checkin-lv" value="warn" /><span>${wT}</span></label>
+        <label class="gs-checkin-seg gs-checkin-seg--alert"><input type="radio" name="${escapeHtmlAttr(
+          radioName,
+        )}" class="gs-checkin-lv" value="alert" /><span>${aT}</span></label>`;
 
       function readDeviceHash() {
         let device_hash = "";
@@ -1510,14 +1547,16 @@
                   ? ` <span class="gs-checkin-sent-at">· ${escapeHtml(String(rec.created_date))} ${escapeHtml(String(rec.created_time))}</span>`
                   : "";
               const done = conf
-                ? ` <span class="gs-checkin-confirmed">✓ ${escapeHtml(String(cd || ""))} ${escapeHtml(String(ct || ""))}</span>`
+                ? ` <span class="gs-checkin-confirm-pill" title="Подтверждено"><span class="gs-checkin-confirm-icon" aria-hidden="true">✓</span> ${escapeHtml(
+                    String(cd || ""),
+                  )} ${escapeHtml(String(ct || ""))}</span>`
                 : "";
               return `<div class="gs-checkin-recent-row">${lab}${sentAt}${done}</div>`;
             })
             .filter(Boolean)
             .join("");
           recentEl.innerHTML = lines
-            ? `<div style="font-weight:600;margin-top:6px">Последние отметки</div>${lines}`
+            ? `<div class="gs-checkin-recent-heading">Последние отметки</div>${lines}`
             : "";
         } catch (_) {
           recentEl.innerHTML = "";
@@ -1631,6 +1670,20 @@
         if (c === "none") return escapeHtml(String(pl.none || "Нет отметки"));
         return escapeHtml(String(code || ""));
       };
+      const levelBadgeHtml = (code) => {
+        const c = String(code || "").toLowerCase();
+        const tag =
+          c === "ok"
+            ? "ok"
+            : c === "warn"
+              ? "warn"
+              : c === "alert"
+                ? "alert"
+                : c === "none"
+                  ? "none"
+                  : "muted";
+        return `<span class="gs-checkin-badge gs-checkin-badge--${tag}">${levelTitle(code)}</span>`;
+      };
       async function refresh() {
         const period = periodSel.value || "day";
         let data = {};
@@ -1648,11 +1701,12 @@
           (data.places || []).forEach((p) => {
             if (p && p.id) placeById[p.id] = p.title || p.id;
           });
-          const noneLbl = escapeHtml(String((data.labels && data.labels.none) || "Нет отметки"));
           const sRows = summ
             .map((row) => {
               if (row.status === "none") {
-                return `<tr><td>${escapeHtml(row.place_title || row.place_id)}</td><td colspan="4">${noneLbl}</td></tr>`;
+                return `<tr><td>${escapeHtml(row.place_title || row.place_id)}</td><td colspan="4">${levelBadgeHtml(
+                  "none",
+                )}</td></tr>`;
               }
               const ev = row.last_event || {};
               const hasEv = ev && ev.id;
@@ -1660,18 +1714,18 @@
                 hasEv && !ev.confirmed_at
                   ? `<button type="button" class="gs-checkin-s-confirm secondary-btn compact-btn" data-checkin-confirm-id="${Number(ev.id)}">Подтвердить</button>`
                   : hasEv && ev.confirmed_at
-                    ? `<span class="hint">✓</span>`
+                    ? `<span class="gs-checkin-confirm-pill gs-checkin-confirm-pill--compact" title="Подтверждено"><span class="gs-checkin-confirm-icon" aria-hidden="true">✓</span></span>`
                     : "";
               return `<tr>
               <td>${escapeHtml(row.place_title || row.place_id)}</td>
-              <td>${levelTitle(row.status)}</td>
+              <td>${levelBadgeHtml(row.status)}</td>
               <td>${escapeHtml(String(ev.created_date || ""))}</td>
               <td>${escapeHtml(String(ev.created_time || ""))}</td>
               <td class="gs-checkin-actions-cell">${confBtn}</td>
             </tr>`;
             })
             .join("");
-          sumEl.innerHTML = `<div class="hint" style="margin-bottom:6px">${escapeHtml(String(data.range_label || ""))}</div>
+          sumEl.innerHTML = `<div class="gs-checkin-range-label">${escapeHtml(String(data.range_label || ""))}</div>
             <table class="gs-checkin-table gs-checkin-table--boxed"><thead><tr>
               <th>Место</th><th>Состояние</th><th>Дата</th><th>Время</th><th></th>
             </tr></thead><tbody>${sRows}</tbody></table>`;
@@ -1680,20 +1734,22 @@
             .map((ev) => {
               const btn =
                 ev.confirmed_at
-                  ? `<span class="hint">✓ ${escapeHtml(String(ev.confirmed_date || ""))} ${escapeHtml(String(ev.confirmed_time || ""))}</span>`
+                  ? `<span class="gs-checkin-confirm-pill"><span class="gs-checkin-confirm-icon" aria-hidden="true">✓</span> ${escapeHtml(
+                      String(ev.confirmed_date || ""),
+                    )} ${escapeHtml(String(ev.confirmed_time || ""))}</span>`
                   : `<button type="button" class="gs-checkin-j-confirm secondary-btn compact-btn" data-checkin-confirm-id="${Number(ev.id)}">Подтвердить</button>`;
               return `<tr>
               <td>${escapeHtml(String(ev.created_date || ""))}</td>
               <td>${escapeHtml(String(ev.created_time || ""))}</td>
               <td>${escapeHtml(String(placeById[ev.place_id] || ev.place_id || ""))}</td>
-              <td>${levelTitle(ev.level)}</td>
+              <td>${levelBadgeHtml(ev.level)}</td>
               <td>${escapeHtml(String(ev.device_name || ""))}</td>
               <td>${escapeHtml(String(ev.comment || "").slice(0, 200))}</td>
               <td class="gs-checkin-actions-cell">${btn}</td>
             </tr>`;
             })
             .join("");
-          jouEl.innerHTML = `<div style="font-weight:600;margin:8px 0 4px">Журнал</div>
+          jouEl.innerHTML = `<div class="gs-checkin-section-title">Журнал</div>
             <table class="gs-checkin-table gs-checkin-table--boxed"><thead><tr>
               <th>Дата</th><th>Время</th><th>Место</th><th>Уровень</th><th>Имя</th><th>Комментарий</th><th></th>
             </tr></thead><tbody>${jRows}</tbody></table>`;

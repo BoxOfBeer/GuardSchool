@@ -327,6 +327,19 @@ function settingInputs(widget, index) {
       `<div class="settings-row"><button type="button" class="secondary-btn compact-btn" data-add-checkin-place="${index}">${t("w.checkinPlaceAdd")}</button></div>`,
     );
   }
+  if (widget.type === "checkin_submit" || widget.type === "checkin_monitor") {
+    parts.push(
+      widgetInput(
+        t("w.checkinFontSize"),
+        widget.settings.fontSize ?? 0,
+        `widget:${index}:settings.fontSize`,
+        "number",
+        "standard-input",
+      ),
+    );
+    parts.push(`<p class="hint">${t("w.checkinFontSizeHint")}</p>`);
+    parts.push(widgetToggle(t("w.bold"), widget.settings.bold === true, `widget:${index}:settings.bold`));
+  }
   return parts.join("");
 }
 
@@ -414,6 +427,14 @@ export function updateWidgetField(path, value) {
         widget.settings[key] = value === "" || !Number.isFinite(num) ? 85 : Math.max(0, Math.min(100, num));
       } else if (key === "imagesRotateSec") {
         widget.settings[key] = value === "" || !Number.isFinite(num) ? 0 : Math.max(0, Math.min(600, Math.round(num)));
+      } else if (
+        (widget.type === "checkin_submit" || widget.type === "checkin_monitor") &&
+        key === "fontSize"
+      ) {
+        widget.settings.fontSize =
+          value === "" || value == null || !Number.isFinite(num)
+            ? 0
+            : Math.max(0, Math.min(48, Math.round(num)));
       } else {
         widget.settings[key] = num;
       }

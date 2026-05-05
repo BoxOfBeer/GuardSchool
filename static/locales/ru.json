@@ -265,6 +265,8 @@
   "w.checkinLabelPlace": "Подпись поля «Место»",
   "w.checkinLabelDevice": "Подпись поля «Имя»",
   "w.checkinLabelSave": "Текст кнопки «Сохранить»",
+  "w.checkinFontSize": "Размер шрифта (px)",
+  "w.checkinFontSizeHint": "0 — по умолчанию (адаптивно к экрану); 10–48 — фиксированный размер.",
   "w.checkinPlaceId": "Код места (id)",
   "w.checkinPlaceTitle": "Название",
   "w.checkinPlaceRemove": "Удалить",
