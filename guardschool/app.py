@@ -3206,6 +3206,65 @@ def _decode_saas_tenant_cookie_value(value: str) -> str | None:
     return None
 
 
+def _screen_api_tenant_slug(request: Request) -> str:
+    """
+    Slug тенанта для SQLite API экрана (push и т.д.) — совпадает с отметками:
+    сперва contextvar (middleware: cookie/decoded subdomain; Bearer tv_devices → set_tenant_slug),
+    затем декодированное значение gs_saas_tenant. Сырую строку cookie «b64.…» в БД не кладём.
+    """
+    try:
+        from .tenant_ctx import tenant_slug as _tg
+
+        ctx = str(_tg() or "").strip()
+        if ctx:
+            return ctx
+    except Exception:
+        pass
+    ck = _decode_saas_tenant_cookie_value(request.cookies.get(SAAS_TENANT_COOKIE) or "")
+    if ck:
+        return ck
+    return "local"
+
+
+def _pwa_manifest_resolve_tenant_slug(request: Request, screen_slug_norm: str) -> str | None:
+    """Тенант для PWA-manifest: контекст/cookie, иначе ?gs_tv_token= + slug (SaaS). Non-SaaS — не None."""
+    if deployment_mode() != "saas":
+        return _screen_api_tenant_slug(request) or "local"
+    resolved = _screen_api_tenant_slug(request)
+    if resolved and resolved != "local":
+        return resolved
+    tok = str(request.query_params.get("gs_tv_token") or "").strip()
+    if not tok or not saas_db_enabled():
+        return None
+    slug_key = (screen_slug_norm or "").strip().lower()
+    if not slug_key:
+        return None
+    try:
+        th = tv_device_token_hash(tok)
+        now = utcnow()
+        with connect_public() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT tenant_slug, status, expires_at FROM tv_devices
+                    WHERE token_hash=%s AND lower(trim(screen_slug))=%s
+                    """,
+                    (th, slug_key),
+                )
+                row = cur.fetchone()
+        if not row:
+            return None
+        tenant_from_device, status, expires_at = row[0], row[1], row[2]
+        if status != "active":
+            return None
+        if expires_at is not None and expires_at <= now:
+            return None
+        out = str(tenant_from_device or "").strip().lower()
+        return out or None
+    except Exception:
+        return None
+
+
 def _school_entry_url() -> str:
     scheme = (os.environ.get("GUARDSCHOOL_PUBLIC_SCHOOL_SCHEME") or "https").strip().lower().rstrip("/") or "https"
     host = _public_school_host_normalized() or "school.guarddoc.ru"
@@ -4536,8 +4595,10 @@ def screen_page(request: Request, slug: str) -> HTMLResponse:
     slug_for_manifest = _normalize_screen_slug_for_api(slug) or str(slug or "").strip().lower()
     manifest_line = ""
     if slug_for_manifest and re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", slug_for_manifest):
+        tok_q = str(request.query_params.get("gs_tv_token") or "").strip()
+        q = f"?gs_tv_token={quote(tok_q, safe='')}" if tok_q else ""
         manifest_line = (
-            f'<link rel="manifest" href="/pwa/screen/{quote(slug_for_manifest, safe="")}.webmanifest" />\n'
+            f'<link rel="manifest" href="/pwa/screen/{quote(slug_for_manifest, safe="")}.webmanifest{q}" />\n'
         )
     html = raw.replace("__GS_ASSETS_VER__", APP_VERSION).replace("__GS_PWA_MANIFEST_LINK__", manifest_line)
     resp = HTMLResponse(
@@ -6248,7 +6309,7 @@ async def api_push_subscribe(request: Request, slug: str) -> dict[str, Any]:
         min_interval_sec = int(body.get("min_interval_sec") or 300) if isinstance(body, dict) else 300
     except (TypeError, ValueError):
         min_interval_sec = 300
-    tenant_id = str(request.cookies.get(SAAS_TENANT_COOKIE) or "local").strip() or "local"
+    tenant_id = _screen_api_tenant_slug(request)
     upsert_push_subscription(
         tenant_id=tenant_id,
         screen_slug=slug_key,
@@ -6272,7 +6333,7 @@ async def api_push_unsubscribe(request: Request, slug: str) -> dict[str, Any]:
     endpoint = str((body or {}).get("endpoint") or "").strip() if isinstance(body, dict) else ""
     if not endpoint:
         raise HTTPException(status_code=400, detail="endpoint required")
-    tenant_id = str(request.cookies.get(SAAS_TENANT_COOKIE) or "local").strip() or "local"
+    tenant_id = _screen_api_tenant_slug(request)
     n = delete_push_subscription(tenant_id=tenant_id, screen_slug=slug_key, endpoint=endpoint)
     return {"status": "ok", "deleted": n}
 
@@ -6286,7 +6347,7 @@ def api_push_test(request: Request, slug: str) -> dict[str, Any]:
     _require_tv_access_for_screen(request, slug_key)
     if not _push_enabled_on_server():
         raise HTTPException(status_code=503, detail="Push на сервере не настроен (VAPID).")
-    tenant_id = str(request.cookies.get(SAAS_TENANT_COOKIE) or "local").strip() or "local"
+    tenant_id = _screen_api_tenant_slug(request)
     subs = list_push_subscriptions(tenant_id=tenant_id, screen_slug=slug_key, topic=None)
     if not subs:
         raise HTTPException(
@@ -6851,22 +6912,21 @@ def pwa_manifest_for_tv_pair(request: Request, code: str, screen_slug: str) -> J
 @app.get("/pwa/screen/{screen_slug}.webmanifest", response_class=JSONResponse)
 def pwa_manifest_for_screen_standalone(request: Request, screen_slug: str) -> JSONResponse:
     """
-    Manifest для прямого URL /screen/<slug> (school…/screen/tv-2): браузер подхватывает <link rel=manifest>.
-    Нужна cookie школы (`gs_saas_tenant`): её выставляет открытие экрана с `gs_tv_token` или вход.
+    Manifest для /screen/<slug>: tenant из middleware (cookie), из декодированной cookie,
+    либо из ?gs_tv_token= (совпадает со slug экрана) — когда cookie ещё не успела сохраниться.
     """
     slug_n = _normalize_screen_slug_for_api(str(screen_slug or ""))
     if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", slug_n):
         raise HTTPException(status_code=404, detail="Not found.")
-    tenant_slug: str | None = None
     if deployment_mode() == "saas":
-        tenant_slug = _decode_saas_tenant_cookie_value(request.cookies.get(SAAS_TENANT_COOKIE) or "")
+        tenant_slug = _pwa_manifest_resolve_tenant_slug(request, slug_n)
         if not tenant_slug:
             raise HTTPException(
                 status_code=404,
-                detail="Откройте страницу экрана с токеном или войдите в школу, затем обновите (нужна cookie тенанта).",
+                detail="Откройте экран с ?gs_tv_token=… или войдите в школу; обновите страницу (нужна привязка к школе).",
             )
     else:
-        tenant_slug = "local"
+        tenant_slug = _pwa_manifest_resolve_tenant_slug(request, slug_n) or "local"
     prev_tenant = None
     try:
         from .tenant_ctx import tenant_slug as _tenant_slug_get
