@@ -1265,6 +1265,8 @@
       const mw = (screen.widgets || []).find((w) => String(w.id) === link && w.type === "checkin_monitor");
       if (mw) return sanitizePlacesClient((mw.settings || {}).places);
     }
+    const mons = (screen.widgets || []).filter((w) => w && w.type === "checkin_monitor");
+    if (mons.length === 1) return sanitizePlacesClient((mons[0].settings || {}).places);
     return sanitizePlacesClient(st.places);
   }
 

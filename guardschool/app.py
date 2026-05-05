@@ -1820,12 +1820,16 @@ def _find_monitor_widget(screen: dict[str, Any], widget_id: str) -> dict[str, An
 
 
 def _resolve_checkin_submit_places(screen: dict[str, Any], submit_w: dict[str, Any]) -> list[dict[str, str]]:
+    """Места только из виджета «Сводка» (явная ссылка или ровно одна сводка на экране)."""
     st = submit_w.get("settings") or {}
     link = str(st.get("monitor_widget_id") or "").strip()
     if link:
         mw = _find_monitor_widget(screen, link)
         if mw:
             return sanitize_places_list((mw.get("settings") or {}).get("places"))
+    mons = [w for w in (screen.get("widgets") or []) if w and w.get("type") == "checkin_monitor"]
+    if len(mons) == 1:
+        return sanitize_places_list((mons[0].get("settings") or {}).get("places"))
     return sanitize_places_list(st.get("places"))
 
 
