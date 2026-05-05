@@ -6,6 +6,9 @@ import { t, tf } from "./i18n-helpers.js";
 import { api } from "./api-client.js";
 import { escapeHtml, escapeHtmlAttr } from "./escape-html.js";
 
+/** Как на сервере gs_checkin._PLACE_ID_RE — только допустимые id мест. */
+const CHECKIN_PLACE_ID_RE = /^[a-zA-Z0-9_-]{1,64}$/;
+
 const WIDGET_TYPE_KEYS = new Set([
   "date",
   "time",
@@ -339,7 +342,15 @@ function settingInputs(widget, index) {
       : `<tr><td colspan="${placesLocked ? 2 : 3}" class="checkin-places-empty"><span class="hint">${escapeHtml(t("w.checkinNoPlaces"))}</span></td></tr>`;
     const headDel = placesLocked ? "" : `<th class="checkin-places-actions-col" scope="col"></th>`;
     parts.push(`<div class="checkin-places-editor">
-      ${placesLocked ? `<div class="checkin-places-sync-notice" role="status">${syncMsg}</div>` : ""}
+      ${
+        placesLocked
+          ? `<div class="checkin-places-sync-notice" role="status">${syncMsg}</div>
+      <div class="checkin-places-sync-toolbar">
+        <button type="button" class="secondary-btn compact-btn" data-sync-checkin-places="${index}">${escapeHtml(t("w.checkinPlacesSyncButton"))}</button>
+        <span class="hint checkin-places-sync-hint">${escapeHtml(t("w.checkinPlacesSyncButtonHint"))}</span>
+      </div>`
+          : ""
+      }
       <table class="checkin-places-table">
         <thead><tr>
           <th scope="col" class="checkin-places-code-col">${escapeHtml(t("w.checkinPlacesTableCode"))}</th>
@@ -558,6 +569,52 @@ export function removeWidgetImageSlot(widgetIndex, slotIndex) {
   deps.renderPreview();
 }
 
+/**
+ * Скопировать места из первого виджета «Сводка отметок» на экране с slug = settings.events_screen_slug.
+ */
+export function syncCheckinPlacesFromLinkedScreen(widgetIndex) {
+  const sc = screen();
+  if (!sc || !state.config?.screens?.length) return;
+  const w = sc.widgets[widgetIndex];
+  if (!w || w.type !== "checkin_monitor") return;
+  const syncSlug = String(w.settings?.events_screen_slug || "").trim();
+  if (!syncSlug) return;
+  const want = syncSlug.toLowerCase();
+  const srcScreen = state.config.screens.find((s) => String(s?.slug || "").trim().toLowerCase() === want);
+  if (!srcScreen) {
+    window.alert(t("w.checkinPlacesSyncNoScreen"));
+    return;
+  }
+  const monitors = (srcScreen.widgets || []).filter((x) => x && x.type === "checkin_monitor");
+  const srcMw = monitors[0];
+  if (!srcMw) {
+    window.alert(t("w.checkinPlacesSyncNoMonitor"));
+    return;
+  }
+  const raw = Array.isArray(srcMw.settings?.places) ? srcMw.settings.places : [];
+  const places = [];
+  const seen = new Set();
+  for (const p of raw) {
+    const id = String(p?.id ?? "").trim().slice(0, 64);
+    const title = String(p?.title ?? "").trim().slice(0, 200);
+    if (!id || !CHECKIN_PLACE_ID_RE.test(id) || seen.has(id)) continue;
+    seen.add(id);
+    places.push({ id, title: title || id });
+    if (places.length >= 500) break;
+  }
+  if (!places.length) {
+    window.alert(t("w.checkinPlacesSyncEmpty"));
+    return;
+  }
+  const confirmText = t("w.checkinPlacesSyncConfirm").replace(/\{\{slug\}\}/g, syncSlug);
+  if (!window.confirm(confirmText)) return;
+  if (!w.settings) w.settings = {};
+  w.settings.places = places.map((p) => ({ ...p }));
+  deps.render();
+  if (state.widgetModalWidgetId === w.id) syncWidgetModal();
+  deps.renderPreview();
+}
+
 export function addCheckinPlaceSlot(widgetIndex) {
   const sc = screen();
   if (!sc) return;
@@ -666,6 +723,9 @@ function bindWidgetEditorEvents(root, index) {
       const [wi, si] = raw.split(":");
       removeCheckinPlaceSlot(Number(wi), Number(si));
     };
+  });
+  root.querySelectorAll("[data-sync-checkin-places]").forEach((button) => {
+    button.onclick = () => syncCheckinPlacesFromLinkedScreen(Number(button.dataset.syncCheckinPlaces));
   });
 }
 

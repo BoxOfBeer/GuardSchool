@@ -2822,6 +2822,21 @@ label.bell-file-upload:hover {
   color: rgba(226, 232, 240, 0.95);
 }
 
+.checkin-places-sync-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.checkin-places-sync-hint {
+  flex: 1 1 100%;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .checkin-places-table {
   width: 100%;
   border-collapse: collapse;
