@@ -90,8 +90,6 @@ export const elements = {
   screenTextOutlineColor: document.getElementById("screen-text-outline-color"),
   pickBackgroundBtn: document.getElementById("pick-background-btn"),
   widgetList: document.getElementById("widget-list"),
-  widgetAddType: document.getElementById("widget-add-type"),
-  widgetAddBtn: document.getElementById("widget-add-btn"),
   widgetEditorModal: document.getElementById("widget-editor-modal"),
   widgetEditorModalTitle: document.getElementById("widget-editor-modal-title"),
   widgetEditorModalBody: document.getElementById("widget-editor-modal-body"),

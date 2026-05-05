@@ -53,7 +53,6 @@ import {
   closeWidgetModal,
   syncWidgetModal,
   bindWidgetModalOnce,
-  openWidgetModal,
   renderWidgets,
 } from "./admin/widgets.js";
 import { renderHistory } from "./admin/history.js";
@@ -143,8 +142,8 @@ function setWidgetTypeHiddenInPalette(wtype, hidden) {
   if (!hidden && idx >= 0) arr.splice(idx, 1);
   arr = arr.filter((x) => WIDGET_TYPE_KEYS.has(x));
   state.config.admin_palette_hidden_types = arr;
+  ensurePaletteWidgetInstancesOnSelectedScreen();
   renderWidgets();
-  syncWidgetAddToolbar();
 }
 
 function syncProgramSettingsFieldsFromState() {
@@ -840,14 +839,30 @@ function screenHasSingletonId(sc, singletonId) {
   return (sc.widgets || []).some((w) => w && String(w.id) === String(singletonId));
 }
 
-function createNewWidgetForAdminPaletteType(typ) {
+/** Для каждого типа из палитры программы создаёт экземпляр на текущем экране, если его ещё нет (в т.ч. новые типы после обновления). */
+function ensurePaletteWidgetInstancesOnSelectedScreen() {
+  const sc = selectedScreen();
+  if (!sc || !state.config) return;
+  if (!Array.isArray(sc.widgets)) sc.widgets = [];
+  for (const typ of PALETTE_TYPES_ORDER) {
+    if (!WIDGET_TYPE_KEYS.has(typ)) continue;
+    if (isWidgetTypeHiddenInAdminPalette(typ)) continue;
+    const has = (sc.widgets || []).some((w) => w && String(w.type) === typ);
+    if (has) continue;
+    const w = createWidgetStubForPaletteType(typ);
+    if (!w) continue;
+    clampWidget(w);
+    sc.widgets.push(w);
+  }
+}
+
+function createWidgetStubForPaletteType(typ) {
   const sc = selectedScreen();
   if (!sc || !typ) return null;
   const typeKey = String(typ);
   if (WIDGET_SINGLETON_IDS[typeKey]) {
     const expectId = WIDGET_SINGLETON_IDS[typeKey];
     if (screenHasSingletonId(sc, expectId)) {
-      alert(t("widgets.singletonExists"));
       return null;
     }
     const w = widgetStubFromDefaultTemplate(typeKey);
@@ -936,28 +951,6 @@ function createNewWidgetForAdminPaletteType(typ) {
     };
   }
   return null;
-}
-
-function syncWidgetAddToolbar() {
-  const sel = elements.widgetAddType;
-  const btn = elements.widgetAddBtn;
-  if (!sel || !btn) return;
-  const types = PALETTE_TYPES_ORDER.filter((typ) => WIDGET_TYPE_KEYS.has(typ) && !isWidgetTypeHiddenInAdminPalette(typ));
-  if (!types.length) {
-    sel.innerHTML = `<option value="">${escapeHtml(t("widgets.addEmptyPalette"))}</option>`;
-    sel.disabled = true;
-    btn.disabled = true;
-    return;
-  }
-  sel.disabled = false;
-  btn.disabled = false;
-  sel.innerHTML = types
-    .map((typ) => {
-      const lab = t(`widget.type.${typ}`);
-      const label = lab !== `widget.type.${typ}` ? lab : typ;
-      return `<option value="${escapeHtmlAttr(typ)}">${escapeHtml(label)}</option>`;
-    })
-    .join("");
 }
 
 function renderMobileWidgetCheckboxes() {
@@ -2264,9 +2257,9 @@ function render() {
 
   renderSectionTabs();
   renderSectionVisibility();
+  ensurePaletteWidgetInstancesOnSelectedScreen();
   renderForm();
   renderWidgets();
-  syncWidgetAddToolbar();
   if (state.widgetModalWidgetId) syncWidgetModal();
   renderPreview();
   renderOverrides();
@@ -2566,23 +2559,6 @@ function bindForm() {
         }
       }
     });
-  }
-  if (elements.widgetAddBtn && !elements.widgetAddBtn.dataset.gsBoundWidgetAdd) {
-    elements.widgetAddBtn.dataset.gsBoundWidgetAdd = "1";
-    elements.widgetAddBtn.onclick = () => {
-      const sel = elements.widgetAddType;
-      const v = sel && !sel.disabled ? String(sel.value || "").trim() : "";
-      if (!v) return;
-      const w = createNewWidgetForAdminPaletteType(v);
-      if (!w) return;
-      clampWidget(w);
-      const sc = selectedScreen();
-      if (!sc) return;
-      if (!Array.isArray(sc.widgets)) sc.widgets = [];
-      sc.widgets.push(w);
-      render();
-      openWidgetModal(w.id);
-    };
   }
 }
 
