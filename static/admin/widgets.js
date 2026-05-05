@@ -298,6 +298,8 @@ function settingInputs(widget, index) {
   }
   if (widget.type === "checkin_monitor") {
     parts.push(widgetInput(t("w.checkinPanelTitle"), widget.settings.panel_title || "", `widget:${index}:settings.panel_title`, "text", "standard-input"));
+    parts.push(widgetInput(t("w.checkinEventsScreenSlug"), widget.settings.events_screen_slug || "", `widget:${index}:settings.events_screen_slug`, "text", "standard-input"));
+    parts.push(`<p class="hint">${t("w.checkinEventsScreenSlugHint")}</p>`);
     parts.push(`<p class="hint">${t("w.checkinPlacesHintMonitor")}</p>`);
   }
   if (widget.type === "checkin_submit") {

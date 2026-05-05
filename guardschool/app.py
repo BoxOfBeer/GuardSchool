@@ -1475,6 +1475,7 @@ def normalize_widget(widget: dict[str, Any]) -> dict[str, Any]:
         widget["settings"].setdefault("places", [])
         widget["settings"].setdefault("panel_title", "Сводка мест")
         widget["settings"].setdefault("labels", {})
+        widget["settings"].setdefault("events_screen_slug", "")
         if not isinstance(widget["settings"].get("places"), list):
             widget["settings"]["places"] = []
         if not isinstance(widget["settings"].get("labels"), dict):

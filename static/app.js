@@ -947,6 +947,7 @@ function createWidgetStubForPaletteType(typ) {
       settings: {
         places: [{ id: "place_a", title: "Место A" }],
         panel_title: "Сводка мест",
+        events_screen_slug: "",
         labels: {},
         backdrop: true,
         fontSize: 0,
