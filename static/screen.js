@@ -574,7 +574,8 @@ function clearDevicePrefs(slug) {
 }
 
 /** Типы, которые на устройстве не фильтруются через gs_mw — как на экране (отметки и т.п.). */
-const GS_DEVICE_MW_EXCLUDED_TYPES = new Set(["checkin_submit", "checkin_monitor", "emergency"]);
+/** В gs_mw и в панели устройства не участвует только аварийный (глобально на экране). */
+const GS_DEVICE_MW_EXCLUDED_TYPES = new Set(["emergency"]);
 
 function gsMwStringSansExcluded(raw) {
   return String(raw || "")
@@ -681,6 +682,8 @@ const GS_DEVICE_WIDGET_TYPE_LABELS = {
   external_news: "Внешние новости",
   marquee: "Бегущая строка",
   image: "Фон / картинка",
+  checkin_submit: "Оперативная отметка",
+  checkin_monitor: "Сводка отметок",
 };
 
 /** Первый виджет типа `type` в конфиге экрана (в т.ч. только внутри карусели — его нет в mobile-stack / sortWidgetsForDom). */

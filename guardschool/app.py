@@ -208,7 +208,7 @@ ADMIN_PALETTE_WIDGET_TYPES = frozenset(
     }
 )
 
-# Порядок чекбоксов «Виджеты (по типам)» на ТВ (панель устройства); emergency не показываем.
+# Порядок чекбоксов «Виджеты (по типам)» на ТВ (панель устройства); в панель не входит только emergency.
 _DEVICE_WIDGET_TAB_ORDER: tuple[str, ...] = (
     "date",
     "time",
@@ -229,22 +229,16 @@ _DEVICE_WIDGET_TAB_ORDER: tuple[str, ...] = (
     "checkin_monitor",
 )
 
-# Не показывать в панели «Виджеты (по типам)» на ТВ (gs_mw): отметки всегда как в конфиге экрана.
-_TV_DEVICE_PANEL_EXCLUDED_TYPES = frozenset({"checkin_submit", "checkin_monitor", "emergency"})
+# Не показывать в панели «Виджеты (по типам)»: только аварийный (остальные типы — по факту включённых виджетов на экране).
+_TV_DEVICE_PANEL_EXCLUDED_TYPES = frozenset({"emergency"})
 
 
-def device_widget_types_for_tv_device_panel(config: dict[str, Any], widgets: list[Any]) -> list[str]:
+def device_widget_types_for_tv_device_panel(_config: dict[str, Any], widgets: list[Any]) -> list[str]:
     """
-    Ключи типов для фильтра gs_mw на ТВ: тип разрешён в программе (не в admin_palette_hidden_types)
-    и на экране есть хотя бы один включённый виджет этого типа (emergency не в панели).
+    Ключи типов для фильтра gs_mw на ТВ: есть включённый виджет этого типа на экране.
+    Скрытые в программе типы (admin_palette_hidden_types) тоже показываем, если виджет на экране включён.
+    Аварийный (emergency) в панель не включается.
     """
-    raw_h = config.get("admin_palette_hidden_types")
-    hidden: set[str] = set()
-    if isinstance(raw_h, list):
-        for x in raw_h:
-            s = str(x or "").strip()
-            if s:
-                hidden.add(s)
     on_screen_enabled: set[str] = set()
     if isinstance(widgets, list):
         for w in widgets:
@@ -262,16 +256,12 @@ def device_widget_types_for_tv_device_panel(config: dict[str, Any], widgets: lis
             continue
         if typ not in on_screen_enabled:
             continue
-        if typ in hidden:
-            continue
         if typ not in ADMIN_PALETTE_WIDGET_TYPES:
             continue
         out.append(typ)
         seen.add(typ)
     for typ in sorted(on_screen_enabled):
         if typ in seen or typ in _TV_DEVICE_PANEL_EXCLUDED_TYPES:
-            continue
-        if typ in hidden:
             continue
         if typ not in ADMIN_PALETTE_WIDGET_TYPES:
             continue
