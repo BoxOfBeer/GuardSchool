@@ -179,7 +179,8 @@ SINGLETON_WIDGET_IDS = {
     "image": "image",
 }
 
-# Типы виджетов, которые можно скрыть из списка в админке (не влияет на ТВ и на сетку превью).
+# Типы виджетов, которые можно скрыть из списка в админке (карточки «Виджеты» и селектор добавления).
+# Плюс: типы не из этого множества не попадают в палитру программы, но если виджет есть на экране — он учитывается на ТВ.
 ADMIN_PALETTE_WIDGET_TYPES = frozenset(
     {
         "date",
@@ -202,6 +203,69 @@ ADMIN_PALETTE_WIDGET_TYPES = frozenset(
         "checkin_monitor",
     }
 )
+
+# Порядок чекбоксов «Виджеты (по типам)» на ТВ (панель устройства); emergency не показываем.
+_DEVICE_WIDGET_TAB_ORDER: tuple[str, ...] = (
+    "date",
+    "time",
+    "text",
+    "bell_status",
+    "bell_countdown",
+    "schedule",
+    "carousel",
+    "holidays",
+    "announcements",
+    "school_news",
+    "rss_news",
+    "rss_feed",
+    "external_news",
+    "marquee",
+    "image",
+    "checkin_submit",
+    "checkin_monitor",
+)
+
+
+def device_widget_types_for_tv_device_panel(config: dict[str, Any], widgets: list[Any]) -> list[str]:
+    """
+    Ключи типов для фильтра gs_mw на ТВ: объединение
+    - типов с галочкой в настройках программы (не в admin_palette_hidden_types),
+    - типов виджетов, реально присутствующих на экране (чтобы не потерять переключатель у старых конфигов).
+    """
+    raw_h = config.get("admin_palette_hidden_types")
+    hidden: set[str] = set()
+    if isinstance(raw_h, list):
+        for x in raw_h:
+            s = str(x or "").strip()
+            if s:
+                hidden.add(s)
+    on_screen: set[str] = set()
+    if isinstance(widgets, list):
+        for w in widgets:
+            if not isinstance(w, dict):
+                continue
+            typ = str(w.get("type") or "").strip()
+            if typ and typ != "emergency":
+                on_screen.add(typ)
+    out: list[str] = []
+    seen: set[str] = set()
+    for typ in _DEVICE_WIDGET_TAB_ORDER:
+        if typ in seen or typ == "emergency":
+            continue
+        on = typ in on_screen
+        if not on and typ not in ADMIN_PALETTE_WIDGET_TYPES:
+            continue
+        if not on and typ in hidden:
+            continue
+        out.append(typ)
+        seen.add(typ)
+    for typ in sorted(on_screen):
+        if typ in seen or typ == "emergency":
+            continue
+        out.append(typ)
+        seen.add(typ)
+    return out
+
 
 DEFAULT_BELL_TRIGGER_SEC_WINDOW = 25
 PRE_BELL_LEAD_MINUTES = 1
@@ -5399,6 +5463,7 @@ def get_screen(request: Request, slug: str) -> JSONResponse:
     screen_out = apply_emergency_template_to_screen(screen, config)
     payload = {
         "screen": screen_out,
+        "device_widget_types": device_widget_types_for_tv_device_panel(config, screen_out.get("widgets") or []),
         "pickable_classes": pickable,
         "serverTime": datetime.now().isoformat(),
         "schedule": sched_body,

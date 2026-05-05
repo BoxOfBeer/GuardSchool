@@ -182,6 +182,13 @@
 
         <div class="card span-2 editor-card-widgets" data-section="widgets">
           <h2 class="card-subtitle-screen" data-i18n="widgets.title">Виджеты</h2>
+          <div class="widget-add-bar settings-row" style="flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:12px">
+            <label class="settings-label" for="widget-add-type"><span data-i18n="widgets.addLabel">Добавить на экран</span>
+              <select id="widget-add-type" class="standard-input" style="min-width:min(100%,220px)"></select>
+            </label>
+            <button type="button" id="widget-add-btn" class="primary-btn compact-btn" data-i18n="widgets.addBtn">Добавить</button>
+          </div>
+          <p class="hint" style="margin-top:-4px;margin-bottom:10px" data-i18n="widgets.addHint">Галочки в «Настройки → Общее» задают, какие типы доступны в списке ниже. Карточки — все виджеты текущего экрана.</p>
           <div id="widget-list" class="widget-list widget-list-grid"></div>
         </div>
 

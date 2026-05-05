@@ -53,6 +53,7 @@ import {
   closeWidgetModal,
   syncWidgetModal,
   bindWidgetModalOnce,
+  openWidgetModal,
   renderWidgets,
 } from "./admin/widgets.js";
 import { renderHistory } from "./admin/history.js";
@@ -101,6 +102,23 @@ const PALETTE_TYPES_ORDER = [
   "checkin_monitor",
 ];
 
+/** Как SINGLETON_WIDGET_IDS на сервере — один экземпляр типа с фиксированным id. */
+const WIDGET_SINGLETON_IDS = {
+  date: "date",
+  time: "time",
+  text: "text",
+  bell_status: "bell_status",
+  bell_countdown: "bell_countdown",
+  schedule: "schedule",
+  holidays: "holidays",
+  announcements: "announcements",
+  school_news: "school_news",
+  rss_news: "rss_news",
+  marquee: "marquee",
+  emergency: "emergency",
+  image: "image",
+};
+
 function ensureAdminPaletteHidden() {
   if (!state.config) return;
   if (!Array.isArray(state.config.admin_palette_hidden_types)) {
@@ -126,6 +144,7 @@ function setWidgetTypeHiddenInPalette(wtype, hidden) {
   arr = arr.filter((x) => WIDGET_TYPE_KEYS.has(x));
   state.config.admin_palette_hidden_types = arr;
   renderWidgets();
+  syncWidgetAddToolbar();
 }
 
 function syncProgramSettingsFieldsFromState() {
@@ -808,6 +827,137 @@ function createDefaultScreen(index) {
       },
     ],
   };
+}
+
+function widgetStubFromDefaultTemplate(typ) {
+  const t = String(typ || "");
+  const tmpl = createDefaultScreen(1);
+  const found = tmpl.widgets.find((w) => w && w.type === t);
+  return found ? JSON.parse(JSON.stringify(found)) : null;
+}
+
+function screenHasSingletonId(sc, singletonId) {
+  return (sc.widgets || []).some((w) => w && String(w.id) === String(singletonId));
+}
+
+function createNewWidgetForAdminPaletteType(typ) {
+  const sc = selectedScreen();
+  if (!sc || !typ) return null;
+  const typeKey = String(typ);
+  if (WIDGET_SINGLETON_IDS[typeKey]) {
+    const expectId = WIDGET_SINGLETON_IDS[typeKey];
+    if (screenHasSingletonId(sc, expectId)) {
+      alert(t("widgets.singletonExists"));
+      return null;
+    }
+    const w = widgetStubFromDefaultTemplate(typeKey);
+    if (w) {
+      w.id = expectId;
+      w.type = typeKey;
+      w.enabled = true;
+      return w;
+    }
+    if (typeKey === "bell_countdown") {
+      return {
+        id: "bell_countdown",
+        type: "bell_countdown",
+        title: t("widget.type.bell_countdown"),
+        enabled: true,
+        x: 24,
+        y: 13,
+        w: 8,
+        h: 3,
+        settings: {
+          fontSize: 18,
+          titleFontSize: 18,
+          color: "#ffffff",
+          background: "rgba(15,23,42,0.55)",
+          bold: false,
+          backdrop: true,
+        },
+      };
+    }
+    return null;
+  }
+  if (typeKey === "carousel") {
+    const n = (sc.widgets || []).filter((x) => x && x.type === "carousel").length + 1;
+    return {
+      id: createWidgetId("carousel"),
+      type: "carousel",
+      title: tf("carousel.nameN", { n }),
+      enabled: true,
+      x: 0,
+      y: 2,
+      w: 24,
+      h: 11,
+      settings: {
+        startDelaySec: 0,
+        animation: "slide",
+        childWidgetIds: [],
+        childSlideSec: {},
+        backdrop: true,
+      },
+    };
+  }
+  if (typeKey === "checkin_submit") {
+    return {
+      id: createWidgetId("widget"),
+      type: "checkin_submit",
+      title: t("widget.type.checkin_submit"),
+      enabled: true,
+      x: 0,
+      y: 18,
+      w: 12,
+      h: 8,
+      settings: {
+        places: [],
+        monitor_widget_id: "",
+        labels: {},
+        backdrop: true,
+      },
+    };
+  }
+  if (typeKey === "checkin_monitor") {
+    return {
+      id: createWidgetId("widget"),
+      type: "checkin_monitor",
+      title: t("widget.type.checkin_monitor"),
+      enabled: true,
+      x: 12,
+      y: 18,
+      w: 14,
+      h: 8,
+      settings: {
+        places: [{ id: "place_a", title: "Место A" }],
+        panel_title: "Сводка мест",
+        labels: {},
+        backdrop: true,
+      },
+    };
+  }
+  return null;
+}
+
+function syncWidgetAddToolbar() {
+  const sel = elements.widgetAddType;
+  const btn = elements.widgetAddBtn;
+  if (!sel || !btn) return;
+  const types = PALETTE_TYPES_ORDER.filter((typ) => WIDGET_TYPE_KEYS.has(typ) && !isWidgetTypeHiddenInAdminPalette(typ));
+  if (!types.length) {
+    sel.innerHTML = `<option value="">${escapeHtml(t("widgets.addEmptyPalette"))}</option>`;
+    sel.disabled = true;
+    btn.disabled = true;
+    return;
+  }
+  sel.disabled = false;
+  btn.disabled = false;
+  sel.innerHTML = types
+    .map((typ) => {
+      const lab = t(`widget.type.${typ}`);
+      const label = lab !== `widget.type.${typ}` ? lab : typ;
+      return `<option value="${escapeHtmlAttr(typ)}">${escapeHtml(label)}</option>`;
+    })
+    .join("");
 }
 
 function renderMobileWidgetCheckboxes() {
@@ -2116,6 +2266,7 @@ function render() {
   renderSectionVisibility();
   renderForm();
   renderWidgets();
+  syncWidgetAddToolbar();
   if (state.widgetModalWidgetId) syncWidgetModal();
   renderPreview();
   renderOverrides();
@@ -2415,6 +2566,23 @@ function bindForm() {
         }
       }
     });
+  }
+  if (elements.widgetAddBtn && !elements.widgetAddBtn.dataset.gsBoundWidgetAdd) {
+    elements.widgetAddBtn.dataset.gsBoundWidgetAdd = "1";
+    elements.widgetAddBtn.onclick = () => {
+      const sel = elements.widgetAddType;
+      const v = sel && !sel.disabled ? String(sel.value || "").trim() : "";
+      if (!v) return;
+      const w = createNewWidgetForAdminPaletteType(v);
+      if (!w) return;
+      clampWidget(w);
+      const sc = selectedScreen();
+      if (!sc) return;
+      if (!Array.isArray(sc.widgets)) sc.widgets = [];
+      sc.widgets.push(w);
+      render();
+      openWidgetModal(w.id);
+    };
   }
 }
 

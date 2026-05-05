@@ -696,9 +696,7 @@ export function renderWidgets() {
   const sc = screen();
   if (!sc) return;
   elements.widgetList.innerHTML = "";
-  sc.widgets
-    .filter((widget) => !deps.isWidgetTypeHiddenInAdminPalette(widget.type))
-    .forEach((widget) => {
+  sc.widgets.forEach((widget) => {
       const div = document.createElement("div");
       div.className = "widget-item widget-item-compact";
       const wid = escapeHtmlAttr(String(widget.id));

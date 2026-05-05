@@ -595,6 +595,7 @@ const GS_DEVICE_WIDGET_TYPE_LABELS = {
   time: "Время",
   text: "Текст",
   bell_status: "Звонки",
+  bell_countdown: "До звонка",
   schedule: "Расписание",
   carousel: "Карусель",
   holidays: "Праздники",
@@ -1577,7 +1578,13 @@ function syncDeviceSettingsFromPayload(screenPayload) {
     }
 
     const screen = (screenPayload && screenPayload.screen) || {};
-    const types = [...new Set(((screen.widgets || [])).map((w) => w && w.type).filter(Boolean))].filter((t) => t !== "emergency");
+    const fromPayload = Array.isArray(screenPayload && screenPayload.device_widget_types)
+      ? screenPayload.device_widget_types.map((x) => String(x || "").trim()).filter((t) => t && t !== "emergency")
+      : [];
+    const types =
+      fromPayload.length > 0
+        ? fromPayload
+        : [...new Set(((screen.widgets || [])).map((w) => w && w.type).filter(Boolean))].filter((t) => t !== "emergency");
     const rawMwSaved = String(localStorage.getItem(`gs_mw_${slug}`) || "").trim();
     const selectedTypes = new Set(
       rawMwSaved ? rawMwSaved.split(",").map((x) => x.trim()).filter(Boolean) : []
