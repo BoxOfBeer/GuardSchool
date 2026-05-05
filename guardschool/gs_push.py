@@ -221,12 +221,34 @@ def rate_limit_decide(*, tenant_id: str, screen_slug: str, topic: str, min_inter
         return RateLimitDecision(True, 0)
 
 
+def _vapid_pem_from_env_or_file(*, env_var: str, file_var: str) -> str:
+    """
+    PEM из переменной или из файла (удобно для systemd EnvironmentFile,
+    где многострочные значения задать нельзя).
+    """
+    fp = (os.environ.get(file_var) or "").strip()
+    if fp:
+        try:
+            p = Path(fp)
+            if p.is_file():
+                return p.read_text(encoding="utf-8").strip()
+        except Exception:
+            pass
+    return (os.environ.get(env_var) or "").strip()
+
+
 def vapid_public_key() -> str:
-    return (os.environ.get("GUARDSCHOOL_VAPID_PUBLIC_KEY") or "").strip()
+    return _vapid_pem_from_env_or_file(
+        env_var="GUARDSCHOOL_VAPID_PUBLIC_KEY",
+        file_var="GUARDSCHOOL_VAPID_PUBLIC_KEY_FILE",
+    )
 
 
 def vapid_private_key() -> str:
-    return (os.environ.get("GUARDSCHOOL_VAPID_PRIVATE_KEY") or "").strip()
+    return _vapid_pem_from_env_or_file(
+        env_var="GUARDSCHOOL_VAPID_PRIVATE_KEY",
+        file_var="GUARDSCHOOL_VAPID_PRIVATE_KEY_FILE",
+    )
 
 
 def vapid_subject() -> str:
