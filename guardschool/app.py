@@ -5624,7 +5624,13 @@ async def api_checkin_post_event(request: Request) -> dict[str, Any]:
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from None
-    return {"status": "ok", **saved}
+    _en = enrich_checkin_event_for_client(cfg, {"created_at": saved.get("created_at"), "confirmed_at": ""})
+    return {
+        "status": "ok",
+        **saved,
+        "created_date": _en.get("created_date") or "",
+        "created_time": _en.get("created_time") or "",
+    }
 
 
 @app.get("/api/screen/{slug}/checkin/board")
@@ -5640,7 +5646,7 @@ def api_screen_checkin_board(
         raise HTTPException(status_code=404, detail="Экран не найден.")
     _require_tv_access_for_screen(request, slug_key)
     cfg = load_config()
-    tenant_id = str(request.cookies.get(SAAS_TENANT_COOKIE) or "local").strip() or "local"
+    tenant_id = _checkin_tenant_from_request(request)
     return _checkin_board_payload(cfg, tenant_id, slug_key, monitor_widget_id, period)
 
 
@@ -5665,7 +5671,7 @@ def api_screen_checkin_export_csv(
     places = sanitize_places_list((mw.get("settings") or {}).get("places"))
     place_titles = {p["id"]: p["title"] for p in places}
     pids = {p["id"] for p in places}
-    tenant_id = str(request.cookies.get(SAAS_TENANT_COOKIE) or "local").strip() or "local"
+    tenant_id = _checkin_tenant_from_request(request)
     period_n = _checkin_period_normalize(period)
     raw = journal_to_csv_bytes_filtered(
         tenant_id, cfg, period_n, pids if pids else None, slug_key, place_titles

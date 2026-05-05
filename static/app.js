@@ -1,5 +1,5 @@
 /* Загружается как модульный dependency до остальных импортов — window.GuardSchoolScreen всегда к моменту init. */
-import "./screen_widgets.js?v=1.02.042";
+import "./screen_widgets.js?v=1.02.043";
 import {
   setPreviewDeps,
   fetchPreviewPayloadOnce,

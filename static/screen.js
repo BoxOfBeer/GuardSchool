@@ -1276,6 +1276,26 @@ function render(screenPayload) {
     });
     root.appendChild(list);
   } else if (mobileMode) {
+    // Мобильный режим: вертикальная лента; при стабильном layout — мягкое обновление карточек (без полного сброса ленты).
+    if (canSoftUpdate && root.querySelector(".gs-mobile-list")) {
+      const list = root.querySelector(".gs-mobile-list");
+      const hiddenWidgetIds = GRef.widgetIdsHiddenByCarousel(screen);
+      list.querySelectorAll(".gs-mobile-widget").forEach((el) => {
+        const wid = el.dataset && el.dataset.widgetId;
+        if (!wid) return;
+        const widget = (screen.widgets || []).find((w) => String(w.id) === String(wid));
+        if (!widget || widget.enabled === false) return;
+        if (hiddenWidgetIds.has(widget.id) && widget.type !== "carousel") return;
+        if (widget.type === "carousel") return;
+        if (widget.type === "checkin_submit" || widget.type === "checkin_monitor") return;
+        if (!shouldSoftRefreshWidget(widget, scheduleChanged, staticChanged)) return;
+        if (widget.type === "text") {
+          el.style.background = widget.settings.background;
+        }
+        el.innerHTML = GRef.renderWidgetHtml(widget, schedule, screen, holidays, announcements || [], marquee || [], schoolNews || [], rssNews || []);
+        if (GRef.applyWidgetBackdropClass) GRef.applyWidgetBackdropClass(el, widget);
+      });
+    } else {
     // Мобильный режим: вертикальная лента; порядок = порядок в конфиге, координаты сетки не используются.
     (GRef.pruneStaleWidgetState || GRef.pruneStaleCarouselState)(screen);
     GRef.clearAllTimers();
@@ -1346,6 +1366,7 @@ function render(screenPayload) {
       });
     }
     root.appendChild(list);
+    }
   } else if (!canSoftUpdate) {
     const grid = document.createElement("div");
     grid.className = "screen-grid";
@@ -1437,6 +1458,8 @@ function render(screenPayload) {
       if (widget.enabled === false) return;
       if (hiddenWidgetIds.has(widget.id) && widget.type !== "carousel") return;
       if (widget.type === "carousel") return;
+      // Отметки: не пересобираем разметку при опросе — данные обновляют сами обработчики (таблицы / форма).
+      if (widget.type === "checkin_submit" || widget.type === "checkin_monitor") return;
       if (!shouldSoftRefreshWidget(widget, scheduleChanged, staticChanged)) return;
       const el = root.querySelector(`.screen-widget[data-widget-id="${gsCssEscape(String(widget.id))}"]`);
       if (!el) return;

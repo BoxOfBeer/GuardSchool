@@ -1438,7 +1438,13 @@
         return ctx;
       }
 
-      let hashCtx = applySavedForm();
+      let hashCtx;
+      if (!wrap.dataset.gsCheckinHydrated) {
+        hashCtx = applySavedForm();
+        wrap.dataset.gsCheckinHydrated = "1";
+      } else {
+        hashCtx = readDeviceHash();
+      }
 
       sel.addEventListener("change", () => {
         hashCtx = readDeviceHash();
@@ -1499,10 +1505,14 @@
               const cd = it && it.confirmed_date;
               const ct = it && it.confirmed_time;
               const lab = escapeHtml(String((rec && rec.label) || `#${id}`));
+              const sentAt =
+                rec && rec.created_date && rec.created_time
+                  ? ` <span class="gs-checkin-sent-at">· ${escapeHtml(String(rec.created_date))} ${escapeHtml(String(rec.created_time))}</span>`
+                  : "";
               const done = conf
                 ? ` <span class="gs-checkin-confirmed">✓ ${escapeHtml(String(cd || ""))} ${escapeHtml(String(ct || ""))}</span>`
                 : "";
-              return `<div class="gs-checkin-recent-row">${lab}${done}</div>`;
+              return `<div class="gs-checkin-recent-row">${lab}${sentAt}${done}</div>`;
             })
             .filter(Boolean)
             .join("");
@@ -1576,7 +1586,15 @@
           if (newId) {
             const { ctx, list } = loadRecentStorage();
             const label = `${pt} — ${device_name}`;
-            const next = [{ id: newId, label }, ...list.filter((x) => x && x.id !== newId)];
+            const next = [
+              {
+                id: newId,
+                label,
+                created_date: data.created_date || "",
+                created_time: data.created_time || "",
+              },
+              ...list.filter((x) => x && x.id !== newId),
+            ];
             saveRecentStorage(ctx, next.slice(0, 3));
             refreshRecentStatus();
           }
