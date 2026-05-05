@@ -407,6 +407,35 @@ function ensureDeviceSettingsUi() {
         <div class="gs-device-settings-title">Настройки для этого устройства</div>
         <button type="button" class="gs-device-settings-close" id="gs-device-settings-close">Закрыть</button>
       </div>
+      <div class="gs-device-settings-row" id="gs-device-pwa-install-row" hidden>
+        <div class="gs-device-settings-field-head">Ярлык на рабочий стол</div>
+        <div class="gs-device-classes-hint" id="gs-device-pwa-install-hint">
+          Чтобы добавить этот экран как приложение/ярлык, используйте кнопку ниже. Если браузер не поддерживает установку,
+          откройте меню браузера и выберите «Установить приложение» / «Добавить на главный экран».
+        </div>
+        <div class="gs-device-settings-actions" style="justify-content:flex-start;padding:10px 0 0">
+          <button type="button" class="gs-device-btn-primary" id="gs-device-pwa-install">Создать на рабочем столе</button>
+        </div>
+      </div>
+      <div class="gs-device-settings-row" id="gs-device-push-row" hidden>
+        <div class="gs-device-settings-field-head">Уведомления (оффлайн)</div>
+        <div class="gs-device-classes-hint">
+          Уведомления приходят даже когда страница закрыта (если браузер поддерживает Web Push). Запрос разрешения появится после нажатия кнопки.
+        </div>
+        <div class="gs-device-settings-checks" style="margin-top:8px">
+          <label class="opt"><input type="checkbox" id="gs-push-topic-emergency" checked /> <span>Аварийный режим</span></label>
+          <label class="opt"><input type="checkbox" id="gs-push-topic-checkin" checked /> <span>Новые отметки</span></label>
+        </div>
+        <div class="gs-device-settings-row" style="padding:0;margin-top:8px">
+          <label>Не чаще, чем раз в (сек)</label>
+          <input id="gs-push-min-interval" class="gs-device-settings-input" type="number" min="30" max="86400" value="300" />
+        </div>
+        <div class="gs-device-settings-actions" style="justify-content:flex-start;padding:10px 0 0">
+          <button type="button" class="gs-device-btn-primary" id="gs-push-enable">Включить уведомления</button>
+          <button type="button" class="gs-device-btn-secondary" id="gs-push-disable">Отключить</button>
+          <span class="hint" id="gs-push-status"></span>
+        </div>
+      </div>
       <div class="gs-device-settings-row" id="gs-device-classes-row" hidden>
         <div class="gs-device-settings-field-head">Классы расписания на этом устройстве</div>
         <div class="gs-device-classes-hint">Показывается только при включённом виджете «Расписание» на экране; список совпадает с полем «классы» в его настройках. По умолчанию все отмечены — снимите лишнее.</div>
@@ -459,6 +488,159 @@ function ensureDeviceSettingsUi() {
       },
       { capture: true }
     );
+
+    // PWA install UX (Android/PC Chromium).
+    try {
+      const row = panel.querySelector("#gs-device-pwa-install-row");
+      const installBtn = panel.querySelector("#gs-device-pwa-install");
+      if (installBtn) {
+        installBtn.addEventListener("click", async () => {
+          try {
+            const dp = window.__gsDeferredInstallPrompt;
+            if (dp && typeof dp.prompt === "function") {
+              await dp.prompt();
+              // In Chromium, dp.userChoice is a promise; ignore if absent.
+              try { await dp.userChoice; } catch (_) {}
+              window.__gsDeferredInstallPrompt = null;
+              if (row) row.hidden = true;
+              return;
+            }
+            alert(
+              "Браузер не показал диалог установки. Попробуйте: меню браузера → «Установить приложение» / «Добавить на главный экран»."
+            );
+          } catch (e) {
+            alert(e && e.message ? e.message : String(e));
+          }
+        });
+      }
+    } catch (_) {}
+
+    // Push UI.
+    try {
+      const pushRow = panel.querySelector("#gs-device-push-row");
+      const st = panel.querySelector("#gs-push-status");
+      const enableBtn = panel.querySelector("#gs-push-enable");
+      const disableBtn = panel.querySelector("#gs-push-disable");
+      const emCb = panel.querySelector("#gs-push-topic-emergency");
+      const chCb = panel.querySelector("#gs-push-topic-checkin");
+      const miInp = panel.querySelector("#gs-push-min-interval");
+      const canPush = Boolean(window.isSecureContext && window.Notification && navigator.serviceWorker && ("PushManager" in window));
+      if (pushRow && canPush) pushRow.hidden = false;
+
+      function setStatus(msg) {
+        if (st) st.textContent = msg || "";
+      }
+
+      function urlBase64ToUint8Array(base64String) {
+        const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+        const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+        const rawData = atob(base64);
+        const outputArray = new Uint8Array(rawData.length);
+        for (let i = 0; i < rawData.length; ++i) outputArray[i] = rawData.charCodeAt(i);
+        return outputArray;
+      }
+
+      async function getVapidKey(slug) {
+        const base = String(window.__lastScreenPollBase || "").trim().replace(/\/$/, "");
+        const url = `${base}/api/screen/${encodeURIComponent(slug)}/push/vapid-public-key`;
+        const r = await window.gsCheckinApiFetch(url);
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(data.detail || `HTTP ${r.status}`);
+        if (!data.enabled) throw new Error("Push не настроен на сервере (нет VAPID ключей).");
+        if (!data.public_key) throw new Error("Пустой VAPID public key.");
+        return String(data.public_key);
+      }
+
+      async function subscribePush() {
+        const slug = getSlug();
+        if (!slug) throw new Error("empty slug");
+        const perm = await Notification.requestPermission();
+        if (perm !== "granted") throw new Error("Разрешение на уведомления не выдано.");
+        const reg = await navigator.serviceWorker.ready;
+        const vapid = await getVapidKey(slug);
+        const sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(vapid),
+        });
+        const topics = {
+          emergency: Boolean(emCb && emCb.checked),
+          checkin: Boolean(chCb && chCb.checked),
+        };
+        const mi = Math.max(30, Math.min(86400, Number(miInp && miInp.value) || 300));
+        const base = String(window.__lastScreenPollBase || "").trim().replace(/\/$/, "");
+        const url = `${base}/api/screen/${encodeURIComponent(slug)}/push/subscribe`;
+        const r = await window.gsCheckinApiFetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ subscription: sub.toJSON(), topics, min_interval_sec: mi }),
+        });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(data.detail || `HTTP ${r.status}`);
+        setStatus("Уведомления включены.");
+      }
+
+      async function unsubscribePush() {
+        const slug = getSlug();
+        const reg = await navigator.serviceWorker.ready;
+        const sub = await reg.pushManager.getSubscription();
+        if (!sub) {
+          setStatus("Подписки не было.");
+          return;
+        }
+        const ep = sub.endpoint || "";
+        try { await sub.unsubscribe(); } catch (_) {}
+        const base = String(window.__lastScreenPollBase || "").trim().replace(/\/$/, "");
+        const url = `${base}/api/screen/${encodeURIComponent(slug)}/push/unsubscribe`;
+        await window.gsCheckinApiFetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ endpoint: ep }),
+        }).catch(() => {});
+        setStatus("Уведомления отключены.");
+      }
+
+      if (enableBtn) enableBtn.addEventListener("click", () => { setStatus(""); subscribePush().catch((e) => setStatus(e.message || String(e))); });
+      if (disableBtn) disableBtn.addEventListener("click", () => { setStatus(""); unsubscribePush().catch((e) => setStatus(e.message || String(e))); });
+    } catch (_) {}
+  } catch (_) {}
+}
+
+// Capture install prompt when browser allows it.
+try {
+  window.addEventListener("beforeinstallprompt", (e) => {
+    try {
+      e.preventDefault();
+      window.__gsDeferredInstallPrompt = e;
+      const row = document.getElementById("gs-device-pwa-install-row");
+      if (row) row.hidden = false;
+    } catch (_) {}
+  });
+} catch (_) {}
+
+function gsMaybeRegisterServiceWorker() {
+  try {
+    if (!("serviceWorker" in navigator)) return;
+    if (!window.isSecureContext) return;
+    // Не регистрируем SW на подозрительных ТВ/WebView: слишком часто ломаются Promise/caches.
+    const ua = String(navigator.userAgent || "");
+    if (/SMART-TV|SmartTV|Tizen|Web0S|WebOS|NetCast|HbbTV|AFTB|AFTS|BRAVIA|Viera|TV/i.test(ua)) return;
+    navigator.serviceWorker.register("/sw.js").catch(() => {});
+  } catch (_) {}
+}
+
+function gsMaybeAttachSaasManifestForScreenSlug(slug) {
+  try {
+    const s = String(slug || "").trim().toLowerCase();
+    if (!s) return;
+    const code = (localStorage.getItem(`gs_pwa_tv_code__${s}`) || "").trim().toLowerCase();
+    if (!code) return;
+    let link = document.querySelector("link[rel='manifest']");
+    if (!link) {
+      link = document.createElement("link");
+      link.rel = "manifest";
+      document.head.appendChild(link);
+    }
+    link.href = `/pwa/t/${encodeURIComponent(code)}/${encodeURIComponent(s)}.webmanifest`;
   } catch (_) {}
 }
 
@@ -1976,6 +2158,8 @@ window.setInterval(() => {
 ensureTvStylesheet();
 /* Полную перезагрузку страницы не делаем: браузер снова блокирует звук до жеста.
    Данные ТВ и так подтягиваются по таймеру через refresh() без reload. */
+try { gsMaybeAttachSaasManifestForScreenSlug(getSlug()); } catch (_) {}
+gsMaybeRegisterServiceWorker();
 refresh();
 
 // Если браузер «подвис» или перестал рендерить, пробуем мягко восстановиться.

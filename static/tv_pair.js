@@ -64,6 +64,32 @@ function getDeviceLabel() {
   }
 }
 
+function maybeRegisterServiceWorker() {
+  try {
+    if (!("serviceWorker" in navigator)) return;
+    if (!window.isSecureContext) return;
+    const ua = String(navigator.userAgent || "");
+    if (/SMART-TV|SmartTV|Tizen|Web0S|WebOS|NetCast|HbbTV|AFTB|AFTS|BRAVIA|Viera|TV/i.test(ua)) return;
+    navigator.serviceWorker.register("/sw.js").catch(() => {});
+  } catch (_) {}
+}
+
+function ensureManifestLinkForTvPair() {
+  try {
+    if (!code || !screen_slug) return;
+    const href = `/pwa/t/${encodeURIComponent(normalizeTvPairText(code).toLowerCase())}/${encodeURIComponent(
+      normalizeTvPairText(screen_slug).toLowerCase()
+    )}.webmanifest`;
+    let link = document.querySelector("link[rel='manifest']");
+    if (!link) {
+      link = document.createElement("link");
+      link.rel = "manifest";
+      document.head.appendChild(link);
+    }
+    link.href = href;
+  } catch (_) {}
+}
+
 const pin = document.getElementById("pin");
 const go = document.getElementById("go");
 const out = document.getElementById("out");
@@ -71,6 +97,10 @@ const meta = document.getElementById("meta");
 
 const { code, screen_slug } = parseCodeAndScreen();
 meta.textContent = code && screen_slug ? `Код: ${code} · Экран: ${screen_slug}` : "Неверная ссылка подключения.";
+
+// Make /t/<code>/<screen> installable for PWA on supported browsers.
+ensureManifestLinkForTvPair();
+maybeRegisterServiceWorker();
 
 go.addEventListener("click", async () => {
   const p = pinDigitsToAscii(normalizeTvPairText(pin.value));

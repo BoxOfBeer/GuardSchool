@@ -378,6 +378,26 @@ function settingInputs(widget, index) {
     );
     parts.push(`<p class="hint">${t("w.checkinFontSizeHint")}</p>`);
     parts.push(widgetToggle(t("w.bold"), widget.settings.bold === true, `widget:${index}:settings.bold`));
+    const pwaTitle = escapeHtmlAttr(String(widget.settings?.pwa_title || ""));
+    parts.push(`<div class="settings-row">
+      <label class="compact-field">
+        <span>${escapeHtml(t("w.pwaTitle"))}</span>
+        <input type="text" class="standard-input wide-input" data-key="widget:${index}:settings.pwa_title" value="${pwaTitle}" placeholder="Форпост" maxlength="64">
+      </label>
+      <div class="hint">${escapeHtml(t("w.pwaTitleHint"))}</div>
+    </div>`);
+    const iconUrl = escapeHtmlAttr(String(widget.settings?.pwa_icon_url || ""));
+    parts.push(`<div class="settings-row">
+      <label class="compact-field">
+        <span>${escapeHtml(t("w.pwaIconUrl"))}</span>
+        <input type="text" class="standard-input wide-input" data-key="widget:${index}:settings.pwa_icon_url" value="${iconUrl}" placeholder="/uploads/widget_images/...">
+      </label>
+      <div class="settings-row-actions">
+        <button type="button" class="secondary-btn compact-btn" data-checkin-pwa-icon-browse="${index}">${escapeHtml(t("w.pwaIconBrowse"))}</button>
+        <input type="file" accept="image/*" data-checkin-pwa-icon-upload="${index}" hidden>
+      </div>
+      <div class="hint">${escapeHtml(t("w.pwaIconHint"))}</div>
+    </div>`);
   }
   return parts.join("");
 }
@@ -537,6 +557,21 @@ export async function uploadEmergencyWidgetImage(file, widgetIndex) {
   if (!w || w.type !== "emergency") return;
   if (!w.settings) w.settings = {};
   w.settings.imageUrl = payload.path || "";
+  deps.render();
+  if (state.widgetModalWidgetId === w.id) syncWidgetModal();
+  deps.renderPreview();
+}
+
+export async function uploadCheckinPwaIcon(file, widgetIndex) {
+  const formData = new FormData();
+  formData.append("file", file);
+  const payload = await api("/api/admin/upload-widget-image", { method: "POST", body: formData });
+  const sc = screen();
+  if (!sc) return;
+  const w = sc.widgets[widgetIndex];
+  if (!w || (w.type !== "checkin_submit" && w.type !== "checkin_monitor")) return;
+  if (!w.settings) w.settings = {};
+  w.settings.pwa_icon_url = payload.path || "";
   deps.render();
   if (state.widgetModalWidgetId === w.id) syncWidgetModal();
   deps.renderPreview();
@@ -730,6 +765,28 @@ function bindWidgetEditorEvents(root, index) {
   });
   root.querySelectorAll("[data-sync-checkin-places]").forEach((button) => {
     button.onclick = () => syncCheckinPlacesFromLinkedScreen(Number(button.dataset.syncCheckinPlaces));
+  });
+
+  root.querySelectorAll("[data-checkin-pwa-icon-browse]").forEach((button) => {
+    button.onclick = () => {
+      const idx = Number(button.dataset.checkinPwaIconBrowse);
+      const inp = root.querySelector(`[data-checkin-pwa-icon-upload="${idx}"]`);
+      if (inp) inp.click();
+    };
+  });
+  root.querySelectorAll("[data-checkin-pwa-icon-upload]").forEach((input) => {
+    input.onchange = async (e) => {
+      try {
+        const idx = Number(input.dataset.checkinPwaIconUpload);
+        const file = e?.target?.files?.[0];
+        if (!file) return;
+        await uploadCheckinPwaIcon(file, idx);
+      } catch (err) {
+        window.alert(err?.message || String(err));
+      } finally {
+        try { input.value = ""; } catch (_) {}
+      }
+    };
   });
 }
 

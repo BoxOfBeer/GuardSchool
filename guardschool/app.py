@@ -87,6 +87,7 @@ from .gs_uploads_bg import (
     list_background_subdirs_from_uploads,
     safe_rel_uploads_subdir,
 )
+from .tenant_ctx import set_tenant_slug
 from .gs_paths import (
     ANNOUNCEMENTS_PATH,
     APP_VERSION,
@@ -148,6 +149,15 @@ from .gs_checkin import (
     sanitize_places_list,
     school_calendar_date,
     set_checkin_event_confirmed,
+)
+from .gs_push import (
+    delete_subscription as delete_push_subscription,
+    list_subscriptions as list_push_subscriptions,
+    rate_limit_decide as push_rate_limit_decide,
+    upsert_subscription as upsert_push_subscription,
+    vapid_private_key,
+    vapid_public_key,
+    vapid_subject,
 )
 from .gs_portal_cms import load_portal_cms_merged, sanitize_portal_cms_payload, write_portal_cms
 from .saas_db import cleanup_expired_demo_sessions, ensure_public_schema, saas_db_enabled
@@ -1462,7 +1472,14 @@ def normalize_widget(widget: dict[str, Any]) -> dict[str, Any]:
         widget["settings"].setdefault("places", [])
         widget["settings"].setdefault("monitor_widget_id", "")
         widget["settings"].setdefault("labels", {})
+        widget["settings"].setdefault("pwa_icon_url", "")
+        widget["settings"].setdefault("pwa_title", "")
         widget["settings"]["monitor_widget_id"] = str(widget["settings"].get("monitor_widget_id") or "").strip()[:80]
+        piu = str(widget["settings"].get("pwa_icon_url") or "").strip()
+        if piu and not piu.startswith("/uploads/"):
+            piu = ""
+        widget["settings"]["pwa_icon_url"] = piu[:512]
+        widget["settings"]["pwa_title"] = str(widget["settings"].get("pwa_title") or "").strip()[:64]
         if not isinstance(widget["settings"].get("places"), list):
             widget["settings"]["places"] = []
         if not isinstance(widget["settings"].get("labels"), dict):
@@ -1472,12 +1489,19 @@ def normalize_widget(widget: dict[str, Any]) -> dict[str, Any]:
         widget["settings"].setdefault("panel_title", "Сводка мест")
         widget["settings"].setdefault("labels", {})
         widget["settings"].setdefault("events_screen_slug", "")
+        widget["settings"].setdefault("pwa_icon_url", "")
+        widget["settings"].setdefault("pwa_title", "")
         if not isinstance(widget["settings"].get("places"), list):
             widget["settings"]["places"] = []
         if not isinstance(widget["settings"].get("labels"), dict):
             widget["settings"]["labels"] = {}
         esc = _normalize_screen_slug_for_api(str(widget["settings"].get("events_screen_slug") or ""))
         widget["settings"]["events_screen_slug"] = esc if esc else ""
+        piu = str(widget["settings"].get("pwa_icon_url") or "").strip()
+        if piu and not piu.startswith("/uploads/"):
+            piu = ""
+        widget["settings"]["pwa_icon_url"] = piu[:512]
+        widget["settings"]["pwa_title"] = str(widget["settings"].get("pwa_title") or "").strip()[:64]
     if widget["type"] in ("checkin_submit", "checkin_monitor"):
         widget["settings"].setdefault("fontSize", 0)
         widget["settings"].setdefault("bold", False)
@@ -3278,6 +3302,13 @@ def _rmtree_tenant_data_disk(slug: str) -> None:
         root = tenant_data_dir((slug or "").strip().lower())
         if root.is_dir():
             shutil.rmtree(root, ignore_errors=True)
+        # tenant_data_dir = tenants/<slug>/data. Удаляем и tenants/<slug>, если он стал пустым.
+        try:
+            tenant_root = root.parent
+            if tenant_root.is_dir() and not any(tenant_root.iterdir()):
+                tenant_root.rmdir()
+        except Exception:
+            pass
     except Exception:
         pass
 
@@ -4202,6 +4233,19 @@ def uploads_file(path: str) -> Response:
     return FileResponse(full)
 
 
+@app.get("/sw.js")
+def service_worker_js() -> Response:
+    # Для PWA eligibility (manifest + SW). Не кешируем: экраны часто должны обновляться сразу.
+    return FileResponse(
+        STATIC_DIR / "sw.js",
+        media_type="application/javascript",
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+        },
+    )
+
+
 @app.get("/api/sync/status")
 def api_sync_status(request: Request) -> dict[str, Any]:
     """Проверка ревизии для локального агента (Bearer GUARDSCHOOL_SYNC_TOKEN на сервере)."""
@@ -4774,7 +4818,23 @@ def post_admin_rss_news_refresh(request: Request) -> dict[str, Any]:
 async def save_admin_config(request: Request) -> dict[str, str]:
     require_auth(request)
     payload = await request.json()
-    write_json(CONFIG_PATH, sanitize_config(payload))
+    # Важно: аварийный режим включается/выключается через emergency_active_template_id.
+    # Чтобы пушить только на смене режима, сравниваем старое и новое значения.
+    prev_cfg = {}
+    try:
+        prev_cfg = load_config()
+    except Exception:
+        prev_cfg = {}
+    prev_tid = str((prev_cfg or {}).get("emergency_active_template_id") or "").strip()
+    new_cfg = sanitize_config(payload)
+    new_tid = str((new_cfg or {}).get("emergency_active_template_id") or "").strip()
+    write_json(CONFIG_PATH, new_cfg)
+    try:
+        if prev_tid != new_tid:
+            tenant_id = str(request.cookies.get(SAAS_TENANT_COOKIE) or "local").strip() or "local"
+            _notify_push_emergency_change(tenant_id=tenant_id, cfg=new_cfg, prev_tid=prev_tid, new_tid=new_tid)
+    except Exception:
+        pass
     return {"status": "ok"}
 
 
@@ -5715,6 +5775,16 @@ async def api_checkin_post_event(request: Request) -> dict[str, Any]:
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from None
     _en = enrich_checkin_event_for_client(cfg, {"created_at": saved.get("created_at"), "confirmed_at": ""})
+    try:
+        _notify_push_checkin_unconfirmed(tenant_id=tenant_id, screen_slug=slug_key)
+        # Если «Сводка» висит на другом экране: пушим подписчикам экрана сводки.
+        for mon_slug in _checkin_monitor_screens_for_events_slug(cfg, slug_key):
+            if mon_slug != slug_key:
+                _notify_push_checkin_unconfirmed_to_monitor_screen(
+                    tenant_id=tenant_id, monitor_screen_slug=mon_slug, events_screen_slug=slug_key
+                )
+    except Exception:
+        pass
     return {
         "status": "ok",
         **saved,
@@ -6040,6 +6110,65 @@ def api_admin_checkin_events_status(
     return {"status": "ok", "items": enriched}
 
 
+@app.get("/api/screen/{slug}/push/vapid-public-key")
+def api_push_vapid_public_key(request: Request, slug: str) -> dict[str, Any]:
+    slug_key = _normalize_screen_slug_for_api(slug)
+    if not slug_key:
+        raise HTTPException(status_code=404, detail="Экран не найден.")
+    _require_tv_access_for_screen(request, slug_key)
+    return {"status": "ok", "public_key": vapid_public_key(), "enabled": _push_enabled_on_server()}
+
+
+@app.post("/api/screen/{slug}/push/subscribe")
+async def api_push_subscribe(request: Request, slug: str) -> dict[str, Any]:
+    slug_key = _normalize_screen_slug_for_api(slug)
+    if not slug_key:
+        raise HTTPException(status_code=404, detail="Экран не найден.")
+    _require_tv_access_for_screen(request, slug_key)
+    body = await request.json()
+    sub = body.get("subscription") if isinstance(body, dict) else None
+    if not isinstance(sub, dict):
+        raise HTTPException(status_code=400, detail="subscription required")
+    endpoint = str(sub.get("endpoint") or "").strip()
+    keys = sub.get("keys") if isinstance(sub.get("keys"), dict) else {}
+    p256dh = str(keys.get("p256dh") or "").strip()
+    auth = str(keys.get("auth") or "").strip()
+    if not endpoint or not p256dh or not auth:
+        raise HTTPException(status_code=400, detail="Invalid subscription")
+    topics = body.get("topics") if isinstance(body, dict) else {}
+    try:
+        min_interval_sec = int(body.get("min_interval_sec") or 300) if isinstance(body, dict) else 300
+    except (TypeError, ValueError):
+        min_interval_sec = 300
+    tenant_id = str(request.cookies.get(SAAS_TENANT_COOKIE) or "local").strip() or "local"
+    upsert_push_subscription(
+        tenant_id=tenant_id,
+        screen_slug=slug_key,
+        endpoint=endpoint,
+        p256dh=p256dh,
+        auth=auth,
+        topics=topics if isinstance(topics, dict) else {},
+        min_interval_sec=min_interval_sec,
+        enabled=True,
+    )
+    return {"status": "ok"}
+
+
+@app.post("/api/screen/{slug}/push/unsubscribe")
+async def api_push_unsubscribe(request: Request, slug: str) -> dict[str, Any]:
+    slug_key = _normalize_screen_slug_for_api(slug)
+    if not slug_key:
+        raise HTTPException(status_code=404, detail="Экран не найден.")
+    _require_tv_access_for_screen(request, slug_key)
+    body = await request.json()
+    endpoint = str((body or {}).get("endpoint") or "").strip() if isinstance(body, dict) else ""
+    if not endpoint:
+        raise HTTPException(status_code=400, detail="endpoint required")
+    tenant_id = str(request.cookies.get(SAAS_TENANT_COOKIE) or "local").strip() or "local"
+    n = delete_push_subscription(tenant_id=tenant_id, screen_slug=slug_key, endpoint=endpoint)
+    return {"status": "ok", "deleted": n}
+
+
 def _tv_pair_pin_entry_file_response() -> FileResponse:
     """Страница ввода PIN без кеша (иначе после включения обхода браузер долго держит старый HTML)."""
     return FileResponse(
@@ -6049,6 +6178,191 @@ def _tv_pair_pin_entry_file_response() -> FileResponse:
             "Pragma": "no-cache",
         },
     )
+
+
+def _push_enabled_on_server() -> bool:
+    return bool(vapid_public_key() and vapid_private_key())
+
+
+def _notify_push_to_screen(*, tenant_id: str, screen_slug: str, topic: str, title: str, body: str, url: str) -> None:
+    if not _push_enabled_on_server():
+        return
+    subs = list_push_subscriptions(tenant_id=tenant_id, screen_slug=screen_slug, topic=topic)
+    if not subs:
+        return
+    mi = 300
+    try:
+        mi = int(subs[0].get("min_interval_sec") or 300)
+    except Exception:
+        mi = 300
+    dec = push_rate_limit_decide(tenant_id=tenant_id, screen_slug=screen_slug, topic=topic, min_interval_sec=mi)
+    if not dec.should_send:
+        return
+    payload = json.dumps(
+        {"title": title, "body": body, "url": url, "tag": f"{screen_slug}:{topic}"},
+        ensure_ascii=False,
+    )
+    try:
+        from pywebpush import webpush
+    except Exception:
+        return
+    for s in subs:
+        try:
+            webpush(
+                subscription_info={"endpoint": s["endpoint"], "keys": s["keys"]},
+                data=payload,
+                vapid_private_key=vapid_private_key(),
+                vapid_claims={"sub": vapid_subject()},
+            )
+        except Exception:
+            continue
+
+
+def _notify_push_checkin_unconfirmed(*, tenant_id: str, screen_slug: str) -> None:
+    try:
+        import sqlite3
+        from .tenant_ctx import map_data_path
+        from .gs_paths import DATA_DIR
+
+        db_path = map_data_path(DATA_DIR) / "checkin.sqlite3"
+        conn = sqlite3.connect(str(db_path))
+        try:
+            cur = conn.execute(
+                """
+                SELECT COUNT(1) AS n
+                FROM checkin_events
+                WHERE tenant_id=? AND lower(trim(screen_slug))=?
+                  AND (confirmed_at IS NULL OR trim(confirmed_at) = '')
+                """,
+                ((tenant_id or "local").strip() or "local", (screen_slug or "").strip().lower()),
+            )
+            row = cur.fetchone()
+            n = int(row[0] or 0) if row else 0
+        finally:
+            conn.close()
+    except Exception:
+        return
+    if n <= 0:
+        return
+    url = f"/screen/{quote(str(screen_slug or '').strip().lower(), safe='')}"
+    _notify_push_to_screen(
+        tenant_id=tenant_id,
+        screen_slug=screen_slug,
+        topic="checkin",
+        title="Новые отметки",
+        body=f"Неподтверждённых: {n}",
+        url=url,
+    )
+
+
+def _checkin_monitor_screens_for_events_slug(cfg: dict[str, Any], events_slug: str) -> list[str]:
+    """
+    Возвращает slug экранов, где есть checkin_monitor, который смотрит на events_slug.
+    Нужен кейс: отметки создаются на tv-1, а сводка/уведомления — на tv-2.
+    """
+    want = (events_slug or "").strip().lower()
+    if not want:
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+    for sc in (cfg.get("screens") or []) if isinstance(cfg, dict) else []:
+        if not isinstance(sc, dict) or sc.get("is_active", True) is False:
+            continue
+        disp_slug = _normalize_screen_slug_for_api(str(sc.get("slug") or ""))
+        if not disp_slug or disp_slug in seen:
+            continue
+        widgets = sc.get("widgets")
+        if not isinstance(widgets, list):
+            continue
+        for w in widgets:
+            if not isinstance(w, dict) or w.get("enabled") is False:
+                continue
+            if str(w.get("type") or "") != "checkin_monitor":
+                continue
+            event_slug = _checkin_events_screen_slug_for_monitor(cfg, w, disp_slug)
+            if (event_slug or "").strip().lower() == want:
+                out.append(disp_slug)
+                seen.add(disp_slug)
+                break
+    return out
+
+
+def _notify_push_checkin_unconfirmed_to_monitor_screen(
+    *, tenant_id: str, monitor_screen_slug: str, events_screen_slug: str
+) -> None:
+    # Считаем неподтверждённые события по events_screen_slug, но пуш отправляем подписчикам monitor_screen_slug.
+    try:
+        import sqlite3
+        from .tenant_ctx import map_data_path
+        from .gs_paths import DATA_DIR
+
+        db_path = map_data_path(DATA_DIR) / "checkin.sqlite3"
+        conn = sqlite3.connect(str(db_path))
+        try:
+            cur = conn.execute(
+                """
+                SELECT COUNT(1) AS n
+                FROM checkin_events
+                WHERE tenant_id=? AND lower(trim(screen_slug))=?
+                  AND (confirmed_at IS NULL OR trim(confirmed_at) = '')
+                """,
+                ((tenant_id or "local").strip() or "local", (events_screen_slug or "").strip().lower()),
+            )
+            row = cur.fetchone()
+            n = int(row[0] or 0) if row else 0
+        finally:
+            conn.close()
+    except Exception:
+        return
+    if n <= 0:
+        return
+    url = f"/screen/{quote(str(monitor_screen_slug or '').strip().lower(), safe='')}"
+    _notify_push_to_screen(
+        tenant_id=tenant_id,
+        screen_slug=monitor_screen_slug,
+        topic="checkin",
+        title="Новые отметки",
+        body=f"Неподтверждённых: {n}",
+        url=url,
+    )
+
+
+def _notify_push_emergency_change(*, tenant_id: str, cfg: dict[str, Any], prev_tid: str, new_tid: str) -> None:
+    """
+    Пуш по смене аварийного режима: prev_tid -> new_tid.
+    new_tid == '' означает «выключено».
+    """
+    prev = str(prev_tid or "").strip()
+    new = str(new_tid or "").strip()
+    if prev == new:
+        return
+    # Найти title шаблона для текста уведомления.
+    tname = ""
+    try:
+        templates = cfg.get("emergency_templates") if isinstance(cfg, dict) else None
+        if isinstance(templates, list) and new:
+            tpl = next((x for x in templates if isinstance(x, dict) and str(x.get("id") or "") == new), None)
+            if isinstance(tpl, dict):
+                tname = str(tpl.get("title") or tpl.get("name") or "").strip()[:120]
+    except Exception:
+        tname = ""
+    title = "Аварийный режим" if new else "Аварийный режим выключен"
+    body = (tname and f"Шаблон: {tname}") or ("Включён" if new else "Выключен")
+    for sc in (cfg.get("screens") or []) if isinstance(cfg, dict) else []:
+        if not isinstance(sc, dict) or sc.get("is_active", True) is False:
+            continue
+        slug = _normalize_screen_slug_for_api(str(sc.get("slug") or ""))
+        if not slug:
+            continue
+        url = f"/screen/{quote(slug, safe='')}"
+        _notify_push_to_screen(
+            tenant_id=tenant_id,
+            screen_slug=slug,
+            topic="emergency",
+            title=title,
+            body=body,
+            url=url,
+        )
 
 
 def _tv_pair_gate_notice_html(*, title: str, message: str, status: int = 404) -> HTMLResponse:
@@ -6101,6 +6415,141 @@ _TV_ACCESS_BY_CODE_SQL = (
     "OR regexp_replace(lower(trim(coalesce(code_plaintext, ''))), '[^a-z0-9]', '', 'g')=%s "
     "LIMIT 1"
 )
+
+
+def _pwa_manifest_for_tv_pair(
+    *,
+    request: Request,
+    tenant_slug: str,
+    code_canon: str,
+    screen_slug: str,
+    app_title: str,
+    icon_url: str,
+) -> JSONResponse:
+    """
+    SaaS: PWA manifest для ссылки /t/{code}/{screen_slug}.
+
+    Ключевые требования:
+    - start_url должен содержать code (чтобы “ярлык” вёл на брендированную ссылку);
+    - icon должен быть tenant-scoped (через /uploads/*, который резолвится по cookie тенанта).
+    """
+    start_url = f"/t/{quote(code_canon, safe='')}/{quote(screen_slug, safe='')}?pwa=1"
+    manifest = {
+        "name": app_title,
+        "short_name": app_title[:24],
+        "id": f"/pwa/t/{code_canon}/{screen_slug}",
+        "start_url": start_url,
+        "scope": "/",
+        "display": "standalone",
+        "background_color": "#0f172a",
+        "theme_color": "#0f172a",
+        "icons": [
+            {
+                "src": icon_url,
+                "sizes": "512x512",
+                "type": "image/png",
+                "purpose": "any maskable",
+            }
+        ],
+    }
+    resp = JSONResponse(
+        content=manifest,
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+        },
+    )
+    # Чтобы /uploads/* для icon_url отдался из data/ конкретного тенанта (map_data_path).
+    sec = session_cookie_secure(request)
+    resp.set_cookie(
+        SAAS_TENANT_COOKIE,
+        _encode_saas_tenant_cookie_value(tenant_slug),
+        max_age=3600 * 24 * 365,
+        httponly=True,
+        samesite="lax",
+        secure=sec,
+        path="/",
+    )
+    return resp
+
+
+@app.get("/pwa/t/{code}/{screen_slug}.webmanifest", response_class=JSONResponse)
+def pwa_manifest_for_tv_pair(request: Request, code: str, screen_slug: str) -> JSONResponse:
+    """
+    SaaS: webmanifest для установки ярлыка с tenant-кодом и экраном (tv-1/tv-2).
+    Иконка берётся из /uploads/..., т.е. из data/uploads конкретного тенанта.
+    """
+    if deployment_mode() != "saas" or not saas_db_enabled():
+        raise HTTPException(status_code=404, detail="Not found.")
+    code_raw = _normalize_tv_pair_text(_tv_path_code_segment(code)).lower()
+    code_canon = _canonical_tv_school_code(code_raw)
+    if not code_canon:
+        raise HTTPException(status_code=404, detail="Not found.")
+    slug_n = _normalize_screen_slug_for_api(str(screen_slug or ""))
+    if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", slug_n):
+        raise HTTPException(status_code=404, detail="Not found.")
+    with connect_public() as conn:
+        with conn.cursor() as cur:
+            row = _tv_access_lookup_row(cur, code_canon=code_canon)
+            if not row:
+                raise HTTPException(status_code=404, detail="Not found.")
+            tenant_slug = str(row[0] or "").strip()
+    # Иконка по умолчанию: /uploads/widget_images/211.png (tenant-scoped через SAAS_TENANT_COOKIE).
+    icon_url = "/uploads/widget_images/211.png"
+    # Заголовок по умолчанию: tv-1=Оперативный, tv-2=Сводка, иначе «Экран <slug>».
+    title = "Оперативный" if slug_n == "tv-1" else ("Сводка" if slug_n == "tv-2" else f"Экран {slug_n}")
+    # Если в настройках виджетов экрана задан pwa_icon_url / pwa_title (checkin_submit / checkin_monitor) — берём их.
+    prev_tenant = None
+    try:
+        from .tenant_ctx import tenant_slug as _tenant_slug_get
+
+        prev_tenant = _tenant_slug_get()
+    except Exception:
+        prev_tenant = None
+    try:
+        set_tenant_slug(tenant_slug)
+        cfg = load_config()
+        screens = cfg.get("screens") if isinstance(cfg, dict) else None
+        if isinstance(screens, list):
+            want = slug_n.strip().lower()
+            sc = next((s for s in screens if isinstance(s, dict) and str(s.get("slug") or "").strip().lower() == want), None)
+            if isinstance(sc, dict):
+                widgets = sc.get("widgets")
+                if isinstance(widgets, list):
+                    for w in widgets:
+                        if not isinstance(w, dict):
+                            continue
+                        if w.get("enabled") is False:
+                            continue
+                        if str(w.get("type") or "") not in ("checkin_submit", "checkin_monitor"):
+                            continue
+                        st = w.get("settings")
+                        if not isinstance(st, dict):
+                            continue
+                        cand = str(st.get("pwa_icon_url") or "").strip()
+                        if cand.startswith("/uploads/"):
+                            icon_url = cand[:512]
+                        t2 = str(st.get("pwa_title") or "").strip()
+                        if t2:
+                            title = t2[:64]
+                        if cand.startswith("/uploads/") or t2:
+                            # Если нашли хоть что-то (иконка/имя) — дальше не ищем, чтобы не было конфликтов.
+                            break
+    except Exception:
+        pass
+    finally:
+        try:
+            set_tenant_slug(prev_tenant)
+        except Exception:
+            set_tenant_slug(None)
+    return _pwa_manifest_for_tv_pair(
+        request=request,
+        tenant_slug=tenant_slug,
+        code_canon=code_canon,
+        screen_slug=slug_n,
+        app_title=title,
+        icon_url=icon_url,
+    )
 
 
 def _tv_access_lookup_row(cur: Any, *, code_canon: str) -> tuple[Any, Any, Any, Any] | None:
@@ -6171,6 +6620,42 @@ def tv_pair_page(request: Request, code: str, screen_slug: str) -> Response:
             ts = str(tenant_slug or "").strip()
             if not _tv_pair_pin_bypass_effective(ts, pin_bypass_db):
                 return _tv_pair_pin_entry_file_response()
+            # Установка ярлыка (PWA): если приложение уже установлено, нельзя каждый запуск создавать новый device-token.
+            # В режиме pwa=1 сначала пытаемся взять сохранённый токен из localStorage и перейти на /screen/{slug}?gs_tv_token=...
+            if str(request.query_params.get("pwa") or "").strip() in ("1", "true", "yes"):
+                # Manifest иконки/тенант-uploads требует cookie тенанта.
+                sec = session_cookie_secure(request)
+                resp = HTMLResponse(
+                    content=(
+                        "<!doctype html><html lang='ru'><head><meta charset='utf-8'/>"
+                        "<meta name='viewport' content='width=device-width, initial-scale=1'/>"
+                        "<meta http-equiv='Cache-Control' content='no-store'/>"
+                        "<title>GuardSchool</title>"
+                        f"<link rel='manifest' href='/pwa/t/{html.escape(code_canon, quote=True)}/{html.escape(slug_n, quote=True)}.webmanifest'/>"
+                        "</head><body style='margin:0;font-family:system-ui;background:#0f172a;color:#e2e8f0'>"
+                        "<div style='padding:24px;font-size:18px'>Запуск экрана…</div>"
+                        "<script>(function(){try{"
+                        f"var code={json.dumps(code_canon)}; var slug={json.dumps(slug_n)};"
+                        "var k='gs_pwa_tv_token__'+code+'__'+slug;"
+                        "var tok=localStorage.getItem(k)||'';"
+                        "if(tok&&tok.length>10){location.replace('/screen/'+encodeURIComponent(slug)+'?gs_tv_token='+encodeURIComponent(tok));return;}"
+                        "location.replace('/t/'+encodeURIComponent(code)+'/'+encodeURIComponent(slug)+'?pwa_pair=1');"
+                        "}catch(e){location.replace('/t/"+ html.escape(code_canon, quote=True) + "/" + html.escape(slug_n, quote=True) + "?pwa_pair=1');}})();</script>"
+                        "</body></html>"
+                    ),
+                    status_code=200,
+                    headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0", "Pragma": "no-cache"},
+                )
+                resp.set_cookie(
+                    SAAS_TENANT_COOKIE,
+                    _encode_saas_tenant_cookie_value(ts),
+                    max_age=3600 * 24 * 365,
+                    httponly=True,
+                    samesite="lax",
+                    secure=sec,
+                    path="/",
+                )
+                return resp
             lab = str(request.query_params.get("gs_label") or "").strip()[:120]
             _tv_pair_record_success(pair_key)
             token = secrets.token_urlsafe(24)
@@ -6188,22 +6673,45 @@ def tv_pair_page(request: Request, code: str, screen_slug: str) -> Response:
     # Часть ТВ-WebView даёт пустой экран на HTTP 302 с длинным Location — отдаём HTML и делаем переход из JS.
     loc_js = json.dumps(loc, ensure_ascii=False)
     loc_attr = html.escape(loc, quote=True)
+    # Для PWA: сохранить токен 1 раз (если пришли из pwa_pair=1), чтобы последующие запуски ярлыка не плодили tv_devices.
+    store_js = ""
+    if str(request.query_params.get("pwa_pair") or "").strip() in ("1", "true", "yes"):
+        store_js = (
+            "<script>(function(){try{"
+            f"var k='gs_pwa_tv_token__'+{json.dumps(code_canon)}+'__'+{json.dumps(slug_n)};"
+            f"localStorage.setItem(k,{json.dumps(token)});"
+            f"localStorage.setItem('gs_pwa_tv_code__'+{json.dumps(slug_n)},{json.dumps(code_canon)});"
+            "}catch(e){}})();</script>"
+        )
     jump_html = (
         "<!doctype html><html lang='ru'><head><meta charset='utf-8'/>"
         "<meta http-equiv='Cache-Control' content='no-store'/>"
+        f"<link rel='manifest' href='/pwa/t/{html.escape(code_canon, quote=True)}/{html.escape(slug_n, quote=True)}.webmanifest'/>"
         f"<meta http-equiv='refresh' content='0;url={loc_attr}'/>"
         "<title>GuardSchool — подключение ТВ</title></head>"
         "<body style='margin:0;font-family:system-ui;background:#0f172a;color:#e2e8f0'>"
         "<div style='padding:24px;font-size:18px'>Переход на экран…</div>"
+        f"{store_js}"
         f"<script>location.replace({loc_js});</script>"
         f"<noscript><div style='padding:24px'><a href='{loc_attr}' style='color:#38bdf8'>Открыть экран</a></div>"
         f"<meta http-equiv='refresh' content='0;url={loc_attr}'/></noscript></body></html>"
     )
-    return HTMLResponse(
+    resp2 = HTMLResponse(
         content=jump_html,
         status_code=200,
         headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0", "Pragma": "no-cache"},
     )
+    sec = session_cookie_secure(request)
+    resp2.set_cookie(
+        SAAS_TENANT_COOKIE,
+        _encode_saas_tenant_cookie_value(ts),
+        max_age=3600 * 24 * 365,
+        httponly=True,
+        samesite="lax",
+        secure=sec,
+        path="/",
+    )
+    return resp2
 
 
 @app.post("/api/tv/pair")
