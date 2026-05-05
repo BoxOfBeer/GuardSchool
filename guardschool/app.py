@@ -6635,6 +6635,7 @@ def _notify_push_checkin_journal_new_row(
             body=body,
             url=url,
             notification_tag=tag,
+            skip_rate_limit=True,
         )
 
 
@@ -6675,6 +6676,7 @@ def _notify_push_checkin_journal_confirmed(
             body=body,
             url=url,
             notification_tag=tag,
+            skip_rate_limit=True,
         )
 
 
@@ -6702,6 +6704,7 @@ def _notify_push_checkin_journal_bulk_confirm(
             body=body,
             url=url,
             notification_tag=tag,
+            skip_rate_limit=True,
         )
 
 
@@ -6856,13 +6859,60 @@ def _pwa_manifest_icon_specs(
         mime = "image/jpeg"
     else:
         mime = "image/png"
-    return (
-        [
-            {"src": src, "sizes": "192x192", "type": mime, "purpose": "any"},
-            {"src": src, "sizes": "512x512", "type": mime, "purpose": "any maskable"},
-        ],
-        mime,
-    )
+    # Не задаём выдуманные 192/512 и не смешиваем any+maskable: Chrome ругается, если файл другого размера.
+    return ([{"src": src, "sizes": "any", "type": mime, "purpose": "any"}], mime)
+
+
+def _pwa_manifest_screenshots_entries(request: Request | None) -> list[dict[str, str]]:
+    """Скрины для расширенного UI установки: wide (десктоп) и narrow (мобилки). Файлы в /static/pwa/."""
+    if request is None:
+        return []
+    wide = _pwa_manifest_icon_src_public(request, "/static/pwa/screenshot_wide.png")
+    narrow = _pwa_manifest_icon_src_public(request, "/static/pwa/screenshot_narrow.png")
+    return [
+        {
+            "src": wide,
+            "sizes": "1280x720",
+            "type": "image/png",
+            "form_factor": "wide",
+            "label": "Экран",
+        },
+        {
+            "src": narrow,
+            "sizes": "540x720",
+            "type": "image/png",
+            "form_factor": "narrow",
+            "label": "Экран",
+        },
+    ]
+
+
+def _pwa_fallback_pwa_fields_from_widgets(
+    visit_all: list[dict[str, Any]],
+    *,
+    have_title: bool,
+    have_icon: bool,
+) -> tuple[str, str]:
+    """Берём pwa_title / pwa_icon_url из любого виджета (админ мог заполнить не у checkin)."""
+    if have_title and have_icon:
+        return "", ""
+    t_out = ""
+    i_out = ""
+    for w in visit_all:
+        if not isinstance(w, dict) or w.get("enabled") is False:
+            continue
+        st = w.get("settings") if isinstance(w.get("settings"), dict) else {}
+        if not have_title and not t_out:
+            pt = str(st.get("pwa_title") or "").strip()[:64]
+            if pt:
+                t_out = pt
+        if not have_icon and not i_out:
+            ip = _normalize_pwa_upload_icon_path(st.get("pwa_icon_url"))
+            if ip:
+                i_out = ip
+        if (have_title or t_out) and (have_icon or i_out):
+            break
+    return t_out, i_out
 
 
 def _pwa_checkin_label_module_title(st: dict[str, Any]) -> str:
@@ -6904,7 +6954,12 @@ def _pwa_widget_title_icon_for_slug(cfg: dict[str, Any], slug_n: str) -> tuple[s
     monitors = [w for w in checkin_ordered if str(w.get("type") or "") == "checkin_monitor"]
     visit = submits + monitors
     if not visit:
-        return (screen_title or title)[:64], icon_url
+        fb_t, fb_i = _pwa_fallback_pwa_fields_from_widgets(visit_all, have_title=False, have_icon=False)
+        if slug_key in ("tv-1", "tv-2"):
+            chosen0 = (fb_t or slug_default_title or screen_title or title)[:64]
+        else:
+            chosen0 = (fb_t or screen_title or slug_default_title or title)[:64]
+        return chosen0, fb_i if fb_i else icon_url
     pwa_title_submit = ""
     pwa_title_monitor = ""
     icon_submit = ""
@@ -6932,12 +6987,22 @@ def _pwa_widget_title_icon_for_slug(cfg: dict[str, Any], slug_n: str) -> tuple[s
                 mod_mon = _pwa_checkin_label_module_title(st_w)
     pwa_title_pick = pwa_title_submit or pwa_title_monitor
     icon_pick = icon_submit or icon_monitor
+    fb_t, fb_i = _pwa_fallback_pwa_fields_from_widgets(
+        visit_all,
+        have_title=bool(pwa_title_pick),
+        have_icon=bool(icon_pick),
+    )
+    if not pwa_title_pick and fb_t:
+        pwa_title_pick = fb_t
+    if not icon_pick and fb_i:
+        icon_pick = fb_i
+    # «Заголовок модуля» не должен перебивать брендовый дефолт «Форпост» для tv-* без явного PWA-title.
     if slug_key in ("tv-1", "tv-2"):
         chosen = (
             pwa_title_pick
+            or slug_default_title
             or mod_submit
             or mod_mon
-            or slug_default_title
             or screen_title
         )
     else:
@@ -6980,6 +7045,7 @@ def _pwa_manifest_for_tv_pair(
         "background_color": "#0f172a",
         "theme_color": "#0f172a",
         "icons": icon_entries,
+        "screenshots": _pwa_manifest_screenshots_entries(request),
     }
     resp = JSONResponse(
         content=manifest,
@@ -7100,6 +7166,7 @@ def pwa_manifest_for_screen_standalone(request: Request, screen_slug: str) -> JS
         "background_color": "#0f172a",
         "theme_color": "#0f172a",
         "icons": icon_entries_sc,
+        "screenshots": _pwa_manifest_screenshots_entries(request),
     }
     resp = JSONResponse(
         content=manifest,
