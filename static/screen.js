@@ -1389,10 +1389,9 @@ function render(screenPayload) {
           (w) => w && w.menu_only !== true && w.type !== "emergency" && !(hiddenWidgetIds.has(w.id) && w.type !== "carousel")
         ));
     const orderedDefault = orderedAll.filter((w) => w.enabled !== false);
-    // Если список mobile_widget_ids задан — это явный выбор пользователя, показываем выбранные,
-    // даже если виджет был выключен в сетке (иначе выбор "не работает").
+    // Явный порядок mobile_widget_ids не отменяет «Вкл» в админке — выключенный виджет на ТВ не показываем.
     const ordered = configured.length
-      ? orderedAll.filter((w) => configuredSet.has(String(w.id)))
+      ? orderedAll.filter((w) => configuredSet.has(String(w.id)) && w.enabled !== false)
       : orderedDefault;
     let filtered = mwTypes ? ordered.filter((w) => mwTypes.has(String(w.type))) : ordered;
     // Тип в gs_mw, но виджета нет в ленте (не в mobile_widget_ids / выключен / только внутри карусели) — берём из полного конфига экрана.
@@ -1400,7 +1399,12 @@ function render(screenPayload) {
       for (const t of mwTypes) {
         if (filtered.some((w) => w && String(w.type) === t)) continue;
         const cand = pickWidgetByTypeFromScreen(screen, t);
-        if (cand && !filtered.some((w) => String(w.id) === String(cand.id))) filtered.push(cand);
+        if (
+          cand &&
+          cand.enabled !== false &&
+          !filtered.some((w) => String(w.id) === String(cand.id))
+        )
+          filtered.push(cand);
       }
       const rank = new Map(orderedAll.map((w, i) => [String(w.id), i]));
       filtered.sort((a, b) => (rank.get(String(a.id)) ?? 1e9) - (rank.get(String(b.id)) ?? 1e9));
@@ -1769,7 +1773,14 @@ function syncDeviceSettingsFromPayload(screenPayload) {
           localStorage.removeItem(devicePrefsKey(slug));
         } catch (_) {}
       }
-      window.location.reload();
+      try {
+        panel.hidden = true;
+      } catch (_) {}
+      try {
+        void refresh();
+      } catch (_) {
+        window.location.reload();
+      }
     };
 
     btnReset.onclick = () => {
@@ -1778,7 +1789,14 @@ function syncDeviceSettingsFromPayload(screenPayload) {
       );
       if (!ok) return;
       clearDevicePrefs(slug);
-      window.location.reload();
+      try {
+        panel.hidden = true;
+      } catch (_) {}
+      try {
+        void refresh();
+      } catch (_) {
+        window.location.reload();
+      }
     };
   } catch (_) {}
 }

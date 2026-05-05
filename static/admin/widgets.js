@@ -483,6 +483,10 @@ export function updateWidgetField(path, value) {
     if (fieldRaw === "enabled" || fieldRaw === "menu_only") widget[fieldRaw] = Boolean(value);
     else widget[fieldRaw] = Number(value);
   }
+  if (fieldRaw === "enabled" && widget.enabled === false && Array.isArray(sc.mobile_widget_ids)) {
+    const idStr = String(widget.id);
+    sc.mobile_widget_ids = sc.mobile_widget_ids.filter((x) => String(x) !== idStr);
+  }
   clampWidget(widget);
   deps.render();
 }
