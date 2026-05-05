@@ -593,6 +593,11 @@ function ensureDeviceSettingsUi() {
           }
         });
       }
+      // beforeinstallprompt может прийти до первого render() / ensureDeviceSettingsUi — тогда row ещё нет в DOM.
+      if (window.__gsDeferredInstallPrompt) {
+        const pwaRow = panel.querySelector("#gs-device-pwa-install-row");
+        if (pwaRow) pwaRow.hidden = false;
+      }
     } catch (_) {}
 
     // Push UI.
