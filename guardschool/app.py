@@ -2237,7 +2237,7 @@ def distinct_schedule_class_names_from_sources(
 
 
 def pickable_classes_for_screen(screen_cfg: dict[str, Any]) -> list[str]:
-    """Классы для шестерёнки на ТВ/телефоне: настройка экрана + все из импорта (чтобы не терять 7А и т.п.)."""
+    """Объединение выбора экрана и импорта расписания (для общей логики фильтров). Раньше тем же занимался ТВ-панель — см. pickable_classes_for_tv_device_panel."""
     if _TEMP_DISABLE_SCREEN_CLASS_FILTER:
         return distinct_schedule_class_names_from_sources(
             load_schedule(),
@@ -2262,6 +2262,71 @@ def pickable_classes_for_screen(screen_cfg: dict[str, Any]) -> list[str]:
             continue
         by_norm.setdefault(k, raw)
     return sorted(by_norm.values(), key=class_sort_key)
+
+
+def _first_enabled_schedule_widget_top_level(screen_cfg: dict[str, Any]) -> dict[str, Any] | None:
+    """Виджет «расписание» среди виджетов экрана (не внутри карусели)."""
+    for w in screen_cfg.get("widgets") or []:
+        if not isinstance(w, dict):
+            continue
+        if str(w.get("type") or "").strip() != "schedule":
+            continue
+        if w.get("enabled") is False:
+            continue
+        return w
+    return None
+
+
+def pickable_classes_for_tv_device_panel(screen_cfg: dict[str, Any]) -> list[str]:
+    """
+    Классы для чекбоксов ТВ («Классы расписания на этом устройстве»): только если в конфиге экрана
+    есть включённый виджет schedule. Чекбоксы строятся по settings.classes этого виджета
+    (как в веб-редакторе); подписи нормализуются через импорт расписания.
+    """
+    if _TEMP_DISABLE_SCREEN_CLASS_FILTER:
+        return distinct_schedule_class_names_from_sources(
+            load_schedule(),
+            load_full_schedule(),
+            load_schedule_sample(),
+        )
+    sch = _first_enabled_schedule_widget_top_level(screen_cfg)
+    if not sch:
+        return []
+    schedule_data = load_schedule()
+    full_data = load_full_schedule()
+    sample_data = load_schedule_sample()
+    from_import = distinct_schedule_class_names_from_sources(schedule_data, full_data, sample_data)
+
+    ws = sch.get("settings") if isinstance(sch.get("settings"), dict) else {}
+    raw_wc = ws.get("classes")
+    configured: list[str] = []
+    if isinstance(raw_wc, list):
+        configured = [str(x).strip() for x in raw_wc if str(x).strip()]
+    if not configured:
+        raw_sel = screen_cfg.get("selected_classes")
+        if isinstance(raw_sel, list):
+            configured = [str(x).strip() for x in raw_sel if str(x).strip()]
+    if not configured:
+        return from_import
+
+    by_norm: dict[str, str] = {}
+    for raw in from_import:
+        k = normalize_class(raw)
+        if k:
+            by_norm.setdefault(k, raw)
+
+    merged: list[tuple[str, str]] = []
+    seen_k: set[str] = set()
+    for c in configured:
+        k = normalize_class(c)
+        if not k or k in seen_k:
+            continue
+        seen_k.add(k)
+        label = by_norm[k] if k in by_norm else str(c).strip()
+        merged.append((k, label))
+
+    merged.sort(key=lambda kv: class_sort_key(kv[1]))
+    return [kv[1] for kv in merged]
 
 
 def time_to_minutes(value: str) -> int:
@@ -5471,7 +5536,7 @@ def get_screen(request: Request, slug: str) -> JSONResponse:
     screen = screen0
     if not screen:
         raise HTTPException(status_code=404, detail="Экран не найден.")
-    pickable = pickable_classes_for_screen(screen0)
+    pickable = pickable_classes_for_tv_device_panel(screen0)
     qp = request.query_params
     # Фильтр gs_classes только в мобильном режиме экрана; иначе игнорируем (ТВ/сетка = только конфиг).
     raw_classes = str(qp.get("gs_classes") or "").strip()

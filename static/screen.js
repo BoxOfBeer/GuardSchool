@@ -409,7 +409,7 @@ function ensureDeviceSettingsUi() {
       </div>
       <div class="gs-device-settings-row" id="gs-device-classes-row">
         <div class="gs-device-settings-field-head">Классы расписания на этом устройстве</div>
-        <div class="gs-device-classes-hint">По умолчанию отмечены все — как в веб-настройке экрана. Снимите лишние, чтобы не показывать эти классы здесь.</div>
+        <div class="gs-device-classes-hint">Этот блок только при включённом виджете «Расписание» на этом экране. Список классов совпадает с настройками виджета (поле классов). По умолчанию все отмечены — снимите лишнее, чтобы не показывать эти строки здесь.</div>
         <div id="gs-device-classes-wrap" class="gs-device-settings-checks"></div>
       </div>
       <div class="gs-device-settings-row">
@@ -1636,7 +1636,8 @@ function syncDeviceSettingsFromPayload(screenPayload) {
         const hint = document.createElement("div");
         hint.className = "hint";
         hint.style.fontSize = "13px";
-        hint.textContent = "Список классов пока недоступен — фильтр не применяется, используется настройка экрана.";
+        hint.textContent =
+          "Не удалось сопоставить классы виджета «Расписание» с данными расписания. Проверьте импорт и то, какие классы заданы в настройках виджета.";
         wrapClasses.appendChild(hint);
       } else {
         pickable.forEach((name, idx) => {
