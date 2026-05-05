@@ -35,11 +35,21 @@ self.addEventListener("push", (event) => {
         rawText = "";
       }
       const data = rawText ? safeJsonParse(rawText) : null;
-      const title = (data && data.title) || "GuardSchool";
-      const body = (data && data.body) || "";
+      let title = (data && data.title) || "GuardSchool";
+      let body = (data && data.body) || "";
       const url = (data && data.url) || "/";
-      const tag = (data && data.tag) || undefined;
+      let tag = data && data.tag != null ? String(data.tag).trim() : "";
       const receivedAt = new Date().toISOString();
+      if (!data && rawText) {
+        body = String(rawText).slice(0, 240);
+      }
+      if (!tag) {
+        let h = 0;
+        for (let i = 0; i < Math.min(String(rawText || "").length, 96); i++) {
+          h = (h * 31 + String(rawText).charCodeAt(i)) | 0;
+        }
+        tag = `gs-${(h >>> 0).toString(36)}-${receivedAt.replace(/[^0-9T]/g, "").slice(0, 14)}`;
+      }
       const dbg = {
         type: "gs-push-debug",
         receivedAt,
@@ -64,7 +74,8 @@ self.addEventListener("push", (event) => {
       const opts = {
         body,
         tag,
-        renotify: true,
+        // Chrome: renotify только при непустом tag — выше всегда задаём fallback.
+        renotify: Boolean(tag),
         data: { url },
       };
       await self.registration.showNotification(title, opts);

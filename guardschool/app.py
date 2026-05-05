@@ -4473,6 +4473,21 @@ def brand_logo() -> Response:
     return FileResponse(logo_path)
 
 
+@app.get("/favicon.ico")
+def favicon_ico() -> Response:
+    """Убирает 404 в консоли; при наличии ico.png в корне — тот же файл, что /brand-logo."""
+    logo_path = resolve_brand_logo_path()
+    if logo_path:
+        return FileResponse(logo_path, media_type="image/png")
+    # Минимальный прозрачный PNG 1×1 — без добавления файла в репозиторий.
+    return Response(
+        content=base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMB/aurd9kAAAAASUVORK5CYII="
+        ),
+        media_type="image/png",
+    )
+
+
 @app.get("/screen/{slug}", response_class=HTMLResponse)
 def screen_page(request: Request, slug: str) -> HTMLResponse:
     """
@@ -4518,7 +4533,13 @@ def screen_page(request: Request, slug: str) -> HTMLResponse:
 
     # ТВ часто кэширует HTML и JS; подставляем версию в URL статики (плейсхолдер в screen.html).
     raw = (STATIC_DIR / "screen.html").read_text(encoding="utf-8")
-    html = raw.replace("__GS_ASSETS_VER__", APP_VERSION)
+    slug_for_manifest = _normalize_screen_slug_for_api(slug) or str(slug or "").strip().lower()
+    manifest_line = ""
+    if slug_for_manifest and re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", slug_for_manifest):
+        manifest_line = (
+            f'<link rel="manifest" href="/pwa/screen/{quote(slug_for_manifest, safe="")}.webmanifest" />\n'
+        )
+    html = raw.replace("__GS_ASSETS_VER__", APP_VERSION).replace("__GS_PWA_MANIFEST_LINK__", manifest_line)
     resp = HTMLResponse(
         content=html,
         headers={"Cache-Control": "no-cache, must-revalidate"},
@@ -6682,6 +6703,46 @@ _TV_ACCESS_BY_CODE_SQL = (
 )
 
 
+def _pwa_widget_title_icon_for_slug(cfg: dict[str, Any], slug_n: str) -> tuple[str, str]:
+    """Иконка и имя приложения для PWA экрана: из виджетов отметки/сводки или дефолт по slug."""
+    icon_url = "/uploads/widget_images/211.png"
+    title = "Оперативный" if slug_n == "tv-1" else ("Сводка" if slug_n == "tv-2" else f"Экран {slug_n}")
+    screens = cfg.get("screens") if isinstance(cfg, dict) else None
+    if not isinstance(screens, list):
+        return title, icon_url
+    want = slug_n.strip().lower()
+    sc = next(
+        (
+            s
+            for s in screens
+            if isinstance(s, dict) and str(s.get("slug") or "").strip().lower() == want
+        ),
+        None,
+    )
+    if not isinstance(sc, dict):
+        return title, icon_url
+    widgets = sc.get("widgets")
+    if not isinstance(widgets, list):
+        return title, icon_url
+    for w in widgets:
+        if not isinstance(w, dict) or w.get("enabled") is False:
+            continue
+        if str(w.get("type") or "") not in ("checkin_submit", "checkin_monitor"):
+            continue
+        st = w.get("settings")
+        if not isinstance(st, dict):
+            continue
+        cand = str(st.get("pwa_icon_url") or "").strip()
+        if cand.startswith("/uploads/"):
+            icon_url = cand[:512]
+        t2 = str(st.get("pwa_title") or "").strip()
+        if t2:
+            title = t2[:64]
+        if cand.startswith("/uploads/") or t2:
+            break
+    return title, icon_url
+
+
 def _pwa_manifest_for_tv_pair(
     *,
     request: Request,
@@ -6759,11 +6820,6 @@ def pwa_manifest_for_tv_pair(request: Request, code: str, screen_slug: str) -> J
             if not row:
                 raise HTTPException(status_code=404, detail="Not found.")
             tenant_slug = str(row[0] or "").strip()
-    # Иконка по умолчанию: /uploads/widget_images/211.png (tenant-scoped через SAAS_TENANT_COOKIE).
-    icon_url = "/uploads/widget_images/211.png"
-    # Заголовок по умолчанию: tv-1=Оперативный, tv-2=Сводка, иначе «Экран <slug>».
-    title = "Оперативный" if slug_n == "tv-1" else ("Сводка" if slug_n == "tv-2" else f"Экран {slug_n}")
-    # Если в настройках виджетов экрана задан pwa_icon_url / pwa_title (checkin_submit / checkin_monitor) — берём их.
     prev_tenant = None
     try:
         from .tenant_ctx import tenant_slug as _tenant_slug_get
@@ -6774,34 +6830,9 @@ def pwa_manifest_for_tv_pair(request: Request, code: str, screen_slug: str) -> J
     try:
         set_tenant_slug(tenant_slug)
         cfg = load_config()
-        screens = cfg.get("screens") if isinstance(cfg, dict) else None
-        if isinstance(screens, list):
-            want = slug_n.strip().lower()
-            sc = next((s for s in screens if isinstance(s, dict) and str(s.get("slug") or "").strip().lower() == want), None)
-            if isinstance(sc, dict):
-                widgets = sc.get("widgets")
-                if isinstance(widgets, list):
-                    for w in widgets:
-                        if not isinstance(w, dict):
-                            continue
-                        if w.get("enabled") is False:
-                            continue
-                        if str(w.get("type") or "") not in ("checkin_submit", "checkin_monitor"):
-                            continue
-                        st = w.get("settings")
-                        if not isinstance(st, dict):
-                            continue
-                        cand = str(st.get("pwa_icon_url") or "").strip()
-                        if cand.startswith("/uploads/"):
-                            icon_url = cand[:512]
-                        t2 = str(st.get("pwa_title") or "").strip()
-                        if t2:
-                            title = t2[:64]
-                        if cand.startswith("/uploads/") or t2:
-                            # Если нашли хоть что-то (иконка/имя) — дальше не ищем, чтобы не было конфликтов.
-                            break
+        title, icon_url = _pwa_widget_title_icon_for_slug(cfg, slug_n)
     except Exception:
-        pass
+        title, icon_url = _pwa_widget_title_icon_for_slug({}, slug_n)
     finally:
         try:
             set_tenant_slug(prev_tenant)
@@ -6815,6 +6846,83 @@ def pwa_manifest_for_tv_pair(request: Request, code: str, screen_slug: str) -> J
         app_title=title,
         icon_url=icon_url,
     )
+
+
+@app.get("/pwa/screen/{screen_slug}.webmanifest", response_class=JSONResponse)
+def pwa_manifest_for_screen_standalone(request: Request, screen_slug: str) -> JSONResponse:
+    """
+    Manifest для прямого URL /screen/<slug> (school…/screen/tv-2): браузер подхватывает <link rel=manifest>.
+    Нужна cookie школы (`gs_saas_tenant`): её выставляет открытие экрана с `gs_tv_token` или вход.
+    """
+    slug_n = _normalize_screen_slug_for_api(str(screen_slug or ""))
+    if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", slug_n):
+        raise HTTPException(status_code=404, detail="Not found.")
+    tenant_slug: str | None = None
+    if deployment_mode() == "saas":
+        tenant_slug = _decode_saas_tenant_cookie_value(request.cookies.get(SAAS_TENANT_COOKIE) or "")
+        if not tenant_slug:
+            raise HTTPException(
+                status_code=404,
+                detail="Откройте страницу экрана с токеном или войдите в школу, затем обновите (нужна cookie тенанта).",
+            )
+    else:
+        tenant_slug = "local"
+    prev_tenant = None
+    try:
+        from .tenant_ctx import tenant_slug as _tenant_slug_get
+
+        prev_tenant = _tenant_slug_get()
+    except Exception:
+        prev_tenant = None
+    try:
+        set_tenant_slug(tenant_slug)
+        cfg = load_config()
+        title, icon_url = _pwa_widget_title_icon_for_slug(cfg, slug_n)
+    except Exception:
+        title, icon_url = _pwa_widget_title_icon_for_slug({}, slug_n)
+    finally:
+        try:
+            set_tenant_slug(prev_tenant)
+        except Exception:
+            set_tenant_slug(None)
+
+    start_url = f"/screen/{quote(slug_n, safe='')}?pwa=1"
+    manifest = {
+        "name": title,
+        "short_name": title[:24],
+        "id": f"/pwa/screen/{tenant_slug}/{slug_n}",
+        "start_url": start_url,
+        "scope": "/",
+        "display": "standalone",
+        "background_color": "#0f172a",
+        "theme_color": "#0f172a",
+        "icons": [
+            {
+                "src": icon_url,
+                "sizes": "512x512",
+                "type": "image/png",
+                "purpose": "any maskable",
+            }
+        ],
+    }
+    resp = JSONResponse(
+        content=manifest,
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+        },
+    )
+    sec = session_cookie_secure(request)
+    resp.set_cookie(
+        SAAS_TENANT_COOKIE,
+        _encode_saas_tenant_cookie_value(tenant_slug),
+        max_age=3600 * 24 * 365,
+        httponly=True,
+        samesite="lax",
+        secure=sec,
+        path="/",
+    )
+    return resp
 
 
 def _tv_access_lookup_row(cur: Any, *, code_canon: str) -> tuple[Any, Any, Any, Any] | None:
