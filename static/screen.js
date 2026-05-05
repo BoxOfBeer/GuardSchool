@@ -407,6 +407,11 @@ function ensureDeviceSettingsUi() {
         <div class="gs-device-settings-title">Настройки для этого устройства</div>
         <button type="button" class="gs-device-settings-close" id="gs-device-settings-close">Закрыть</button>
       </div>
+      <div class="gs-device-settings-row" id="gs-device-classes-row" hidden>
+        <div class="gs-device-settings-field-head">Классы расписания на этом устройстве</div>
+        <div class="gs-device-classes-hint">Показывается только при включённом виджете «Расписание» на экране; список совпадает с полем «классы» в его настройках. По умолчанию все отмечены — снимите лишнее.</div>
+        <div id="gs-device-classes-wrap" class="gs-device-settings-checks"></div>
+      </div>
       <div class="gs-device-settings-row">
         <label>Режим</label>
         <div class="gs-device-settings-checks">
@@ -422,7 +427,7 @@ function ensureDeviceSettingsUi() {
         <details class="gs-device-url-hint">
           <summary>Сброс и параметры в адресе (редко нужно)</summary>
           <p class="gs-device-url-hint-body">
-            Сброс настроек этого экрана в браузере: добавьте в URL <code>?gs_reset=1</code> (виджеты, гибрид и токен ТВ для slug) или <code>?gs_reset=all</code> — все ключи <code>gs_*</code> в localStorage и кэши Fetch. Параметр из адреса убирается сам; cookie входа в админку страница не трогает.
+            Сброс настроек этого экрана в браузере: добавьте в URL <code>?gs_reset=1</code> (фильтр классов расписания на устройстве, виджеты ленты, гибрид и токен ТВ для slug) или <code>?gs_reset=all</code> — все ключи <code>gs_*</code> в localStorage и кэши Fetch. Параметр из адреса убирается сам; cookie входа в админку страница не трогает.
             Подпись места в статистике: <code>?gs_label=Столовая</code>.
             Имя ПК Windows в браузер не передаётся; в статистику уходит краткая строка устройства (платформа/модель), если доступно.
           </p>
@@ -1520,6 +1525,30 @@ function gsDeviceNormClass(s) {
     .toLowerCase();
 }
 
+/** Сопоставить сохранённую строку gs_classes с каноническими именами из pickable; пустой/мусор → «все». */
+function gsDeviceClassCanonFromSaved(slug, existing, pickable) {
+  let raw = "";
+  try {
+    raw = String(existing.classes || localStorage.getItem(`gs_classes_${slug}`) || "").trim();
+  } catch (_) {
+    raw = "";
+  }
+  const parts = raw ? raw.split(",").map((x) => String(x).trim()).filter(Boolean) : [];
+  const normToCanon = new Map();
+  pickable.forEach((p) => {
+    normToCanon.set(gsDeviceNormClass(p), p);
+  });
+  const canon = new Set();
+  for (const part of parts) {
+    const c = normToCanon.get(gsDeviceNormClass(part));
+    if (c) canon.add(c);
+  }
+  if (!parts.length || canon.size === 0) {
+    pickable.forEach((p) => canon.add(p));
+  }
+  return canon;
+}
+
 /** Сбросить gs_classes вроде «0», если такой параллели/классов нет в pickable (иначе расписание пустое до ручного сброса). */
 function gsRepairToxicGsClasses(slug, pickable) {
   if (!slug || !pickable || !pickable.length) return false;
@@ -1576,17 +1605,58 @@ function syncDeviceSettingsFromPayload(screenPayload) {
     const slug = getSlug();
     const panel = document.getElementById("gs-device-settings-panel");
     if (!panel) return;
+    const wrapClasses = panel.querySelector("#gs-device-classes-wrap");
+    const classesRow = panel.querySelector("#gs-device-classes-row");
     const chkPersist = panel.querySelector("#gs-device-persist");
     const wrapWidgets = panel.querySelector("#gs-device-widgets");
     const btnApply = panel.querySelector("#gs-device-apply");
     const btnReset = panel.querySelector("#gs-device-reset");
-    if (!chkPersist || !wrapWidgets || !btnApply || !btnReset) return;
+    if (!wrapClasses || !chkPersist || !wrapWidgets || !btnApply || !btnReset) return;
 
     const existing = loadDevicePrefs(slug) || {};
     const persisted = Boolean(existing.persist);
     chkPersist.checked = persisted;
 
     const screen = (screenPayload && screenPayload.screen) || {};
+    const hasScheduleWidget = (screen.widgets || []).some(
+      (w) => w && w.type === "schedule" && w.enabled !== false,
+    );
+    if (classesRow) {
+      const showClasses = Boolean(hasScheduleWidget);
+      classesRow.hidden = !showClasses;
+      classesRow.setAttribute("aria-hidden", showClasses ? "false" : "true");
+    }
+
+    const pickable = Array.isArray(screenPayload && screenPayload.pickable_classes)
+      ? screenPayload.pickable_classes.map((x) => String(x).trim()).filter(Boolean)
+      : [];
+    const canon = gsDeviceClassCanonFromSaved(slug, existing, pickable);
+    wrapClasses.textContent = "";
+    if (hasScheduleWidget) {
+      if (!pickable.length) {
+        const hint = document.createElement("div");
+        hint.className = "hint";
+        hint.style.fontSize = "13px";
+        hint.textContent =
+          "Не удалось построить список классов для виджета «Расписание». Проверьте импорт расписания и поле «классы» в настройках виджета.";
+        wrapClasses.appendChild(hint);
+      } else {
+        pickable.forEach((name, idx) => {
+          const lab = document.createElement("label");
+          lab.className = "opt";
+          const inp = document.createElement("input");
+          inp.type = "checkbox";
+          inp.value = name;
+          inp.id = `gs-device-class-${idx}`;
+          inp.checked = canon.has(name);
+          const span = document.createElement("span");
+          span.textContent = name;
+          lab.appendChild(inp);
+          lab.appendChild(span);
+          wrapClasses.appendChild(lab);
+        });
+      }
+    }
 
     const filterMwTypes = (arr) =>
       (arr || []).map((x) => String(x || "").trim()).filter((t) => t && !GS_DEVICE_MW_EXCLUDED_TYPES.has(t));
@@ -1623,6 +1693,22 @@ function syncDeviceSettingsFromPayload(screenPayload) {
     });
 
     btnApply.onclick = () => {
+      const scheduleRowHidden = !classesRow || classesRow.hidden;
+      const boxes = scheduleRowHidden
+        ? []
+        : [...wrapClasses.querySelectorAll('input[type="checkbox"]')];
+      const checked = scheduleRowHidden
+        ? []
+        : [...wrapClasses.querySelectorAll('input[type="checkbox"]:checked')].map((x) => String(x.value));
+      let classes = "";
+      if (boxes.length) {
+        if (!checked.length) {
+          window.alert("Отметьте хотя бы один класс или нажмите «Сбросить».");
+          return;
+        }
+        if (checked.length === boxes.length) classes = "";
+        else classes = checked.join(",");
+      }
       const mwBoxes = [...wrapWidgets.querySelectorAll('input[type="checkbox"]')];
       const mwChecked = [...wrapWidgets.querySelectorAll('input[type="checkbox"]:checked')].map((x) => String(x.value));
       let mw = mwChecked.join(",");
@@ -1633,6 +1719,8 @@ function syncDeviceSettingsFromPayload(screenPayload) {
       }
       const persist = chkPersist.checked;
       try {
+        if (classes) localStorage.setItem(`gs_classes_${slug}`, classes);
+        else if (!scheduleRowHidden && boxes.length) localStorage.removeItem(`gs_classes_${slug}`);
         try {
           localStorage.removeItem(`gs_grid_${slug}`);
         } catch (_) {}
@@ -1660,7 +1748,7 @@ function syncDeviceSettingsFromPayload(screenPayload) {
 
     btnReset.onclick = () => {
       const ok = window.confirm(
-        "Сбросить настройки устройства для этого экрана?\n\nБудет очищен фильтр виджетов (gs_mw) и сохранённые параметры этого slug. Серверный конфиг экранов не изменится."
+        "Сбросить настройки устройства для этого экрана?\n\nБудут очищены: фильтр классов расписания (gs_classes), фильтр виджетов ленты (gs_mw) и прочие параметры этого slug. Серверный конфиг экранов не изменится."
       );
       if (!ok) return;
       clearDevicePrefs(slug);
