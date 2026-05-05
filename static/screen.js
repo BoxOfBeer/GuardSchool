@@ -669,7 +669,7 @@ function ensureDeviceSettingsUi() {
         if (!slug) throw new Error("empty slug");
         const perm = await Notification.requestPermission();
         if (perm !== "granted") throw new Error("Разрешение на уведомления не выдано.");
-        const reg = await navigator.serviceWorker.ready;
+        const reg = await gsEnsureScreenServiceWorkerForPush();
         const vapid = await getVapidKey(slug);
         const sub = await reg.pushManager.subscribe({
           userVisibleOnly: true,
@@ -694,7 +694,12 @@ function ensureDeviceSettingsUi() {
 
       async function unsubscribePush() {
         const slug = getSlug();
-        const reg = await navigator.serviceWorker.ready;
+        const reg = await navigator.serviceWorker.getRegistration();
+        if (!reg) {
+          setStatus("Подписки не было.");
+          return;
+        }
+        await reg.ready;
         const sub = await reg.pushManager.getSubscription();
         if (!sub) {
           setStatus("Подписки не было.");
@@ -752,6 +757,31 @@ try {
     } catch (_) {}
   });
 } catch (_) {}
+
+/** Push требует активный SW на этой регистрации — navigator.serviceWorker.ready иногда недостаточен. */
+async function gsEnsureScreenServiceWorkerForPush() {
+  if (!("serviceWorker" in navigator)) throw new Error("Service Worker не поддерживается в этом браузере.");
+  if (!window.isSecureContext) throw new Error("Нужен HTTPS (защищённый контекст) для push.");
+  const ua = String(navigator.userAgent || "");
+  if (/SMART-TV|SmartTV|Tizen|Web0S|WebOS|NetCast|HbbTV|AFTB|AFTS|BRAVIA|Viera|TV/i.test(ua)) {
+    throw new Error("На браузере ТВ Service Worker отключён. Для push используйте телефон, планшет или ПК.");
+  }
+  let reg = await navigator.serviceWorker.getRegistration();
+  if (!reg) {
+    try {
+      reg = await navigator.serviceWorker.register("/sw.js");
+    } catch (e) {
+      throw new Error(
+        "Не удалось зарегистрировать /sw.js: " + (e && e.message ? e.message : String(e))
+      );
+    }
+  }
+  await reg.ready;
+  if (!reg.active) {
+    throw new Error("Service Worker не активен — обновите страницу (полное обновление) и повторите.");
+  }
+  return reg;
+}
 
 function gsMaybeRegisterServiceWorker() {
   try {

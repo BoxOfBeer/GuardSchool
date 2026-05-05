@@ -6764,44 +6764,122 @@ _TV_ACCESS_BY_CODE_SQL = (
 )
 
 
+def _normalize_pwa_upload_icon_path(raw: object) -> str | None:
+    """
+    Поле pwa_icon_url в виджете: нужен путь вида /uploads/..., либо полный URL с таким же путём
+    (копируют из браузера). Иначе иконку в manifest не ставим — Chromium не любит произвольные URL.
+    """
+    cand = str(raw or "").strip()
+    if not cand:
+        return None
+    if cand.startswith("/uploads/"):
+        return cand.split("?", 1)[0][:512]
+    low = cand.lower()
+    if low.startswith(("http://", "https://")):
+        try:
+            path = urlparse(cand).path or ""
+            path = path.split("?", 1)[0]
+            if path.startswith("/uploads/"):
+                return path[:512]
+        except Exception:
+            return None
+    return None
+
+
+def _pwa_manifest_icon_specs(icon_rel: str) -> tuple[list[dict[str, str]], str]:
+    """
+    Кортеж: список записей icons[] для manifest, MIME первой записи (для логики не обязательно).
+
+    ICO/SVG даём как sizes:any — не притворяемся 512 PNG.
+    """
+    base = (icon_rel or "").split("?", 1)[0].lower()
+    if base.endswith(".ico"):
+        return (
+            [{"src": icon_rel, "sizes": "any", "type": "image/x-icon", "purpose": "any"}],
+            "image/x-icon",
+        )
+    if base.endswith(".svg") or base.endswith(".svgz"):
+        return (
+            [{"src": icon_rel, "sizes": "any", "type": "image/svg+xml", "purpose": "any"}],
+            "image/svg+xml",
+        )
+    if base.endswith(".webp"):
+        mime = "image/webp"
+    elif base.endswith(".jpg") or base.endswith(".jpeg"):
+        mime = "image/jpeg"
+    else:
+        mime = "image/png"
+    return (
+        [
+            {"src": icon_rel, "sizes": "192x192", "type": mime, "purpose": "any"},
+            {"src": icon_rel, "sizes": "512x512", "type": mime, "purpose": "any maskable"},
+        ],
+        mime,
+    )
+
+
+def _pwa_checkin_label_module_title(st: dict[str, Any]) -> str:
+    lbl = st.get("labels")
+    if isinstance(lbl, dict):
+        return str(lbl.get("module_title") or "").strip()[:64]
+    return ""
+
+
 def _pwa_widget_title_icon_for_slug(cfg: dict[str, Any], slug_n: str) -> tuple[str, str]:
     """Иконка и имя приложения для PWA экрана: из виджетов отметки/сводки или дефолт по slug."""
     icon_url = "/uploads/widget_images/211.png"
-    title = "Оперативный" if slug_n == "tv-1" else ("Сводка" if slug_n == "tv-2" else f"Экран {slug_n}")
+    slug_key = slug_n.strip().lower()
+    slug_default_title = "Форпост" if slug_key in ("tv-1", "tv-2") else f"Экран {slug_n}"
+    title = slug_default_title
     screens = cfg.get("screens") if isinstance(cfg, dict) else None
     if not isinstance(screens, list):
-        return title, icon_url
-    want = slug_n.strip().lower()
+        return title[:64], icon_url
     sc = next(
         (
             s
             for s in screens
-            if isinstance(s, dict) and str(s.get("slug") or "").strip().lower() == want
+            if isinstance(s, dict) and str(s.get("slug") or "").strip().lower() == slug_key
         ),
         None,
     )
     if not isinstance(sc, dict):
-        return title, icon_url
+        return title[:64], icon_url
+    screen_title = str(sc.get("name") or "").strip()[:64]
     widgets = sc.get("widgets")
     if not isinstance(widgets, list):
-        return title, icon_url
+        return (screen_title or title)[:64], icon_url
+    pwa_title_pick = ""
+    icon_pick = ""
+    mod_submit = ""
+    mod_mon = ""
     for w in widgets:
         if not isinstance(w, dict) or w.get("enabled") is False:
             continue
-        if str(w.get("type") or "") not in ("checkin_submit", "checkin_monitor"):
+        wt = str(w.get("type") or "")
+        if wt not in ("checkin_submit", "checkin_monitor"):
             continue
         st = w.get("settings")
         if not isinstance(st, dict):
             continue
-        cand = str(st.get("pwa_icon_url") or "").strip()
-        if cand.startswith("/uploads/"):
-            icon_url = cand[:512]
-        t2 = str(st.get("pwa_title") or "").strip()
-        if t2:
-            title = t2[:64]
-        if cand.startswith("/uploads/") or t2:
-            break
-    return title, icon_url
+        ip = _normalize_pwa_upload_icon_path(st.get("pwa_icon_url"))
+        if ip and not icon_pick:
+            icon_pick = ip
+        pt = str(st.get("pwa_title") or "").strip()[:64]
+        if pt and not pwa_title_pick:
+            pwa_title_pick = pt
+        if wt == "checkin_submit" and not mod_submit:
+            mod_submit = _pwa_checkin_label_module_title(st)
+        if wt == "checkin_monitor" and not mod_mon:
+            mod_mon = _pwa_checkin_label_module_title(st)
+    chosen = (
+        pwa_title_pick
+        or mod_submit
+        or mod_mon
+        or screen_title
+        or slug_default_title
+    )
+    final_icon = icon_pick if icon_pick else icon_url
+    return chosen[:64], final_icon
 
 
 def _pwa_manifest_for_tv_pair(
@@ -6820,6 +6898,7 @@ def _pwa_manifest_for_tv_pair(
     - start_url должен содержать code (чтобы “ярлык” вёл на брендированную ссылку);
     - icon должен быть tenant-scoped (через /uploads/*, который резолвится по cookie тенанта).
     """
+    icon_entries, _mime = _pwa_manifest_icon_specs(icon_url)
     start_url = f"/t/{quote(code_canon, safe='')}/{quote(screen_slug, safe='')}?pwa=1"
     manifest = {
         "name": app_title,
@@ -6830,14 +6909,7 @@ def _pwa_manifest_for_tv_pair(
         "display": "standalone",
         "background_color": "#0f172a",
         "theme_color": "#0f172a",
-        "icons": [
-            {
-                "src": icon_url,
-                "sizes": "512x512",
-                "type": "image/png",
-                "purpose": "any maskable",
-            }
-        ],
+        "icons": icon_entries,
     }
     resp = JSONResponse(
         content=manifest,
@@ -6946,6 +7018,7 @@ def pwa_manifest_for_screen_standalone(request: Request, screen_slug: str) -> JS
         except Exception:
             set_tenant_slug(None)
 
+    icon_entries_sc, _mime_sc = _pwa_manifest_icon_specs(icon_url)
     start_url = f"/screen/{quote(slug_n, safe='')}?pwa=1"
     manifest = {
         "name": title,
@@ -6956,14 +7029,7 @@ def pwa_manifest_for_screen_standalone(request: Request, screen_slug: str) -> JS
         "display": "standalone",
         "background_color": "#0f172a",
         "theme_color": "#0f172a",
-        "icons": [
-            {
-                "src": icon_url,
-                "sizes": "512x512",
-                "type": "image/png",
-                "purpose": "any maskable",
-            }
-        ],
+        "icons": icon_entries_sc,
     }
     resp = JSONResponse(
         content=manifest,
