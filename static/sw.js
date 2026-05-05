@@ -26,20 +26,50 @@ function safeJsonParse(s) {
 }
 
 self.addEventListener("push", (event) => {
-  try {
-    const data = event && event.data ? safeJsonParse(event.data.text()) : null;
-    const title = (data && data.title) || "GuardSchool";
-    const body = (data && data.body) || "";
-    const url = (data && data.url) || "/";
-    const tag = (data && data.tag) || undefined;
-    const opts = {
-      body,
-      tag,
-      renotify: true,
-      data: { url },
-    };
-    event.waitUntil(self.registration.showNotification(title, opts));
-  } catch (_) {}
+  event.waitUntil(
+    (async () => {
+      let rawText = "";
+      try {
+        rawText = event && event.data ? String(event.data.text() || "") : "";
+      } catch (_) {
+        rawText = "";
+      }
+      const data = rawText ? safeJsonParse(rawText) : null;
+      const title = (data && data.title) || "GuardSchool";
+      const body = (data && data.body) || "";
+      const url = (data && data.url) || "/";
+      const tag = (data && data.tag) || undefined;
+      const receivedAt = new Date().toISOString();
+      const dbg = {
+        type: "gs-push-debug",
+        receivedAt,
+        title,
+        body,
+        url,
+        tag: tag || "",
+        rawLen: rawText.length,
+        parseOk: Boolean(data),
+      };
+      try {
+        console.log("[GuardSchool SW push]", receivedAt, title, body, "parseOk=", Boolean(data), "rawLen=", rawText.length);
+      } catch (_) {}
+      try {
+        const clientsArr = await self.clients.matchAll({ type: "window", includeUncontrolled: false });
+        for (let i = 0; i < (clientsArr || []).length; i++) {
+          try {
+            clientsArr[i].postMessage(dbg);
+          } catch (_) {}
+        }
+      } catch (_) {}
+      const opts = {
+        body,
+        tag,
+        renotify: true,
+        data: { url },
+      };
+      await self.registration.showNotification(title, opts);
+    })()
+  );
 });
 
 self.addEventListener("notificationclick", (event) => {

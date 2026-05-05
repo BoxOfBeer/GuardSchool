@@ -382,6 +382,79 @@ window.gsCheckinApiFetch = function gsCheckinApiFetch(url, init) {
   return fetch(url, Object.assign({}, i, { credentials: "include", headers: headers }));
 };
 
+/** Включение: в URL «?gs_push_debug=1», снять — «?gs_push_debug=0» или снять галочку в панели. */
+function gsPushDebugEnabled() {
+  try {
+    const sp = new URLSearchParams(window.location.search || "");
+    if (sp.get("gs_push_debug") === "1") localStorage.setItem("gs_push_debug", "1");
+    if (sp.get("gs_push_debug") === "0") localStorage.removeItem("gs_push_debug");
+    return localStorage.getItem("gs_push_debug") === "1";
+  } catch (_) {
+    return false;
+  }
+}
+
+function gsPushDebugToast(locLabel, d) {
+  if (!gsPushDebugEnabled()) return;
+  try {
+    let host = document.getElementById("gs-push-debug-host");
+    if (!host) {
+      host = document.createElement("div");
+      host.id = "gs-push-debug-host";
+      host.style.cssText =
+        "position:fixed;right:12px;bottom:12px;z-index:2147483000;max-width:min(420px,94vw);display:flex;flex-direction:column;gap:8px;pointer-events:none;font:13px/1.35 system-ui,sans-serif;";
+      document.body.appendChild(host);
+    }
+    const wrap = document.createElement("div");
+    wrap.style.cssText =
+      "background:#1e293b;color:#e2e8f0;padding:10px 12px;border-radius:10px;box-shadow:0 8px 28px rgba(0,0,0,.35);pointer-events:auto;border:1px solid #334155;";
+    const t1 = document.createElement("div");
+    t1.style.cssText = "font-weight:600;margin-bottom:4px";
+    t1.textContent = "Push дошёл до SW " + (locLabel ? "(" + locLabel + ")" : "");
+    const t2 = document.createElement("div");
+    t2.style.cssText = "opacity:.9;font-size:12px";
+    t2.textContent = "Дальше вызывается showNotification(). Если баннера нет — «Не беспокоить», Chrome → Сайт → Уведомления, настройки Windows.";
+    const t3 = document.createElement("div");
+    t3.style.cssText = "opacity:.85;font-size:11px;margin-top:6px;word-break:break-word";
+    t3.textContent = String(d && d.title ? d.title : "") + (d && d.body ? " — " + String(d.body).slice(0, 120) : "");
+    wrap.appendChild(t1);
+    wrap.appendChild(t2);
+    wrap.appendChild(t3);
+    host.appendChild(wrap);
+    window.setTimeout(() => {
+      try {
+        wrap.remove();
+      } catch (_) {}
+    }, 14000);
+  } catch (_) {}
+}
+
+function gsInstallPushDebugListener() {
+  try {
+    if (window.__gsPushDebugListenerInstalled) return;
+    window.__gsPushDebugListenerInstalled = true;
+    if (!("serviceWorker" in navigator)) return;
+    navigator.serviceWorker.addEventListener("message", (ev) => {
+      const d = ev && ev.data;
+      if (!d || d.type !== "gs-push-debug") return;
+      if (!gsPushDebugEnabled()) return;
+      let locLabel = "";
+      try {
+        locLabel = d.receivedAt ? new Date(d.receivedAt).toLocaleString() : "";
+      } catch (_) {}
+      try {
+        console.warn(
+          "[GuardSchool push → страница]",
+          locLabel || d.receivedAt,
+          "SW получил push, далее showNotification()",
+          d
+        );
+      } catch (_) {}
+      gsPushDebugToast(locLabel, d);
+    });
+  } catch (_) {}
+}
+
 /** Плавающая шестерёнка и фильтр классов на устройстве — только при mobile_mode экрана (см. get_screen / screenPollUrl). */
 function gsShowScreenDeviceGear(screen) {
   return Boolean(screen && screen.mobile_mode);
@@ -422,17 +495,24 @@ function ensureDeviceSettingsUi() {
         <div class="gs-device-classes-hint">
           Уведомления приходят даже когда страница закрыта (если браузер поддерживает Web Push). Запрос разрешения появится после нажатия кнопки.
         </div>
+        <div class="gs-device-classes-hint" style="margin-top:8px">
+          Пуш по теме «аварийный режим» уходит при <b>сохранении настроек в админке</b>, когда меняется активный шаблон аварии — не при каждом показе «проблемы» на живом экране.
+        </div>
         <div class="gs-device-settings-checks" style="margin-top:8px">
           <label class="opt"><input type="checkbox" id="gs-push-topic-emergency" checked /> <span>Аварийный режим</span></label>
-          <label class="opt"><input type="checkbox" id="gs-push-topic-checkin" checked /> <span>Новые отметки</span></label>
+          <label class="opt"><input type="checkbox" id="gs-push-topic-checkin" checked /> <span>Журнал сводки</span> <span class="hint" style="display:block;margin:2px 0 0 22px;opacity:.85;font-size:12px">новая строка и подтверждение ✓</span></label>
+        </div>
+        <div class="gs-device-settings-checks" style="margin-top:6px">
+          <label class="opt"><input type="checkbox" id="gs-push-debug" /> <span>Отладка push: консоль F12 и всплывашка (или <code>?gs_push_debug=1</code> в URL)</span></label>
         </div>
         <div class="gs-device-settings-row" style="padding:0;margin-top:8px">
           <label>Не чаще, чем раз в (сек)</label>
           <input id="gs-push-min-interval" class="gs-device-settings-input" type="number" min="30" max="86400" value="300" />
         </div>
-        <div class="gs-device-settings-actions" style="justify-content:flex-start;padding:10px 0 0">
+        <div class="gs-device-settings-actions" style="justify-content:flex-start;padding:10px 0 0;flex-wrap:wrap;gap:8px">
           <button type="button" class="gs-device-btn-primary" id="gs-push-enable">Включить уведомления</button>
           <button type="button" class="gs-device-btn-secondary" id="gs-push-disable">Отключить</button>
+          <button type="button" class="gs-device-btn-secondary" id="gs-push-test">Тест с сервера</button>
           <span class="hint" id="gs-push-status"></span>
         </div>
       </div>
@@ -523,6 +603,8 @@ function ensureDeviceSettingsUi() {
       const disableBtn = panel.querySelector("#gs-push-disable");
       const emCb = panel.querySelector("#gs-push-topic-emergency");
       const chCb = panel.querySelector("#gs-push-topic-checkin");
+      const dbgCb = panel.querySelector("#gs-push-debug");
+      const testBtn = panel.querySelector("#gs-push-test");
       const miInp = panel.querySelector("#gs-push-min-interval");
       const canPush = Boolean(window.isSecureContext && window.Notification && navigator.serviceWorker && ("PushManager" in window));
       if (pushRow && canPush) pushRow.hidden = false;
@@ -530,6 +612,24 @@ function ensureDeviceSettingsUi() {
       function setStatus(msg) {
         if (st) st.textContent = msg || "";
       }
+
+      try {
+        gsPushDebugEnabled();
+        if (dbgCb) {
+          dbgCb.checked = gsPushDebugEnabled();
+          dbgCb.addEventListener("change", () => {
+            try {
+              if (dbgCb.checked) localStorage.setItem("gs_push_debug", "1");
+              else localStorage.removeItem("gs_push_debug");
+            } catch (_) {}
+            setStatus(
+              dbgCb.checked
+                ? "Отладка: смотрите Console (эта вкладка) и «Application → Service workers → Inspect»."
+                : ""
+            );
+          });
+        }
+      } catch (_) {}
 
       function urlBase64ToUint8Array(base64String) {
         const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
@@ -609,6 +709,29 @@ function ensureDeviceSettingsUi() {
 
       if (enableBtn) enableBtn.addEventListener("click", () => { setStatus(""); subscribePush().catch((e) => setStatus(e.message || String(e))); });
       if (disableBtn) disableBtn.addEventListener("click", () => { setStatus(""); unsubscribePush().catch((e) => setStatus(e.message || String(e))); });
+      if (testBtn) {
+        testBtn.addEventListener("click", () => {
+          setStatus("");
+          (async () => {
+            try {
+              const slug = getSlug();
+              if (!slug) throw new Error("empty slug");
+              const base = String(window.__lastScreenPollBase || "").trim().replace(/\/$/, "");
+              const url = `${base}/api/screen/${encodeURIComponent(slug)}/push/test`;
+              const r = await window.gsCheckinApiFetch(url, { method: "POST" });
+              const data = await r.json().catch(() => ({}));
+              if (!r.ok) throw new Error(data.detail || `HTTP ${r.status}`);
+              setStatus(
+                "Тест отправлен (целей: " +
+                  String(data.targets != null ? data.targets : "?") +
+                  "). Смотрите баннер ОС или отладку."
+              );
+            } catch (e) {
+              setStatus(e.message || String(e));
+            }
+          })();
+        });
+      }
     } catch (_) {}
   } catch (_) {}
 }
@@ -635,6 +758,11 @@ function gsMaybeRegisterServiceWorker() {
     navigator.serviceWorker.register("/sw.js").catch(() => {});
   } catch (_) {}
 }
+
+try {
+  gsPushDebugEnabled();
+  gsInstallPushDebugListener();
+} catch (_) {}
 
 function gsMaybeAttachSaasManifestForScreenSlug(slug) {
   try {

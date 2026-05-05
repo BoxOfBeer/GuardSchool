@@ -538,8 +538,11 @@ def set_checkin_event_confirmed(
     *,
     screen_slug: str,
     allowed_place_ids: set[str],
-) -> str | None:
-    """Проставить подтверждение; возвращает confirmed_at (уже был или новый) либо None."""
+) -> tuple[str | None, bool]:
+    """
+    Проставить подтверждение.
+    Возвращает (confirmed_at, newly_confirmed). newly_confirmed=True только если впервые проставили метку.
+    """
     tid = (tenant_id or "local").strip() or "local"
     ss = (screen_slug or "").strip().lower()
     ts = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
@@ -549,19 +552,35 @@ def set_checkin_event_confirmed(
             (int(event_id),),
         ).fetchone()
         if not row:
-            return None
+            return None, False
         if str(row["tenant_id"] or "") != tid:
-            return None
+            return None, False
         if str(row["screen_slug"] or "").strip().lower() != ss:
-            return None
+            return None, False
         pid = str(row["place_id"] or "")
         if allowed_place_ids and pid not in allowed_place_ids:
-            return None
+            return None, False
         prev = (row["confirmed_at"] or "").strip() if row["confirmed_at"] is not None else ""
         if prev:
-            return prev
+            return prev, False
         conn.execute("UPDATE checkin_events SET confirmed_at = ? WHERE id = ?", (ts, int(event_id)))
-    return ts
+    return ts, True
+
+
+def fetch_checkin_event_by_id(tenant_id: str, event_id: int) -> dict[str, Any] | None:
+    tid = (tenant_id or "local").strip() or "local"
+    ensure_checkin_tables()
+    with _connect() as conn:
+        row = conn.execute(
+            """
+            SELECT id, tenant_id, device_hash, device_name, place_id, level, comment, created_at,
+                   screen_slug, submit_widget_id, confirmed_at
+            FROM checkin_events
+            WHERE id = ? AND tenant_id = ?
+            """,
+            (int(event_id), tid),
+        ).fetchone()
+    return _row_to_dict(row) if row else None
 
 
 def confirm_all_unconfirmed_in_range(

@@ -138,6 +138,7 @@ from .gs_checkin import (
     confirm_all_unconfirmed_in_range,
     enrich_checkin_event_for_client,
     ensure_checkin_tables,
+    fetch_checkin_event_by_id,
     get_checkin_events_status_for_device,
     insert_event as insert_checkin_event,
     journal_to_csv_bytes,
@@ -5777,13 +5778,18 @@ async def api_checkin_post_event(request: Request) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail=str(e)) from None
     _en = enrich_checkin_event_for_client(cfg, {"created_at": saved.get("created_at"), "confirmed_at": ""})
     try:
-        _notify_push_checkin_unconfirmed(tenant_id=tenant_id, screen_slug=slug_key)
-        # Если «Сводка» висит на другом экране: пушим подписчикам экрана сводки.
-        for mon_slug in _checkin_monitor_screens_for_events_slug(cfg, slug_key):
-            if mon_slug != slug_key:
-                _notify_push_checkin_unconfirmed_to_monitor_screen(
-                    tenant_id=tenant_id, monitor_screen_slug=mon_slug, events_screen_slug=slug_key
-                )
+        _notify_push_checkin_journal_new_row(
+            cfg=cfg,
+            tenant_id=tenant_id,
+            screen=screen,
+            submit_w=submit_w,
+            events_screen_slug=slug_key,
+            saved=saved,
+            place_id=place_id,
+            level=level,
+            device_name=device_name,
+            comment=comment,
+        )
     except Exception:
         pass
     return {
@@ -5936,11 +5942,24 @@ async def api_screen_checkin_confirm(request: Request, slug: str) -> dict[str, A
     allowed = {p["id"] for p in places}
     tenant_id = _checkin_tenant_from_request(request)
     event_slug = _checkin_events_screen_slug_for_monitor(cfg, mw, slug_key)
-    ts = set_checkin_event_confirmed(
+    ts, newly = set_checkin_event_confirmed(
         tenant_id, event_id, screen_slug=event_slug, allowed_place_ids=allowed
     )
     if ts is None:
         raise HTTPException(status_code=404, detail="Событие не найдено или недоступно.")
+    if newly:
+        try:
+            erow = fetch_checkin_event_by_id(tenant_id, event_id)
+            if erow:
+                _notify_push_checkin_journal_confirmed(
+                    cfg=cfg,
+                    tenant_id=tenant_id,
+                    mw=mw,
+                    events_screen_slug=event_slug,
+                    row=erow,
+                )
+        except Exception:
+            pass
     return {"status": "ok", "confirmed_at": ts}
 
 
@@ -5968,6 +5987,13 @@ async def api_screen_checkin_confirm_all(request: Request, slug: str) -> dict[st
     tenant_id = _checkin_tenant_from_request(request)
     event_slug = _checkin_events_screen_slug_for_monitor(cfg, mw, slug_key)
     n = confirm_all_unconfirmed_in_range(tenant_id, cfg, event_slug, pids, period_n)
+    if n > 0:
+        try:
+            _notify_push_checkin_journal_bulk_confirm(
+                cfg=cfg, tenant_id=tenant_id, events_screen_slug=event_slug, count=n
+            )
+        except Exception:
+            pass
     return {"status": "ok", "confirmed_count": n}
 
 
@@ -6036,11 +6062,24 @@ async def api_admin_checkin_confirm(request: Request) -> dict[str, Any]:
     allowed = {p["id"] for p in places}
     tenant_id = _checkin_tenant_from_request(request)
     event_slug = _checkin_events_screen_slug_for_monitor(cfg, mw, slug_key)
-    ts = set_checkin_event_confirmed(
+    ts, newly = set_checkin_event_confirmed(
         tenant_id, event_id, screen_slug=event_slug, allowed_place_ids=allowed
     )
     if ts is None:
         raise HTTPException(status_code=404, detail="Событие не найдено или недоступно.")
+    if newly:
+        try:
+            erow = fetch_checkin_event_by_id(tenant_id, event_id)
+            if erow:
+                _notify_push_checkin_journal_confirmed(
+                    cfg=cfg,
+                    tenant_id=tenant_id,
+                    mw=mw,
+                    events_screen_slug=event_slug,
+                    row=erow,
+                )
+        except Exception:
+            pass
     return {"status": "ok", "confirmed_at": ts}
 
 
@@ -6069,6 +6108,13 @@ async def api_admin_checkin_confirm_all(request: Request) -> dict[str, Any]:
     tenant_id = _checkin_tenant_from_request(request)
     event_slug = _checkin_events_screen_slug_for_monitor(cfg, mw, slug_key)
     n = confirm_all_unconfirmed_in_range(tenant_id, cfg, event_slug, pids, period_n)
+    if n > 0:
+        try:
+            _notify_push_checkin_journal_bulk_confirm(
+                cfg=cfg, tenant_id=tenant_id, events_screen_slug=event_slug, count=n
+            )
+        except Exception:
+            pass
     return {"status": "ok", "confirmed_count": n}
 
 
@@ -6210,6 +6256,41 @@ async def api_push_unsubscribe(request: Request, slug: str) -> dict[str, Any]:
     return {"status": "ok", "deleted": n}
 
 
+@app.post("/api/screen/{slug}/push/test")
+def api_push_test(request: Request, slug: str) -> dict[str, Any]:
+    """Проверка Web Push без телефона: доставка на все подписки экрана (обходит rate-limit)."""
+    slug_key = _normalize_screen_slug_for_api(slug)
+    if not slug_key:
+        raise HTTPException(status_code=404, detail="Экран не найден.")
+    _require_tv_access_for_screen(request, slug_key)
+    if not _push_enabled_on_server():
+        raise HTTPException(status_code=503, detail="Push на сервере не настроен (VAPID).")
+    tenant_id = str(request.cookies.get(SAAS_TENANT_COOKIE) or "local").strip() or "local"
+    subs = list_push_subscriptions(tenant_id=tenant_id, screen_slug=slug_key, topic=None)
+    if not subs:
+        raise HTTPException(
+            status_code=400,
+            detail="Нет подписки на этот экран — сначала нажмите «Включить уведомления».",
+        )
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc).strftime("%H:%M:%S UTC")
+    _notify_push_to_screen(
+        tenant_id=tenant_id,
+        screen_slug=slug_key,
+        topic="test",
+        title="GuardSchool — тест push",
+        body=(
+            f"Сервер отправил в {now}. Если нет баннера: «Не беспокоить», настройки сайта в Windows, "
+            f"или смотрите консоль SW (F12 → Application → Service Workers → Inspect)."
+        ),
+        url=f"/screen/{quote(slug_key, safe='')}",
+        all_subscribers=True,
+        skip_rate_limit=True,
+    )
+    return {"status": "ok", "targets": len(subs)}
+
+
 def _tv_pair_pin_entry_file_response() -> FileResponse:
     """Страница ввода PIN без кеша (иначе после включения обхода браузер долго держит старый HTML)."""
     return FileResponse(
@@ -6227,10 +6308,22 @@ def _push_enabled_on_server() -> bool:
     )
 
 
-def _notify_push_to_screen(*, tenant_id: str, screen_slug: str, topic: str, title: str, body: str, url: str) -> None:
+def _notify_push_to_screen(
+    *,
+    tenant_id: str,
+    screen_slug: str,
+    topic: str,
+    title: str,
+    body: str,
+    url: str,
+    all_subscribers: bool = False,
+    skip_rate_limit: bool = False,
+    notification_tag: str | None = None,
+) -> None:
     if not _push_enabled_on_server():
         return
-    subs = list_push_subscriptions(tenant_id=tenant_id, screen_slug=screen_slug, topic=topic)
+    list_topic = "" if all_subscribers else topic
+    subs = list_push_subscriptions(tenant_id=tenant_id, screen_slug=screen_slug, topic=list_topic)
     if not subs:
         return
     mi = 300
@@ -6238,11 +6331,13 @@ def _notify_push_to_screen(*, tenant_id: str, screen_slug: str, topic: str, titl
         mi = int(subs[0].get("min_interval_sec") or 300)
     except Exception:
         mi = 300
-    dec = push_rate_limit_decide(tenant_id=tenant_id, screen_slug=screen_slug, topic=topic, min_interval_sec=mi)
-    if not dec.should_send:
-        return
+    if not skip_rate_limit:
+        dec = push_rate_limit_decide(tenant_id=tenant_id, screen_slug=screen_slug, topic=topic, min_interval_sec=mi)
+        if not dec.should_send:
+            return
+    tag_out = (notification_tag or "").strip() or f"{screen_slug}:{topic}"
     payload = json.dumps(
-        {"title": title, "body": body, "url": url, "tag": f"{screen_slug}:{topic}"},
+        {"title": title, "body": body, "url": url, "tag": tag_out},
         ensure_ascii=False,
     )
     try:
@@ -6259,43 +6354,6 @@ def _notify_push_to_screen(*, tenant_id: str, screen_slug: str, topic: str, titl
             )
         except Exception:
             continue
-
-
-def _notify_push_checkin_unconfirmed(*, tenant_id: str, screen_slug: str) -> None:
-    try:
-        import sqlite3
-        from .tenant_ctx import map_data_path
-        from .gs_paths import DATA_DIR
-
-        db_path = map_data_path(DATA_DIR) / "checkin.sqlite3"
-        conn = sqlite3.connect(str(db_path))
-        try:
-            cur = conn.execute(
-                """
-                SELECT COUNT(1) AS n
-                FROM checkin_events
-                WHERE tenant_id=? AND lower(trim(screen_slug))=?
-                  AND (confirmed_at IS NULL OR trim(confirmed_at) = '')
-                """,
-                ((tenant_id or "local").strip() or "local", (screen_slug or "").strip().lower()),
-            )
-            row = cur.fetchone()
-            n = int(row[0] or 0) if row else 0
-        finally:
-            conn.close()
-    except Exception:
-        return
-    if n <= 0:
-        return
-    url = f"/screen/{quote(str(screen_slug or '').strip().lower(), safe='')}"
-    _notify_push_to_screen(
-        tenant_id=tenant_id,
-        screen_slug=screen_slug,
-        topic="checkin",
-        title="Новые отметки",
-        body=f"Неподтверждённых: {n}",
-        url=url,
-    )
 
 
 def _checkin_monitor_screens_for_events_slug(cfg: dict[str, Any], events_slug: str) -> list[str]:
@@ -6330,14 +6388,12 @@ def _checkin_monitor_screens_for_events_slug(cfg: dict[str, Any], events_slug: s
     return out
 
 
-def _notify_push_checkin_unconfirmed_to_monitor_screen(
-    *, tenant_id: str, monitor_screen_slug: str, events_screen_slug: str
-) -> None:
-    # Считаем неподтверждённые события по events_screen_slug, но пуш отправляем подписчикам monitor_screen_slug.
+def _checkin_count_unconfirmed(*, tenant_id: str, events_screen_slug: str) -> int:
     try:
         import sqlite3
-        from .tenant_ctx import map_data_path
+
         from .gs_paths import DATA_DIR
+        from .tenant_ctx import map_data_path
 
         db_path = map_data_path(DATA_DIR) / "checkin.sqlite3"
         conn = sqlite3.connect(str(db_path))
@@ -6352,22 +6408,188 @@ def _notify_push_checkin_unconfirmed_to_monitor_screen(
                 ((tenant_id or "local").strip() or "local", (events_screen_slug or "").strip().lower()),
             )
             row = cur.fetchone()
-            n = int(row[0] or 0) if row else 0
+            return int(row[0] or 0) if row else 0
         finally:
             conn.close()
     except Exception:
+        return 0
+
+
+def _checkin_push_target_slugs_for_events_screen(cfg: dict[str, Any], events_screen_slug: str) -> list[str]:
+    """Экран записи событий + все экраны со сводкой, смотрящие на этот slug."""
+    root = (events_screen_slug or "").strip().lower()
+    if not root:
+        return []
+    out: list[str] = [root]
+    for m in _checkin_monitor_screens_for_events_slug(cfg, root):
+        if m and m not in out:
+            out.append(m)
+    return out
+
+
+def _checkin_level_display_label(cfg: dict[str, Any], mw: dict[str, Any] | None, level: str) -> str:
+    lv = (level or "").strip().lower()
+    merged: dict[str, str] = {}
+    ch = (cfg.get("checkin") or {}) if isinstance(cfg, dict) else {}
+    raw = ch.get("labels") if isinstance(ch.get("labels"), dict) else {}
+    for k, v in raw.items():
+        key = str(k).strip().lower()
+        if key:
+            merged[key] = str(v).strip()
+    if isinstance(mw, dict):
+        raw2 = (mw.get("settings") or {}).get("labels")
+        if isinstance(raw2, dict):
+            for k, v in raw2.items():
+                key = str(k).strip().lower()
+                if key:
+                    merged[key] = str(v).strip()
+    return merged.get(lv) or {"ok": "Норма", "warn": "Внимание", "alert": "Проблема"}.get(lv, lv or "—")
+
+
+def _checkin_monitor_widget_for_submit(screen: dict[str, Any], submit_w: dict[str, Any]) -> dict[str, Any] | None:
+    st = submit_w.get("settings") or {}
+    link = str(st.get("monitor_widget_id") or "").strip()
+    if link:
+        mw = _find_monitor_widget(screen, link)
+        if mw:
+            return mw
+    mons = [
+        w for w in (screen.get("widgets") or []) if isinstance(w, dict) and w.get("type") == "checkin_monitor"
+    ]
+    return mons[0] if len(mons) == 1 else None
+
+
+def _checkin_place_title_from_submit_places(places: list[dict[str, str]], place_id: str) -> str:
+    for p in places or []:
+        if str(p.get("id") or "") == str(place_id):
+            t = str(p.get("title") or "").strip()
+            return t or str(place_id)
+    return str(place_id)
+
+
+def _checkin_place_title_from_monitor(mw: dict[str, Any], place_id: str) -> str:
+    for p in sanitize_places_list((mw.get("settings") or {}).get("places")):
+        if str(p.get("id") or "") == str(place_id):
+            t = str(p.get("title") or "").strip()
+            return t or str(place_id)
+    return str(place_id)
+
+
+def _notify_push_checkin_journal_new_row(
+    *,
+    cfg: dict[str, Any],
+    tenant_id: str,
+    screen: dict[str, Any],
+    submit_w: dict[str, Any],
+    events_screen_slug: str,
+    saved: dict[str, Any],
+    place_id: str,
+    level: str,
+    device_name: str,
+    comment: str,
+) -> None:
+    """Пуш при новой строке журнала сводки (тема «Новые отметки» в подписке)."""
+    places = _resolve_checkin_submit_places(screen, submit_w)
+    place_title = _checkin_place_title_from_submit_places(places, place_id)
+    mw = _checkin_monitor_widget_for_submit(screen, submit_w)
+    lvl = _checkin_level_display_label(cfg, mw, level)
+    parts = [place_title, lvl]
+    dn = (device_name or "").strip()
+    if dn:
+        parts.append(dn)
+    body = " · ".join(parts)
+    cm = (comment or "").strip()
+    if cm:
+        body += " — " + cm[:180]
+    try:
+        eid = int(saved.get("id") or 0)
+    except (TypeError, ValueError):
+        eid = 0
+    n_unc = _checkin_count_unconfirmed(tenant_id=tenant_id, events_screen_slug=events_screen_slug)
+    if n_unc > 1:
+        body += f" (неподтверждённых: {n_unc})"
+    title = "Сводка: новая отметка"
+    for disp in _checkin_push_target_slugs_for_events_screen(cfg, events_screen_slug):
+        if not disp:
+            continue
+        url = f"/screen/{quote(str(disp).strip().lower(), safe='')}"
+        tag = f"{disp}:checkin:new:{eid}" if eid else f"{disp}:checkin:new:{int(time.time())}"
+        _notify_push_to_screen(
+            tenant_id=tenant_id,
+            screen_slug=disp,
+            topic="checkin",
+            title=title,
+            body=body,
+            url=url,
+            notification_tag=tag,
+        )
+
+
+def _notify_push_checkin_journal_confirmed(
+    *,
+    cfg: dict[str, Any],
+    tenant_id: str,
+    mw: dict[str, Any],
+    events_screen_slug: str,
+    row: dict[str, Any],
+) -> None:
+    pid = str(row.get("place_id") or "")
+    place_title = _checkin_place_title_from_monitor(mw, pid)
+    lvl = _checkin_level_display_label(cfg, mw, str(row.get("level") or ""))
+    dn = str(row.get("device_name") or "").strip()
+    parts = [place_title, lvl]
+    if dn:
+        parts.append(dn)
+    body = " · ".join(parts)
+    title = "Сводка: отметка подтверждена"
+    try:
+        eid = int(row.get("id") or 0)
+    except (TypeError, ValueError):
+        eid = 0
+    root = (events_screen_slug or "").strip().lower()
+    if not root:
         return
-    if n <= 0:
+    for disp in _checkin_push_target_slugs_for_events_screen(cfg, root):
+        if not disp:
+            continue
+        url = f"/screen/{quote(str(disp).strip().lower(), safe='')}"
+        tag = f"{disp}:checkin:ok:{eid}" if eid else f"{disp}:checkin:ok:{int(time.time())}"
+        _notify_push_to_screen(
+            tenant_id=tenant_id,
+            screen_slug=disp,
+            topic="checkin",
+            title=title,
+            body=body,
+            url=url,
+            notification_tag=tag,
+        )
+
+
+def _notify_push_checkin_journal_bulk_confirm(
+    *, cfg: dict[str, Any], tenant_id: str, events_screen_slug: str, count: int
+) -> None:
+    if count <= 0:
         return
-    url = f"/screen/{quote(str(monitor_screen_slug or '').strip().lower(), safe='')}"
-    _notify_push_to_screen(
-        tenant_id=tenant_id,
-        screen_slug=monitor_screen_slug,
-        topic="checkin",
-        title="Новые отметки",
-        body=f"Неподтверждённых: {n}",
-        url=url,
-    )
+    title = "Сводка: журнал"
+    body = f"Подтверждено записей: {count}"
+    ts = int(time.time())
+    root = (events_screen_slug or "").strip().lower()
+    if not root:
+        return
+    for disp in _checkin_push_target_slugs_for_events_screen(cfg, root):
+        if not disp:
+            continue
+        url = f"/screen/{quote(str(disp).strip().lower(), safe='')}"
+        tag = f"{disp}:checkin:bulk:{ts}:{count}"
+        _notify_push_to_screen(
+            tenant_id=tenant_id,
+            screen_slug=disp,
+            topic="checkin",
+            title=title,
+            body=body,
+            url=url,
+            notification_tag=tag,
+        )
 
 
 def _notify_push_emergency_change(*, tenant_id: str, cfg: dict[str, Any], prev_tid: str, new_tid: str) -> None:
