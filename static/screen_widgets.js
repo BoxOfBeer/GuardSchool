@@ -1703,12 +1703,17 @@
           const sRows = summ
             .map((row) => {
               if (row.status === "none") {
-                return `<tr><td>${escapeHtml(row.place_title || row.place_id)}</td><td colspan="4">${levelBadgeHtml(
+                return `<tr>
+                  <td>${escapeHtml(row.place_title || row.place_id)}</td>
+                  <td class="gs-checkin-col-comment"></td>
+                  <td colspan="4">${levelBadgeHtml(
                   "none",
                 )}</td></tr>`;
               }
               const ev = row.last_event || {};
               const hasEv = ev && ev.id;
+              const comment = escapeHtml(String(ev.comment || "").slice(0, 200));
+              const surname = escapeHtml(String(ev.device_name || ""));
               const confBtn =
                 hasEv && !ev.confirmed_at
                   ? `<button type="button" class="gs-checkin-s-confirm secondary-btn compact-btn" data-checkin-confirm-id="${Number(ev.id)}">Подтвердить</button>`
@@ -1717,16 +1722,18 @@
                     : "";
               return `<tr>
               <td>${escapeHtml(row.place_title || row.place_id)}</td>
+              <td class="gs-checkin-col-comment">${comment}</td>
               <td>${levelBadgeHtml(row.status)}</td>
+              <td class="gs-checkin-col-surname">${surname}</td>
               <td>${escapeHtml(String(ev.created_date || ""))}</td>
               <td>${escapeHtml(String(ev.created_time || ""))}</td>
-              <td class="gs-checkin-actions-cell">${confBtn}</td>
+              <td class="gs-checkin-actions-cell gs-checkin-col-confirm">${confBtn}</td>
             </tr>`;
             })
             .join("");
           sumEl.innerHTML = `<div class="gs-checkin-range-label">${escapeHtml(String(data.range_label || ""))}</div>
             <table class="gs-checkin-table gs-checkin-table--boxed"><thead><tr>
-              <th>Место</th><th>Состояние</th><th>Дата</th><th>Время</th><th></th>
+              <th>Место</th><th>Комментарий</th><th>Состояние</th><th>Фамилия</th><th class="gs-checkin-col-date">Дата</th><th class="gs-checkin-col-time">Время</th><th class="gs-checkin-col-confirm"></th>
             </tr></thead><tbody>${sRows}</tbody></table>`;
           const jou = (data && data.journal) || [];
           const jRows = jou
