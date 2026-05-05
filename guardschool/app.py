@@ -229,6 +229,9 @@ _DEVICE_WIDGET_TAB_ORDER: tuple[str, ...] = (
     "checkin_monitor",
 )
 
+# Не показывать в панели «Виджеты (по типам)» на ТВ (gs_mw): отметки всегда как в конфиге экрана.
+_TV_DEVICE_PANEL_EXCLUDED_TYPES = frozenset({"checkin_submit", "checkin_monitor", "emergency"})
+
 
 def device_widget_types_for_tv_device_panel(config: dict[str, Any], widgets: list[Any]) -> list[str]:
     """
@@ -254,7 +257,7 @@ def device_widget_types_for_tv_device_panel(config: dict[str, Any], widgets: lis
     out: list[str] = []
     seen: set[str] = set()
     for typ in _DEVICE_WIDGET_TAB_ORDER:
-        if typ in seen or typ == "emergency":
+        if typ in seen or typ in _TV_DEVICE_PANEL_EXCLUDED_TYPES:
             continue
         on = typ in on_screen
         if not on and typ not in ADMIN_PALETTE_WIDGET_TYPES:
@@ -264,7 +267,7 @@ def device_widget_types_for_tv_device_panel(config: dict[str, Any], widgets: lis
         out.append(typ)
         seen.add(typ)
     for typ in sorted(on_screen):
-        if typ in seen or typ == "emergency":
+        if typ in seen or typ in _TV_DEVICE_PANEL_EXCLUDED_TYPES:
             continue
         out.append(typ)
         seen.add(typ)
@@ -1476,6 +1479,8 @@ def normalize_widget(widget: dict[str, Any]) -> dict[str, Any]:
             widget["settings"]["places"] = []
         if not isinstance(widget["settings"].get("labels"), dict):
             widget["settings"]["labels"] = {}
+        esc = _normalize_screen_slug_for_api(str(widget["settings"].get("events_screen_slug") or ""))
+        widget["settings"]["events_screen_slug"] = esc if esc else ""
     if widget["type"] in ("checkin_submit", "checkin_monitor"):
         widget["settings"].setdefault("fontSize", 0)
         widget["settings"].setdefault("bold", False)
@@ -1828,6 +1833,19 @@ def _find_monitor_widget(screen: dict[str, Any], widget_id: str) -> dict[str, An
     return None
 
 
+def _checkin_events_screen_slug_for_monitor(
+    config: dict[str, Any], mw: dict[str, Any], display_slug_key: str
+) -> str:
+    """Slug экрана, с которого пишутся события в БД (форма отметки). По умолчанию — экран, где висит сводка."""
+    raw = str((mw.get("settings") or {}).get("events_screen_slug") or "").strip()
+    alt = _normalize_screen_slug_for_api(raw)
+    if not alt:
+        return display_slug_key
+    if _screen_config_by_slug(config, alt):
+        return alt
+    return display_slug_key
+
+
 def _resolve_checkin_submit_places(screen: dict[str, Any], submit_w: dict[str, Any]) -> list[dict[str, str]]:
     """Места только из виджета «Сводка» (явная ссылка или ровно одна сводка на экране)."""
     st = submit_w.get("settings") or {}
@@ -1862,12 +1880,13 @@ def _checkin_board_payload(
         raise HTTPException(status_code=404, detail="Виджет сводки не найден.")
     places = sanitize_places_list((mw.get("settings") or {}).get("places"))
     period_n = _checkin_period_normalize(period)
+    event_slug = _checkin_events_screen_slug_for_monitor(config, mw, slug_key)
     summary_label, summary_items = build_summary_for_places(
-        tenant_id, config, places, period_n, slug_key
+        tenant_id, config, places, period_n, event_slug
     )
     pids = {p["id"] for p in places}
     start_utc, end_utc, range_label = range_bounds_utc(config, period_n)
-    journal = list_journal_filtered(tenant_id, start_utc, end_utc, pids if pids else None, slug_key)
+    journal = list_journal_filtered(tenant_id, start_utc, end_utc, pids if pids else None, event_slug)
     journal = [enrich_checkin_event_for_client(config, dict(j)) for j in journal]
     for it in summary_items:
         le = it.get("last_event")
@@ -5682,8 +5701,9 @@ def api_screen_checkin_export_csv(
     pids = {p["id"] for p in places}
     tenant_id = _checkin_tenant_from_request(request)
     period_n = _checkin_period_normalize(period)
+    event_slug = _checkin_events_screen_slug_for_monitor(cfg, mw, slug_key)
     raw = journal_to_csv_bytes_filtered(
-        tenant_id, cfg, period_n, pids if pids else None, slug_key, place_titles
+        tenant_id, cfg, period_n, pids if pids else None, event_slug, place_titles
     )
     rl = range_bounds_utc(cfg, period_n)[2]
     return Response(
@@ -5734,8 +5754,9 @@ def api_admin_checkin_export_csv(
     pids = {p["id"] for p in places}
     tenant_id = str(request.cookies.get(SAAS_TENANT_COOKIE) or "local").strip() or "local"
     period_n = _checkin_period_normalize(period)
+    event_slug = _checkin_events_screen_slug_for_monitor(cfg, mw, slug_key)
     raw = journal_to_csv_bytes_filtered(
-        tenant_id, cfg, period_n, pids if pids else None, slug_key, place_titles
+        tenant_id, cfg, period_n, pids if pids else None, event_slug, place_titles
     )
     rl = range_bounds_utc(cfg, period_n)[2]
     return Response(
@@ -5781,8 +5802,9 @@ async def api_screen_checkin_confirm(request: Request, slug: str) -> dict[str, A
     places = sanitize_places_list((mw.get("settings") or {}).get("places"))
     allowed = {p["id"] for p in places}
     tenant_id = _checkin_tenant_from_request(request)
+    event_slug = _checkin_events_screen_slug_for_monitor(cfg, mw, slug_key)
     ts = set_checkin_event_confirmed(
-        tenant_id, event_id, screen_slug=slug_key, allowed_place_ids=allowed
+        tenant_id, event_id, screen_slug=event_slug, allowed_place_ids=allowed
     )
     if ts is None:
         raise HTTPException(status_code=404, detail="Событие не найдено или недоступно.")
@@ -5811,7 +5833,8 @@ async def api_screen_checkin_confirm_all(request: Request, slug: str) -> dict[st
     pids = {p["id"] for p in places}
     period_n = _checkin_period_normalize(period)
     tenant_id = _checkin_tenant_from_request(request)
-    n = confirm_all_unconfirmed_in_range(tenant_id, cfg, slug_key, pids, period_n)
+    event_slug = _checkin_events_screen_slug_for_monitor(cfg, mw, slug_key)
+    n = confirm_all_unconfirmed_in_range(tenant_id, cfg, event_slug, pids, period_n)
     return {"status": "ok", "confirmed_count": n}
 
 
@@ -5879,8 +5902,9 @@ async def api_admin_checkin_confirm(request: Request) -> dict[str, Any]:
     places = sanitize_places_list((mw.get("settings") or {}).get("places"))
     allowed = {p["id"] for p in places}
     tenant_id = _checkin_tenant_from_request(request)
+    event_slug = _checkin_events_screen_slug_for_monitor(cfg, mw, slug_key)
     ts = set_checkin_event_confirmed(
-        tenant_id, event_id, screen_slug=slug_key, allowed_place_ids=allowed
+        tenant_id, event_id, screen_slug=event_slug, allowed_place_ids=allowed
     )
     if ts is None:
         raise HTTPException(status_code=404, detail="Событие не найдено или недоступно.")
@@ -5910,7 +5934,8 @@ async def api_admin_checkin_confirm_all(request: Request) -> dict[str, Any]:
     pids = {p["id"] for p in places}
     period_n = _checkin_period_normalize(period)
     tenant_id = _checkin_tenant_from_request(request)
-    n = confirm_all_unconfirmed_in_range(tenant_id, cfg, slug_key, pids, period_n)
+    event_slug = _checkin_events_screen_slug_for_monitor(cfg, mw, slug_key)
+    n = confirm_all_unconfirmed_in_range(tenant_id, cfg, event_slug, pids, period_n)
     return {"status": "ok", "confirmed_count": n}
 
 

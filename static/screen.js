@@ -353,7 +353,7 @@ function ensureDeviceSettingsUi() {
         <div class="gs-device-settings-title">Настройки для этого устройства</div>
         <button type="button" class="gs-device-settings-close" id="gs-device-settings-close">Закрыть</button>
       </div>
-      <div class="gs-device-settings-row">
+      <div class="gs-device-settings-row" id="gs-device-classes-row">
         <div class="gs-device-settings-field-head">Классы расписания на этом устройстве</div>
         <div class="gs-device-classes-hint">По умолчанию отмечены все — как в веб-настройке экрана. Снимите лишние, чтобы не показывать эти классы здесь.</div>
         <div id="gs-device-classes-wrap" class="gs-device-settings-checks"></div>
@@ -521,15 +521,39 @@ function clearDevicePrefs(slug) {
   } catch (_) {}
 }
 
+/** Типы, которые на устройстве не фильтруются через gs_mw — как на экране (отметки и т.п.). */
+const GS_DEVICE_MW_EXCLUDED_TYPES = new Set(["checkin_submit", "checkin_monitor", "emergency"]);
+
+function gsMwStringSansExcluded(raw) {
+  return String(raw || "")
+    .split(",")
+    .map((x) => x.trim())
+    .filter(Boolean)
+    .filter((t) => !GS_DEVICE_MW_EXCLUDED_TYPES.has(t))
+    .join(",");
+}
+
 function getGsMobileWidgetsForPoll(slug) {
   try {
     const q = gsQueryParams(window.location.search || "");
     const v = (q.get("gs_mw") || "").trim();
     if (v) {
-      localStorage.setItem(`gs_mw_${slug}`, v);
-      return v;
+      const cleaned = gsMwStringSansExcluded(v);
+      try {
+        if (cleaned) localStorage.setItem(`gs_mw_${slug}`, cleaned);
+        else localStorage.removeItem(`gs_mw_${slug}`);
+      } catch (_) {}
+      return cleaned;
     }
-    return (localStorage.getItem(`gs_mw_${slug}`) || "").trim();
+    const stored = (localStorage.getItem(`gs_mw_${slug}`) || "").trim();
+    const cleaned = gsMwStringSansExcluded(stored);
+    if (cleaned !== stored) {
+      try {
+        if (cleaned) localStorage.setItem(`gs_mw_${slug}`, cleaned);
+        else localStorage.removeItem(`gs_mw_${slug}`);
+      } catch (_) {}
+    }
+    return cleaned;
   } catch (_) {
     return "";
   }
@@ -603,8 +627,6 @@ const GS_DEVICE_WIDGET_TYPE_LABELS = {
   rss_news: "RSS-лента",
   marquee: "Бегущая строка",
   image: "Фон / картинка",
-  checkin_submit: "Оперативная отметка",
-  checkin_monitor: "Сводка отметок",
 };
 
 function getGsGridForPoll(slug) {
@@ -1572,48 +1594,66 @@ function syncDeviceSettingsFromPayload(screenPayload) {
     chkPersist.checked = persisted;
     chkGrid.checked = getGsGridForPoll(slug);
 
+    const screen = (screenPayload && screenPayload.screen) || {};
+    const hasScheduleWidget = (screen.widgets || []).some(
+      (w) => w && w.type === "schedule" && w.enabled !== false,
+    );
+    const classesRow = panel.querySelector("#gs-device-classes-row");
+    if (classesRow) {
+      classesRow.hidden = !hasScheduleWidget;
+      classesRow.setAttribute("aria-hidden", hasScheduleWidget ? "false" : "true");
+    }
+
     const pickable = Array.isArray(screenPayload && screenPayload.pickable_classes)
       ? screenPayload.pickable_classes.map((x) => String(x).trim()).filter(Boolean)
       : [];
     const canon = gsDeviceClassCanonFromSaved(slug, existing, pickable);
     wrapClasses.textContent = "";
-    if (!pickable.length) {
-      const hint = document.createElement("div");
-      hint.className = "hint";
-      hint.style.fontSize = "13px";
-      hint.textContent = "Список классов пока недоступен — фильтр не применяется, используется настройка экрана.";
-      wrapClasses.appendChild(hint);
-    } else {
-      pickable.forEach((name, idx) => {
-        const lab = document.createElement("label");
-        lab.className = "opt";
-        const inp = document.createElement("input");
-        inp.type = "checkbox";
-        inp.value = name;
-        inp.id = `gs-device-class-${idx}`;
-        inp.checked = canon.has(name);
-        const span = document.createElement("span");
-        span.textContent = name;
-        lab.appendChild(inp);
-        lab.appendChild(span);
-        wrapClasses.appendChild(lab);
-      });
+    if (hasScheduleWidget) {
+      if (!pickable.length) {
+        const hint = document.createElement("div");
+        hint.className = "hint";
+        hint.style.fontSize = "13px";
+        hint.textContent = "Список классов пока недоступен — фильтр не применяется, используется настройка экрана.";
+        wrapClasses.appendChild(hint);
+      } else {
+        pickable.forEach((name, idx) => {
+          const lab = document.createElement("label");
+          lab.className = "opt";
+          const inp = document.createElement("input");
+          inp.type = "checkbox";
+          inp.value = name;
+          inp.id = `gs-device-class-${idx}`;
+          inp.checked = canon.has(name);
+          const span = document.createElement("span");
+          span.textContent = name;
+          lab.appendChild(inp);
+          lab.appendChild(span);
+          wrapClasses.appendChild(lab);
+        });
+      }
     }
 
-    const screen = (screenPayload && screenPayload.screen) || {};
-    const fromPayload = Array.isArray(screenPayload && screenPayload.device_widget_types)
-      ? screenPayload.device_widget_types.map((x) => String(x || "").trim()).filter((t) => t && t !== "emergency")
-      : [];
+    const filterMwTypes = (arr) =>
+      (arr || []).map((x) => String(x || "").trim()).filter((t) => t && !GS_DEVICE_MW_EXCLUDED_TYPES.has(t));
+    const fromPayload = filterMwTypes(
+      Array.isArray(screenPayload && screenPayload.device_widget_types)
+        ? screenPayload.device_widget_types
+        : [],
+    );
     const types =
       fromPayload.length > 0
         ? fromPayload
-        : [...new Set(((screen.widgets || [])).map((w) => w && w.type).filter(Boolean))].filter((t) => t !== "emergency");
+        : filterMwTypes([...new Set((screen.widgets || []).map((w) => w && w.type).filter(Boolean))]);
     const rawMwSaved = String(localStorage.getItem(`gs_mw_${slug}`) || "").trim();
-    const selectedTypes = new Set(
-      rawMwSaved ? rawMwSaved.split(",").map((x) => x.trim()).filter(Boolean) : []
-    );
-    if (!rawMwSaved && types.length) {
-      types.forEach((t) => selectedTypes.add(String(t)));
+    const mwPartsRaw = rawMwSaved ? rawMwSaved.split(",").map((x) => x.trim()).filter(Boolean) : [];
+    const mwParts = mwPartsRaw.filter((t) => !GS_DEVICE_MW_EXCLUDED_TYPES.has(t));
+    const hadExcludedOnly = mwPartsRaw.length > 0 && mwParts.length === 0;
+    const selectedTypes = new Set();
+    if (!rawMwSaved || hadExcludedOnly) {
+      if (types.length) types.forEach((t) => selectedTypes.add(String(t)));
+    } else {
+      mwParts.forEach((t) => selectedTypes.add(String(t)));
     }
     wrapWidgets.textContent = "";
     types.forEach((t) => {
@@ -1632,8 +1672,13 @@ function syncDeviceSettingsFromPayload(screenPayload) {
     });
 
     btnApply.onclick = () => {
-      const boxes = [...wrapClasses.querySelectorAll('input[type="checkbox"]')];
-      const checked = [...wrapClasses.querySelectorAll('input[type="checkbox"]:checked')].map((x) => String(x.value));
+      const scheduleRowHidden = classesRow && classesRow.hidden;
+      const boxes = scheduleRowHidden
+        ? []
+        : [...wrapClasses.querySelectorAll('input[type="checkbox"]')];
+      const checked = scheduleRowHidden
+        ? []
+        : [...wrapClasses.querySelectorAll('input[type="checkbox"]:checked')].map((x) => String(x.value));
       let classes = "";
       if (boxes.length) {
         if (!checked.length) {
