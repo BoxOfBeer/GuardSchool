@@ -235,9 +235,8 @@ _TV_DEVICE_PANEL_EXCLUDED_TYPES = frozenset({"checkin_submit", "checkin_monitor"
 
 def device_widget_types_for_tv_device_panel(config: dict[str, Any], widgets: list[Any]) -> list[str]:
     """
-    Ключи типов для фильтра gs_mw на ТВ: объединение
-    - типов с галочкой в настройках программы (не в admin_palette_hidden_types),
-    - типов виджетов, реально присутствующих на экране (чтобы не потерять переключатель у старых конфигов).
+    Ключи типов для фильтра gs_mw на ТВ: тип разрешён в программе (не в admin_palette_hidden_types)
+    и на экране есть хотя бы один включённый виджет этого типа (emergency не в панели).
     """
     raw_h = config.get("admin_palette_hidden_types")
     hidden: set[str] = set()
@@ -246,28 +245,35 @@ def device_widget_types_for_tv_device_panel(config: dict[str, Any], widgets: lis
             s = str(x or "").strip()
             if s:
                 hidden.add(s)
-    on_screen: set[str] = set()
+    on_screen_enabled: set[str] = set()
     if isinstance(widgets, list):
         for w in widgets:
             if not isinstance(w, dict):
                 continue
+            if w.get("enabled") is False:
+                continue
             typ = str(w.get("type") or "").strip()
             if typ and typ != "emergency":
-                on_screen.add(typ)
+                on_screen_enabled.add(typ)
     out: list[str] = []
     seen: set[str] = set()
     for typ in _DEVICE_WIDGET_TAB_ORDER:
         if typ in seen or typ in _TV_DEVICE_PANEL_EXCLUDED_TYPES:
             continue
-        on = typ in on_screen
-        if not on and typ not in ADMIN_PALETTE_WIDGET_TYPES:
+        if typ not in on_screen_enabled:
             continue
-        if not on and typ in hidden:
+        if typ in hidden:
+            continue
+        if typ not in ADMIN_PALETTE_WIDGET_TYPES:
             continue
         out.append(typ)
         seen.add(typ)
-    for typ in sorted(on_screen):
+    for typ in sorted(on_screen_enabled):
         if typ in seen or typ in _TV_DEVICE_PANEL_EXCLUDED_TYPES:
+            continue
+        if typ in hidden:
+            continue
+        if typ not in ADMIN_PALETTE_WIDGET_TYPES:
             continue
         out.append(typ)
         seen.add(typ)

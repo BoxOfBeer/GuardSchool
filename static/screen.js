@@ -415,7 +415,6 @@ function ensureDeviceSettingsUi() {
       <div class="gs-device-settings-row">
         <label>Режим</label>
         <div class="gs-device-settings-checks">
-          <label class="opt"><input type="checkbox" id="gs-device-grid" /> <span>Сетка вместо ленты (если в конфиге включён мобильный режим)</span></label>
           <label class="opt"><input type="checkbox" id="gs-device-persist" /> <span>Сохранять настройки на этом устройстве</span></label>
         </div>
       </div>
@@ -430,7 +429,6 @@ function ensureDeviceSettingsUi() {
           <p class="gs-device-url-hint-body">
             Сброс настроек этого экрана в браузере: добавьте в URL <code>?gs_reset=1</code> (классы, виджеты, сетка/лента, гибрид и токен ТВ для slug) или <code>?gs_reset=all</code> — все ключи <code>gs_*</code> в localStorage и кэши Fetch. Параметр из адреса убирается сам; cookie входа в админку страница не трогает.
             Подпись места в статистике: <code>?gs_label=Столовая</code>.
-            Принудительно сетка при мобильном режиме экрана: <code>?gs_grid=1</code>, сброс: <code>?gs_grid=0</code>.
             Имя ПК Windows в браузер не передаётся; в статистику уходит краткая строка устройства (платформа/модель), если доступно.
           </p>
         </details>
@@ -666,7 +664,6 @@ function gsFormatScreenPollFailureMessage(rawMsg, retrySec) {
   return `${base} Повтор через ${retrySec} с.`;
 }
 
-/** На этом устройстве показать сетку, даже если в веб-конфиге включён mobile_mode (?gs_grid=1 сохраняется в localStorage). */
 /** Подписи типов виджетов в панели «Настройки для этого устройства» (value остаётся англ. ключом для gs_mw). */
 const GS_DEVICE_WIDGET_TYPE_LABELS = {
   date: "Дата",
@@ -678,29 +675,13 @@ const GS_DEVICE_WIDGET_TYPE_LABELS = {
   carousel: "Карусель",
   holidays: "Праздники",
   announcements: "Объявления",
+  school_news: "Новости школы",
   rss_news: "RSS-лента",
+  rss_feed: "RSS-лента",
+  external_news: "Внешние новости",
   marquee: "Бегущая строка",
   image: "Фон / картинка",
 };
-
-function getGsGridForPoll(slug) {
-  if (!slug) return false;
-  try {
-    const q = gsQueryParams(window.location.search || "");
-    const g = (q.get("gs_grid") || "").trim().toLowerCase();
-    if (g === "1" || g === "true" || g === "yes") {
-      localStorage.setItem(`gs_grid_${slug}`, "1");
-      return true;
-    }
-    if (g === "0" || g === "off" || g === "false") {
-      localStorage.removeItem(`gs_grid_${slug}`);
-      return false;
-    }
-    return localStorage.getItem(`gs_grid_${slug}`) === "1";
-  } catch (_) {
-    return false;
-  }
-}
 
 /** Первый виджет типа `type` в конфиге экрана (в т.ч. только внутри карусели — его нет в mobile-stack / sortWidgetsForDom). */
 function pickWidgetByTypeFromScreen(screen, type) {
@@ -1289,12 +1270,10 @@ function render(screenPayload) {
   const slug = getSlug();
   const mwRaw = getGsMobileWidgetsForPoll(slug);
   const mwTypes = mwRaw ? new Set(mwRaw.split(",").map((x) => x.trim()).filter(Boolean)) : null;
-  const deviceGridOverride = Boolean(screen && screen.mobile_mode) && getGsGridForPoll(slug);
-  const mobileMode = Boolean(screen && screen.mobile_mode) && !getGsGridForPoll(slug);
+  const mobileMode = Boolean(screen && screen.mobile_mode);
 
   const layoutSig = JSON.stringify({
     m: mobileMode,
-    dg: deviceGridOverride,
     mw: mwRaw || "",
     w: (screen.widgets || []).map((w) => {
       const ws = w.settings || {};
@@ -1381,20 +1360,14 @@ function render(screenPayload) {
     const list = document.createElement("div");
     list.className = "gs-mobile-list";
     const hiddenWidgetIds = GRef.widgetIdsHiddenByCarousel(screen);
-    const configured = Array.isArray(screen.mobile_widget_ids) ? screen.mobile_widget_ids.map(String) : [];
-    const configuredSet = new Set(configured);
     const orderedAll = (GRef.sortWidgetsForMobileStack
       ? GRef.sortWidgetsForMobileStack(screen)
       : (screen.widgets || []).filter(
           (w) => w && w.menu_only !== true && w.type !== "emergency" && !(hiddenWidgetIds.has(w.id) && w.type !== "carousel")
         ));
-    const orderedDefault = orderedAll.filter((w) => w.enabled !== false);
-    // Явный порядок mobile_widget_ids не отменяет «Вкл» в админке — выключенный виджет на ТВ не показываем.
-    const ordered = configured.length
-      ? orderedAll.filter((w) => configuredSet.has(String(w.id)) && w.enabled !== false)
-      : orderedDefault;
+    const ordered = orderedAll.filter((w) => w.enabled !== false);
     let filtered = mwTypes ? ordered.filter((w) => mwTypes.has(String(w.type))) : ordered;
-    // Тип в gs_mw, но виджета нет в ленте (не в mobile_widget_ids / выключен / только внутри карусели) — берём из полного конфига экрана.
+    // Тип в gs_mw, но экземпляра нет в текущей ленте (выключен / только внутри карусели) — первый подходящий из конфига экрана.
     if (mwTypes && mwTypes.size) {
       for (const t of mwTypes) {
         if (filtered.some((w) => w && String(w.type) === t)) continue;
@@ -1417,7 +1390,7 @@ function render(screenPayload) {
       empty.style.cssText =
         "padding:16px 18px;font-size:15px;line-height:1.45;color:rgba(255,255,255,0.88);text-align:center;max-width:28rem;margin:12px auto;";
       empty.textContent =
-        "Для выбранных типов виджетов сейчас нечего показать (нет такого виджета в ленте экрана или он отключён). Откройте ⚙ и снимите лишние типы либо включите нужный виджет в админке (мобильная лента / сетка).";
+        "Для выбранных типов виджетов сейчас нечего показать (нет такого виджета в ленте экрана или он отключён). Откройте ⚙ и снимите лишние типы либо включите нужный виджет в админке.";
       list.appendChild(empty);
     } else {
       // Добавляем расписание из полного списка только без фильтра gs_mw — иначе «только время» превращалось в «время + расписание».
@@ -1464,34 +1437,9 @@ function render(screenPayload) {
       if (w.menu_only === true) return false;
       return true;
     });
-    // На экране с mobile_mode «сетка на устройстве» — фильтр gs_mw; дочерние карусели подмешиваем из полного конфига.
-    if (deviceGridOverride && mwTypes && mwTypes.size) {
-      const seen = new Set(ordered.map((w) => String(w.id)));
-      for (const t of mwTypes) {
-        if (ordered.some((w) => w && String(w.type) === t)) continue;
-        const w = pickWidgetByTypeFromScreen(screen, t);
-        if (w && !seen.has(String(w.id))) {
-          ordered.push(w);
-          seen.add(String(w.id));
-        }
-      }
-      const ord = screen.widgets || [];
-      const idx = (w) => {
-        const i = ord.findIndex((x) => x && String(x.id) === String(w.id));
-        return i < 0 ? 1e9 : i;
-      };
-      ordered.sort((a, b) => idx(a) - idx(b));
-      ordered = ordered.filter((w) => {
-        if (!w) return false;
-        if (w.type === "emergency") return true;
-        return mwTypes.has(String(w.type));
-      });
-    }
 
     ordered.forEach((widget) => {
-      const allowDisabledForMw =
-        Boolean(deviceGridOverride && mwTypes && mwTypes.size && mwTypes.has(String(widget.type)));
-      if (widget.enabled === false && !allowDisabledForMw) return;
+      if (widget.enabled === false) return;
       if (hiddenWidgetIds.has(widget.id) && widget.type !== "carousel") return;
       const block = document.createElement("div");
       block.className = "screen-widget";
@@ -1634,23 +1582,36 @@ function gsRepairToxicGsClasses(slug, pickable) {
   return false;
 }
 
+/** Типы для чекбоксов gs_mw без серверного списка: только включённые виджеты экрана (без типов, исключённых из gs_mw). */
+function gsMwTypesFallbackFromEnabledWidgets(screen) {
+  const out = [];
+  const seen = new Set();
+  (screen.widgets || []).forEach((w) => {
+    if (!w || w.enabled === false) return;
+    const t = String(w.type || "").trim();
+    if (!t || GS_DEVICE_MW_EXCLUDED_TYPES.has(t)) return;
+    if (seen.has(t)) return;
+    seen.add(t);
+    out.push(t);
+  });
+  return out;
+}
+
 function syncDeviceSettingsFromPayload(screenPayload) {
   try {
     const slug = getSlug();
     const panel = document.getElementById("gs-device-settings-panel");
     if (!panel) return;
     const wrapClasses = panel.querySelector("#gs-device-classes-wrap");
-    const chkGrid = panel.querySelector("#gs-device-grid");
     const chkPersist = panel.querySelector("#gs-device-persist");
     const wrapWidgets = panel.querySelector("#gs-device-widgets");
     const btnApply = panel.querySelector("#gs-device-apply");
     const btnReset = panel.querySelector("#gs-device-reset");
-    if (!wrapClasses || !chkGrid || !chkPersist || !wrapWidgets || !btnApply || !btnReset) return;
+    if (!wrapClasses || !chkPersist || !wrapWidgets || !btnApply || !btnReset) return;
 
     const existing = loadDevicePrefs(slug) || {};
     const persisted = Boolean(existing.persist);
     chkPersist.checked = persisted;
-    chkGrid.checked = getGsGridForPoll(slug);
 
     const screen = (screenPayload && screenPayload.screen) || {};
     const hasScheduleWidget = (screen.widgets || []).some(
@@ -1699,10 +1660,7 @@ function syncDeviceSettingsFromPayload(screenPayload) {
         ? screenPayload.device_widget_types
         : [],
     );
-    const types =
-      fromPayload.length > 0
-        ? fromPayload
-        : filterMwTypes([...new Set((screen.widgets || []).map((w) => w && w.type).filter(Boolean))]);
+    const types = fromPayload.length > 0 ? fromPayload : gsMwTypesFallbackFromEnabledWidgets(screen);
     const rawMwSaved = String(localStorage.getItem(`gs_mw_${slug}`) || "").trim();
     const mwPartsRaw = rawMwSaved ? rawMwSaved.split(",").map((x) => x.trim()).filter(Boolean) : [];
     const mwParts = mwPartsRaw.filter((t) => !GS_DEVICE_MW_EXCLUDED_TYPES.has(t));
@@ -1746,7 +1704,6 @@ function syncDeviceSettingsFromPayload(screenPayload) {
         if (checked.length === boxes.length) classes = "";
         else classes = checked.join(",");
       }
-      const gridHere = chkGrid.checked;
       const mwBoxes = [...wrapWidgets.querySelectorAll('input[type="checkbox"]')];
       const mwChecked = [...wrapWidgets.querySelectorAll('input[type="checkbox"]:checked')].map((x) => String(x.value));
       let mw = mwChecked.join(",");
@@ -1759,8 +1716,9 @@ function syncDeviceSettingsFromPayload(screenPayload) {
       try {
         if (classes) localStorage.setItem(`gs_classes_${slug}`, classes);
         else localStorage.removeItem(`gs_classes_${slug}`);
-        if (gridHere) localStorage.setItem(`gs_grid_${slug}`, "1");
-        else localStorage.removeItem(`gs_grid_${slug}`);
+        try {
+          localStorage.removeItem(`gs_grid_${slug}`);
+        } catch (_) {}
         if (mw) localStorage.setItem(`gs_mw_${slug}`, mw);
         else localStorage.removeItem(`gs_mw_${slug}`);
       } catch (_) {}
@@ -1785,7 +1743,7 @@ function syncDeviceSettingsFromPayload(screenPayload) {
 
     btnReset.onclick = () => {
       const ok = window.confirm(
-        "Сбросить настройки устройства для этого экрана?\n\nБудут очищены: классы, сетка/лента (gs_grid), фильтр виджетов (gs_mw). Серверный конфиг экранов не изменится."
+        "Сбросить настройки устройства для этого экрана?\n\nБудут очищены: классы и фильтр виджетов (gs_mw). Серверный конфиг экранов не изменится."
       );
       if (!ok) return;
       clearDevicePrefs(slug);

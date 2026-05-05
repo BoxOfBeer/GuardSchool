@@ -645,7 +645,7 @@ function createDefaultScreen(index) {
     selected_classes: ["5", "6", "7", "8"],
     mobile_mode: false,
     enable_feedback: false,
-    /** Список id виджетов, которые рендерить в мобильном режиме (вертикальная лента). */
+    /** Устарело: порядок ленты = порядок виджетов на экране; поле сохраняется для совместимости. */
     mobile_widget_ids: [],
     bell_schedule_template: "standard",
     weekday_bell_templates: {},
@@ -956,44 +956,6 @@ function createWidgetStubForPaletteType(typ) {
     };
   }
   return null;
-}
-
-function renderMobileWidgetCheckboxes() {
-  const wrap = elements.screenMobileWidgets;
-  if (!wrap) return;
-  const screen = selectedScreen();
-  const widgets = Array.isArray(screen.widgets) ? screen.widgets : [];
-  const selected = new Set((screen.mobile_widget_ids || []).map(String));
-  const rows = widgets
-    // В мобильном режиме пользователь может выбрать любые виджеты экрана (не только уже включённые).
-    // Если выбран виджет — считаем, что он должен быть показан (включим его при выборе).
-    .filter((w) => w && w.menu_only !== true && w.type !== "emergency")
-    .map((w) => {
-      const title = String(w.title || "").trim() || t(`widget.${w.type}`) || w.type;
-      const disabledHint = w.enabled === false ? ` <span class="hint" style="margin-left:6px;opacity:.75">(сейчас выключен)</span>` : "";
-      return `
-        <label class="toggle-label class-option">
-          <input type="checkbox" value="${escapeHtmlAttr(String(w.id))}" ${selected.has(String(w.id)) ? "checked" : ""}>
-          <span>${escapeHtml(title)} <span class="hint" style="margin-left:6px;opacity:.8">(${escapeHtml(String(w.type))})</span>${disabledHint}</span>
-        </label>
-      `;
-    })
-    .join("");
-  wrap.innerHTML = rows || `<div class="hint">Нет виджетов для выбора.</div>`;
-  wrap.querySelectorAll('input[type="checkbox"]').forEach((input) => {
-    input.addEventListener("change", () => {
-      const values = [...wrap.querySelectorAll('input[type="checkbox"]:checked')].map((x) => String(x.value));
-      // Порядок = порядок виджетов на экране (как в списке).
-      screen.mobile_widget_ids = values;
-      // Если пользователь выбрал виджет для mobile — включаем его, иначе он не попадёт в стандартную отрисовку.
-      const picked = new Set(values);
-      (screen.widgets || []).forEach((w) => {
-        if (!w || !w.id) return;
-        if (picked.has(String(w.id))) w.enabled = true;
-      });
-      renderPreview();
-    });
-  });
 }
 
 function widgetCollapseStorageKey(screenId, widgetId) {
@@ -1691,7 +1653,6 @@ function renderForm() {
   }
   renderBellTemplateOptions();
   renderClassCheckboxes();
-  renderMobileWidgetCheckboxes();
   renderBackgroundGallery().catch(() => {});
   syncProgramSettingsFieldsFromState();
   renderProgramPaletteCheckboxes();
