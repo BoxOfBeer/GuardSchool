@@ -1842,16 +1842,55 @@ def _screen_config_by_slug(config: dict[str, Any], slug_key: str) -> dict[str, A
     return None
 
 
+def _screen_widgets_ordered_with_carousel_children(screen: dict[str, Any]) -> list[dict[str, Any]]:
+    """Плоский порядок виджетов + дети carousel по childWidgetIds (карусель, моб. вёрстка)."""
+    widgets = screen.get("widgets")
+    if not isinstance(widgets, list):
+        return []
+    by_id: dict[str, dict[str, Any]] = {}
+    for w in widgets:
+        if not isinstance(w, dict):
+            continue
+        wid = str(w.get("id") or "").strip()
+        if wid:
+            by_id[wid] = w
+    seq: list[dict[str, Any]] = []
+    seen: set[str] = set()
+
+    def append_widget(entry: dict[str, Any]) -> None:
+        wid = str(entry.get("id") or "").strip()
+        if wid:
+            if wid in seen:
+                return
+            seen.add(wid)
+        seq.append(entry)
+
+    for w in widgets:
+        if not isinstance(w, dict):
+            continue
+        append_widget(w)
+        if str(w.get("type") or "") != "carousel":
+            continue
+        st_car = w.get("settings") if isinstance(w.get("settings"), dict) else {}
+        for cid in st_car.get("childWidgetIds") or []:
+            child = by_id.get(str(cid).strip())
+            if isinstance(child, dict):
+                append_widget(child)
+    return seq
+
+
 def _find_submit_widget(screen: dict[str, Any], widget_id: str) -> dict[str, Any] | None:
-    for w in screen.get("widgets") or []:
-        if str(w.get("id")) == str(widget_id).strip() and w.get("type") == "checkin_submit":
+    want = str(widget_id).strip()
+    for w in _screen_widgets_ordered_with_carousel_children(screen):
+        if isinstance(w, dict) and str(w.get("id") or "").strip() == want and w.get("type") == "checkin_submit":
             return w
     return None
 
 
 def _find_monitor_widget(screen: dict[str, Any], widget_id: str) -> dict[str, Any] | None:
-    for w in screen.get("widgets") or []:
-        if str(w.get("id")) == str(widget_id).strip() and w.get("type") == "checkin_monitor":
+    want = str(widget_id).strip()
+    for w in _screen_widgets_ordered_with_carousel_children(screen):
+        if isinstance(w, dict) and str(w.get("id") or "").strip() == want and w.get("type") == "checkin_monitor":
             return w
     return None
 
@@ -1877,7 +1916,11 @@ def _resolve_checkin_submit_places(screen: dict[str, Any], submit_w: dict[str, A
         mw = _find_monitor_widget(screen, link)
         if mw:
             return sanitize_places_list((mw.get("settings") or {}).get("places"))
-    mons = [w for w in (screen.get("widgets") or []) if w and w.get("type") == "checkin_monitor"]
+    mons = [
+        w
+        for w in _screen_widgets_ordered_with_carousel_children(screen)
+        if isinstance(w, dict) and w.get("type") == "checkin_monitor"
+    ]
     if len(mons) == 1:
         return sanitize_places_list((mons[0].get("settings") or {}).get("places"))
     return sanitize_places_list(st.get("places"))
@@ -4915,8 +4958,9 @@ async def save_admin_config(request: Request) -> dict[str, str]:
     write_json(CONFIG_PATH, new_cfg)
     try:
         if prev_tid != new_tid:
-            tenant_id = str(request.cookies.get(SAAS_TENANT_COOKIE) or "local").strip() or "local"
-            _notify_push_emergency_change(tenant_id=tenant_id, cfg=new_cfg, prev_tid=prev_tid, new_tid=new_tid)
+            _notify_push_emergency_change(
+                tenant_id=_screen_api_tenant_slug(request), cfg=new_cfg, prev_tid=prev_tid, new_tid=new_tid
+            )
     except Exception:
         pass
     return {"status": "ok"}
@@ -5772,8 +5816,9 @@ async def post_screen_feedback(request: Request, slug: str) -> dict[str, Any]:
         message = message[:2000]
     if not can_send_feedback(device_hash, cooldown_minutes=5):
         raise HTTPException(status_code=429, detail="Можно отправлять не чаще 1 сообщения в 5 минут.")
-    tenant_id = str(request.cookies.get(SAAS_TENANT_COOKIE) or "local").strip() or "local"
-    saved = create_feedback_message(tenant_id=tenant_id, device_hash=device_hash, message=message)
+    saved = create_feedback_message(
+        tenant_id=_screen_api_tenant_slug(request), device_hash=device_hash, message=message
+    )
     return {"status": "ok", **saved}
 
 
@@ -5838,13 +5883,7 @@ async def api_checkin_post_event(request: Request) -> dict[str, Any]:
     auth = (request.headers.get("authorization") or "").strip()
     if auth.lower().startswith("bearer "):
         _require_tv_access_for_screen(request, slug_key)
-    try:
-        from .tenant_ctx import tenant_slug as _checkin_tenant_slug
-
-        tid_ctx = str(_checkin_tenant_slug() or "").strip()
-    except Exception:
-        tid_ctx = ""
-    tenant_id = tid_ctx or str(request.cookies.get(SAAS_TENANT_COOKIE) or "local").strip() or "local"
+    tenant_id = _screen_api_tenant_slug(request)
     try:
         saved = insert_checkin_event(
             tenant_id,
@@ -5948,8 +5987,7 @@ def api_admin_checkin_board(
     if not slug_key:
         raise HTTPException(status_code=400, detail="Укажите screen_slug.")
     cfg = load_config()
-    tenant_id = str(request.cookies.get(SAAS_TENANT_COOKIE) or "local").strip() or "local"
-    return _checkin_board_payload(cfg, tenant_id, slug_key, monitor_widget_id, period)
+    return _checkin_board_payload(cfg, _screen_api_tenant_slug(request), slug_key, monitor_widget_id, period)
 
 
 @app.get("/api/admin/checkin/export.csv")
@@ -5973,7 +6011,7 @@ def api_admin_checkin_export_csv(
     places = sanitize_places_list((mw.get("settings") or {}).get("places"))
     place_titles = {p["id"]: p["title"] for p in places}
     pids = {p["id"] for p in places}
-    tenant_id = str(request.cookies.get(SAAS_TENANT_COOKIE) or "local").strip() or "local"
+    tenant_id = _screen_api_tenant_slug(request)
     period_n = _checkin_period_normalize(period)
     event_slug = _checkin_events_screen_slug_for_monitor(cfg, mw, slug_key)
     raw = journal_to_csv_bytes_filtered(
@@ -5990,13 +6028,7 @@ def api_admin_checkin_export_csv(
 
 
 def _checkin_tenant_from_request(request: Request) -> str:
-    try:
-        from .tenant_ctx import tenant_slug as _tid
-
-        tid_ctx = str(_tid() or "").strip()
-    except Exception:
-        tid_ctx = ""
-    return tid_ctx or str(request.cookies.get(SAAS_TENANT_COOKIE) or "local").strip() or "local"
+    return _screen_api_tenant_slug(request)
 
 
 @app.post("/api/screen/{slug}/checkin/confirm")
@@ -6454,10 +6486,7 @@ def _checkin_monitor_screens_for_events_slug(cfg: dict[str, Any], events_slug: s
         disp_slug = _normalize_screen_slug_for_api(str(sc.get("slug") or ""))
         if not disp_slug or disp_slug in seen:
             continue
-        widgets = sc.get("widgets")
-        if not isinstance(widgets, list):
-            continue
-        for w in widgets:
+        for w in _screen_widgets_ordered_with_carousel_children(sc):
             if not isinstance(w, dict) or w.get("enabled") is False:
                 continue
             if str(w.get("type") or "") != "checkin_monitor":
@@ -6536,7 +6565,9 @@ def _checkin_monitor_widget_for_submit(screen: dict[str, Any], submit_w: dict[st
         if mw:
             return mw
     mons = [
-        w for w in (screen.get("widgets") or []) if isinstance(w, dict) and w.get("type") == "checkin_monitor"
+        w
+        for w in _screen_widgets_ordered_with_carousel_children(screen)
+        if isinstance(w, dict) and w.get("type") == "checkin_monitor"
     ]
     return mons[0] if len(mons) == 1 else None
 
@@ -6786,21 +6817,37 @@ def _normalize_pwa_upload_icon_path(raw: object) -> str | None:
     return None
 
 
-def _pwa_manifest_icon_specs(icon_rel: str) -> tuple[list[dict[str, str]], str]:
+def _pwa_manifest_icon_src_public(request: Request, rel_path: str) -> str:
+    """Абсолютный URL иконки: часть клиентов криво резолвит относительные пути к /pwa/*.webmanifest."""
+    rp = str(rel_path or "").strip()
+    if not rp.startswith("/"):
+        return rp
+    try:
+        return str(request.base_url).rstrip("/") + rp
+    except Exception:
+        return rp
+
+
+def _pwa_manifest_icon_specs(
+    icon_rel: str,
+    *,
+    request: Request | None = None,
+) -> tuple[list[dict[str, str]], str]:
     """
     Кортеж: список записей icons[] для manifest, MIME первой записи (для логики не обязательно).
 
     ICO/SVG даём как sizes:any — не притворяемся 512 PNG.
     """
+    src = _pwa_manifest_icon_src_public(request, icon_rel) if request is not None else str(icon_rel or "")
     base = (icon_rel or "").split("?", 1)[0].lower()
     if base.endswith(".ico"):
         return (
-            [{"src": icon_rel, "sizes": "any", "type": "image/x-icon", "purpose": "any"}],
+            [{"src": src, "sizes": "any", "type": "image/x-icon", "purpose": "any"}],
             "image/x-icon",
         )
     if base.endswith(".svg") or base.endswith(".svgz"):
         return (
-            [{"src": icon_rel, "sizes": "any", "type": "image/svg+xml", "purpose": "any"}],
+            [{"src": src, "sizes": "any", "type": "image/svg+xml", "purpose": "any"}],
             "image/svg+xml",
         )
     if base.endswith(".webp"):
@@ -6811,8 +6858,8 @@ def _pwa_manifest_icon_specs(icon_rel: str) -> tuple[list[dict[str, str]], str]:
         mime = "image/png"
     return (
         [
-            {"src": icon_rel, "sizes": "192x192", "type": mime, "purpose": "any"},
-            {"src": icon_rel, "sizes": "512x512", "type": mime, "purpose": "any maskable"},
+            {"src": src, "sizes": "192x192", "type": mime, "purpose": "any"},
+            {"src": src, "sizes": "512x512", "type": mime, "purpose": "any maskable"},
         ],
         mime,
     )
@@ -6845,39 +6892,62 @@ def _pwa_widget_title_icon_for_slug(cfg: dict[str, Any], slug_n: str) -> tuple[s
     if not isinstance(sc, dict):
         return title[:64], icon_url
     screen_title = str(sc.get("name") or "").strip()[:64]
-    widgets = sc.get("widgets")
-    if not isinstance(widgets, list):
-        return (screen_title or title)[:64], icon_url
-    pwa_title_pick = ""
-    icon_pick = ""
-    mod_submit = ""
-    mod_mon = ""
-    for w in widgets:
+    visit_all = _screen_widgets_ordered_with_carousel_children(sc)
+    checkin_ordered: list[dict[str, Any]] = []
+    for w in visit_all:
         if not isinstance(w, dict) or w.get("enabled") is False:
             continue
+        if str(w.get("type") or "") not in ("checkin_submit", "checkin_monitor"):
+            continue
+        checkin_ordered.append(w)
+    submits = [w for w in checkin_ordered if str(w.get("type") or "") == "checkin_submit"]
+    monitors = [w for w in checkin_ordered if str(w.get("type") or "") == "checkin_monitor"]
+    visit = submits + monitors
+    if not visit:
+        return (screen_title or title)[:64], icon_url
+    pwa_title_submit = ""
+    pwa_title_monitor = ""
+    icon_submit = ""
+    icon_monitor = ""
+    mod_submit = ""
+    mod_mon = ""
+    for w in visit:
+        st_w = w.get("settings") if isinstance(w.get("settings"), dict) else {}
         wt = str(w.get("type") or "")
-        if wt not in ("checkin_submit", "checkin_monitor"):
-            continue
-        st = w.get("settings")
-        if not isinstance(st, dict):
-            continue
-        ip = _normalize_pwa_upload_icon_path(st.get("pwa_icon_url"))
-        if ip and not icon_pick:
-            icon_pick = ip
-        pt = str(st.get("pwa_title") or "").strip()[:64]
-        if pt and not pwa_title_pick:
-            pwa_title_pick = pt
-        if wt == "checkin_submit" and not mod_submit:
-            mod_submit = _pwa_checkin_label_module_title(st)
-        if wt == "checkin_monitor" and not mod_mon:
-            mod_mon = _pwa_checkin_label_module_title(st)
-    chosen = (
-        pwa_title_pick
-        or mod_submit
-        or mod_mon
-        or screen_title
-        or slug_default_title
-    )
+        ip = _normalize_pwa_upload_icon_path(st_w.get("pwa_icon_url"))
+        pt = str(st_w.get("pwa_title") or "").strip()[:64]
+        if wt == "checkin_submit":
+            if ip and not icon_submit:
+                icon_submit = ip
+            if pt and not pwa_title_submit:
+                pwa_title_submit = pt
+            if not mod_submit:
+                mod_submit = _pwa_checkin_label_module_title(st_w)
+        elif wt == "checkin_monitor":
+            if ip and not icon_monitor:
+                icon_monitor = ip
+            if pt and not pwa_title_monitor:
+                pwa_title_monitor = pt
+            if not mod_mon:
+                mod_mon = _pwa_checkin_label_module_title(st_w)
+    pwa_title_pick = pwa_title_submit or pwa_title_monitor
+    icon_pick = icon_submit or icon_monitor
+    if slug_key in ("tv-1", "tv-2"):
+        chosen = (
+            pwa_title_pick
+            or mod_submit
+            or mod_mon
+            or slug_default_title
+            or screen_title
+        )
+    else:
+        chosen = (
+            pwa_title_pick
+            or mod_submit
+            or mod_mon
+            or screen_title
+            or slug_default_title
+        )
     final_icon = icon_pick if icon_pick else icon_url
     return chosen[:64], final_icon
 
@@ -6898,7 +6968,7 @@ def _pwa_manifest_for_tv_pair(
     - start_url должен содержать code (чтобы “ярлык” вёл на брендированную ссылку);
     - icon должен быть tenant-scoped (через /uploads/*, который резолвится по cookie тенанта).
     """
-    icon_entries, _mime = _pwa_manifest_icon_specs(icon_url)
+    icon_entries, _mime = _pwa_manifest_icon_specs(icon_url, request=request)
     start_url = f"/t/{quote(code_canon, safe='')}/{quote(screen_slug, safe='')}?pwa=1"
     manifest = {
         "name": app_title,
@@ -7018,7 +7088,7 @@ def pwa_manifest_for_screen_standalone(request: Request, screen_slug: str) -> JS
         except Exception:
             set_tenant_slug(None)
 
-    icon_entries_sc, _mime_sc = _pwa_manifest_icon_specs(icon_url)
+    icon_entries_sc, _mime_sc = _pwa_manifest_icon_specs(icon_url, request=request)
     start_url = f"/screen/{quote(slug_n, safe='')}?pwa=1"
     manifest = {
         "name": title,
