@@ -6876,6 +6876,9 @@ def _pwa_manifest_icon_src_public(request: Request, rel_path: str) -> str:
 _PWA_DEFAULT_ICON_REL_512 = "/static/pwa/icon_default.png"
 _PWA_DEFAULT_ICON_REL_192 = "/static/pwa/icon_default_192.png"
 _WIDGET_PWA_ICON_FILENAME_RE = re.compile(r"^[a-zA-Z0-9._-]{1,220}$")
+_PWA_DERIVED_192_MARKER = "_gs_pwa192"
+# Если нигде не задан «Название ярлыка (PWA)», всё равно нужен непустой name в manifest (Chrome).
+_PWA_MANIFEST_DEFAULT_TITLE = "Приложение"
 
 
 def _pwa_path_inside_dir_relaxed(base_dir: Path, candidate: Path) -> bool:
@@ -6887,7 +6890,10 @@ def _pwa_path_inside_dir_relaxed(base_dir: Path, candidate: Path) -> bool:
 
 
 def _pwa_widget_uploads_icon_filename(icon_rel_no_query: str) -> str | None:
-    """Имя файла в uploads/widget_images/… или None (path traversal отсекаем)."""
+    """Имя файла в uploads/widget_images/… или None (path traversal отсекаем).
+
+    Допускаем и автокопию «…_gs_pwa192.png» — её иногда подставляют вручную в pwa_icon_url.
+    """
     cand = icon_rel_no_query.strip()
     if not cand.startswith("/"):
         cand = "/" + cand
@@ -6897,12 +6903,28 @@ def _pwa_widget_uploads_icon_filename(icon_rel_no_query: str) -> str | None:
     name = cand[len(prefix) :].lstrip("/")
     if not name or "/" in name:
         return None
-    stem = Path(name).stem.lower()
-    if stem.endswith("_gs_pwa192"):
-        return None
     if not _WIDGET_PWA_ICON_FILENAME_RE.fullmatch(name):
         return None
     return name
+
+
+def _pwa_neighbor_original_upload_name(fs_dir: Path, derivative_nm: str) -> str | None:
+    """Для имени вида foo_gs_pwa192.png находит файл оригинала foo.{png,jpg,...} рядом в каталоге."""
+    p = Path(derivative_nm)
+    sl = p.stem.lower()
+    if not sl.endswith(_PWA_DERIVED_192_MARKER):
+        return None
+    base_stem = p.stem[: -len(_PWA_DERIVED_192_MARKER)]
+    if not base_stem.strip():
+        return None
+    # Один активный файл с этим префиксом (.png предпочитаем — как после «Загрузить»).
+    matches = [
+        cand
+        for cand in fs_dir.glob(f"{base_stem}.*")
+        if cand.is_file() and not cand.stem.lower().endswith(_PWA_DERIVED_192_MARKER)
+    ]
+    matches.sort(key=lambda c: (c.suffix.lower() != ".png", c.name.lower()))
+    return matches[0].name if matches else None
 
 
 def _pwa_pil_image_size(path: Path) -> tuple[int, int] | None:
@@ -6951,10 +6973,16 @@ def _pwa_ensure_manifest_192_upload_rel(request: Request, icon_rel_clean: str) -
         fs_dir = map_data_path(UPLOADS_DIR / WIDGET_IMAGES_SUBDIR).resolve()
     except Exception:
         return None
+    stem_low = Path(nm).stem.lower()
+    if stem_low.endswith(_PWA_DERIVED_192_MARKER):
+        dst = (fs_dir / nm).resolve()
+        if _pwa_path_inside_dir_relaxed(fs_dir, dst) and dst.is_file():
+            return f"/uploads/{WIDGET_IMAGES_SUBDIR}/{nm}"
+        return None
     src = (fs_dir / nm).resolve()
     if not _pwa_path_inside_dir_relaxed(fs_dir, src) or not src.is_file():
         return None
-    dst_nm = f"{src.stem}_gs_pwa192.png"
+    dst_nm = f"{src.stem}{_PWA_DERIVED_192_MARKER}.png"
     dst = (fs_dir / dst_nm).resolve()
     if not _pwa_path_inside_dir_relaxed(fs_dir, dst):
         return None
@@ -6967,6 +6995,15 @@ def _pwa_ensure_manifest_192_upload_rel(request: Request, icon_rel_clean: str) -
     if need and not _pwa_write_png_192_from_raster(src, dst):
         return None
     return f"/uploads/{WIDGET_IMAGES_SUBDIR}/{dst_nm}"
+
+
+def _pwa_manifest_mime_for_upload_suffix(filename: str) -> str:
+    low = filename.lower()
+    if low.endswith(".webp"):
+        return "image/webp"
+    if low.endswith((".jpg", ".jpeg")):
+        return "image/jpeg"
+    return "image/png"
 
 
 def _pwa_manifest_raster_icons(
@@ -6983,7 +7020,7 @@ def _pwa_manifest_raster_icons(
         return [
             {"src": icon_rel_clean, "sizes": "any", "type": mime, "purpose": "any"},
         ]
-    src_main = _pwa_manifest_icon_src_public(request, icon_rel_clean)
+    src_main_pub = _pwa_manifest_icon_src_public(request, icon_rel_clean)
     base_low = icon_rel_clean.lower()
     # Встроенный fallback без загрузки: два статических файла с разными intrinsic.
     if base_low.endswith(_PWA_DEFAULT_ICON_REL_512):
@@ -6993,39 +7030,73 @@ def _pwa_manifest_raster_icons(
             {"src": pub192, "sizes": "192x192", "type": "image/png", "purpose": "any"},
             {"src": pub512, "sizes": "512x512", "type": "image/png", "purpose": "any"},
         ]
+
     icons: list[dict[str, str]] = []
-    rel192 = _pwa_ensure_manifest_192_upload_rel(request, icon_rel_clean)
-    if rel192:
+
+    fs_dir: Path | None = None
+    try:
+        from .tenant_ctx import map_data_path
+
+        fs_dir = map_data_path(UPLOADS_DIR / WIDGET_IMAGES_SUBDIR).resolve()
+    except Exception:
+        fs_dir = None
+
+    nm = _pwa_widget_uploads_icon_filename(icon_rel_clean)
+    path_512: Path | None = None
+    path_192: Path | None = None
+
+    if fs_dir and nm:
+        path_user = (fs_dir / nm).resolve()
+        if _pwa_path_inside_dir_relaxed(fs_dir, path_user) and path_user.is_file():
+            stem_low = Path(nm).stem.lower()
+            if stem_low.endswith(_PWA_DERIVED_192_MARKER):
+                path_192 = path_user
+                nm512 = _pwa_neighbor_original_upload_name(fs_dir, nm)
+                if nm512:
+                    cand512 = (fs_dir / nm512).resolve()
+                    if _pwa_path_inside_dir_relaxed(fs_dir, cand512) and cand512.is_file():
+                        path_512 = cand512
+            else:
+                path_512 = path_user
+                rel_gen = _pwa_ensure_manifest_192_upload_rel(request, icon_rel_clean)
+                if rel_gen:
+                    nm192 = rel_gen.rstrip("/").rsplit("/", 1)[-1]
+                    cand192 = (fs_dir / nm192).resolve()
+                    if _pwa_path_inside_dir_relaxed(fs_dir, cand192) and cand192.is_file():
+                        path_192 = cand192
+
+    if path_192:
+        nm192_final = path_192.name
+        rel_192 = f"/uploads/{WIDGET_IMAGES_SUBDIR}/{nm192_final}"
         icons.append(
             {
-                "src": _pwa_manifest_icon_src_public(request, rel192),
+                "src": _pwa_manifest_icon_src_public(request, rel_192),
                 "sizes": "192x192",
                 "type": "image/png",
                 "purpose": "any",
             }
         )
 
-    up_fn = _pwa_widget_uploads_icon_filename(icon_rel_clean)
-    gw, gh = None, None
-    if up_fn:
-        try:
-            from .tenant_ctx import map_data_path
+    if path_512:
+        nm512_final = path_512.name
+        sz = _pwa_pil_image_size(path_512)
+        if sz:
+            w, h = sz
+            mime512 = _pwa_manifest_mime_for_upload_suffix(nm512_final)
+            rel_512 = f"/uploads/{WIDGET_IMAGES_SUBDIR}/{nm512_final}"
+            icons.append(
+                {
+                    "src": _pwa_manifest_icon_src_public(request, rel_512),
+                    "sizes": f"{w}x{h}",
+                    "type": mime512,
+                    "purpose": "any",
+                }
+            )
 
-            ud = map_data_path(UPLOADS_DIR / WIDGET_IMAGES_SUBDIR).resolve()
-            pn = (ud / up_fn).resolve()
-            if _pwa_path_inside_dir_relaxed(ud, pn) and pn.is_file():
-                sz = _pwa_pil_image_size(pn)
-                if sz:
-                    gw, gh = sz
-        except Exception:
-            gw, gh = None, None
-    if gw and gh:
-        icons.append({"src": src_main, "sizes": f"{gw}x{gh}", "type": mime, "purpose": "any"})
-    elif icons:
-        icons.append({"src": src_main, "sizes": "any", "type": mime, "purpose": "any"})
-    else:
-        # Не нашли файл на диске / статику — только любой масштаб
-        icons.append({"src": src_main, "sizes": "any", "type": mime, "purpose": "any"})
+    if icons:
+        return icons
+
+    icons.append({"src": src_main_pub, "sizes": "any", "type": mime, "purpose": "any"})
     return icons
 
 
@@ -7118,23 +7189,14 @@ def _pwa_fallback_pwa_fields_from_widgets(
     return t_out, i_out
 
 
-def _pwa_checkin_label_module_title(st: dict[str, Any]) -> str:
-    lbl = st.get("labels")
-    if isinstance(lbl, dict):
-        return str(lbl.get("module_title") or "").strip()[:64]
-    return ""
-
-
 def _pwa_widget_title_icon_for_slug(cfg: dict[str, Any], slug_n: str) -> tuple[str, str]:
-    """Иконка и имя PWA: settings.pwa_title / pwa_icon (виджеты) → имя экрана в конфиге → «Экран {slug}»."""
+    """Имя и иконка в webmanifest: только поля «Название ярлыка (PWA)» / «Иконка ярлыка» в виджетах (по приоритету ниже)."""
     # Дефолт-иконка из статики (всегда 200), не из uploads/ тенанта — иначе 404 и пустой ярлык.
     icon_url = "/static/pwa/icon_default.png"
     slug_key = slug_n.strip().lower()
-    slug_default_title = f"Экран {slug_n}"
-    title = slug_default_title
     screens = cfg.get("screens") if isinstance(cfg, dict) else None
     if not isinstance(screens, list):
-        return title[:64], icon_url
+        return _PWA_MANIFEST_DEFAULT_TITLE[:64], icon_url
     sc = next(
         (
             s
@@ -7144,8 +7206,7 @@ def _pwa_widget_title_icon_for_slug(cfg: dict[str, Any], slug_n: str) -> tuple[s
         None,
     )
     if not isinstance(sc, dict):
-        return title[:64], icon_url
-    screen_title = str(sc.get("name") or "").strip()[:64]
+        return _PWA_MANIFEST_DEFAULT_TITLE[:64], icon_url
     visit_all = _screen_widgets_ordered_with_carousel_children(sc)
     checkin_ordered: list[dict[str, Any]] = []
     for w in visit_all:
@@ -7159,15 +7220,12 @@ def _pwa_widget_title_icon_for_slug(cfg: dict[str, Any], slug_n: str) -> tuple[s
     visit = submits + monitors
     if not visit:
         fb_t, fb_i = _pwa_fallback_pwa_fields_from_widgets(visit_all, have_title=False, have_icon=False)
-        # Явный pwa_title / имя экрана, без хардкода бренда.
-        chosen0 = (fb_t or screen_title or slug_default_title)[:64]
+        chosen0 = (fb_t or _PWA_MANIFEST_DEFAULT_TITLE)[:64]
         return chosen0, fb_i if fb_i else icon_url
     pwa_title_submit = ""
     pwa_title_monitor = ""
     icon_submit = ""
     icon_monitor = ""
-    mod_submit = ""
-    mod_mon = ""
     for w in visit:
         st_w = w.get("settings") if isinstance(w.get("settings"), dict) else {}
         wt = str(w.get("type") or "")
@@ -7178,15 +7236,11 @@ def _pwa_widget_title_icon_for_slug(cfg: dict[str, Any], slug_n: str) -> tuple[s
                 icon_submit = ip
             if pt and not pwa_title_submit:
                 pwa_title_submit = pt
-            if not mod_submit:
-                mod_submit = _pwa_checkin_label_module_title(st_w)
         elif wt == "checkin_monitor":
             if ip and not icon_monitor:
                 icon_monitor = ip
             if pt and not pwa_title_monitor:
                 pwa_title_monitor = pt
-            if not mod_mon:
-                mod_mon = _pwa_checkin_label_module_title(st_w)
     pwa_title_pick = pwa_title_submit or pwa_title_monitor
     icon_pick = icon_submit or icon_monitor
     fb_t, fb_i = _pwa_fallback_pwa_fields_from_widgets(
@@ -7198,16 +7252,9 @@ def _pwa_widget_title_icon_for_slug(cfg: dict[str, Any], slug_n: str) -> tuple[s
         pwa_title_pick = fb_t
     if not icon_pick and fb_i:
         icon_pick = fb_i
-    # Приоритет: «Название ярлыка (PWA)» в виджете → имя экрана (админка) → подписи модуля → «Экран …».
-    chosen = (
-        pwa_title_pick
-        or screen_title
-        or mod_submit
-        or mod_mon
-        or slug_default_title
-    )
+    chosen = (pwa_title_pick or _PWA_MANIFEST_DEFAULT_TITLE)[:64]
     final_icon = icon_pick if icon_pick else icon_url
-    return chosen[:64], final_icon
+    return chosen, final_icon
 
 
 def _pwa_manifest_for_tv_pair(

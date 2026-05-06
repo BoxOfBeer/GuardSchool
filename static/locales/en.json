@@ -242,7 +242,7 @@
   "w.widgetImageTooLarge": "File is too large (max 1 MB).",
   "w.pwaIconUrl": "Shortcut icon (PWA)",
   "w.pwaIconBrowse": "Upload",
-  "w.pwaIconHint": "Icon for installing a home-screen/desktop shortcut for this screen. Stored in uploads/widget_images and used in the webmanifest. Chrome requires manifest sizes to match real pixel dimensions of each URL — a companion file «…_gs_pwa192.png» is generated for the 192×192 slot. Prefer a square 512×512 main image.",
+  "w.pwaIconHint": "Icon for the install shortcut — set the primary upload path (/uploads/widget_images/…). The companion «…_gs_pwa192.png» is generated automatically for Chromium; pointing only at the 192px file leaves out the larger icon Chrome uses in the install dialog (flat circle fallback). Prefer a square 512×512 main image.",
   "w.pwaTitle": "Shortcut title (PWA)",
   "w.pwaTitleHint": "Name shown on the home screen/app list (instead of a domain-like label).",
   "w.titleFont": "Title font size",
