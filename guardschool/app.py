@@ -55,6 +55,7 @@ from .gs_saas_limits import (
     max_schedule_xlsx_bytes,
     max_user_data_bytes,
     max_weekly_zip_bytes,
+    max_widget_image_upload_bytes,
     saas_mode,
 )
 from .gs_change_log import load_change_log
@@ -5218,13 +5219,18 @@ async def upload_background(request: Request, file: UploadFile = File(...)) -> d
 @app.post("/api/admin/upload-widget-image")
 async def upload_widget_image(request: Request, file: UploadFile = File(...)) -> dict[str, str]:
     require_auth(request)
-    _reject_if_saas_upload(request)
+    # В SaaS раньше вызывали _reject_if_saas_upload — файл не попадал в tenants/<slug>/data/uploads/…,
+    # а форма всё равно могла содержать «адрес» из ручного ввода или старого конфига → 404 по URL.
+    lim = max_widget_image_upload_bytes()
+    raw = await _read_upload_capped(request, file, lim)
+    from .tenant_ctx import map_data_path
+
     ensure_dirs()
-    sub = UPLOADS_DIR / WIDGET_IMAGES_SUBDIR
+    sub = map_data_path(UPLOADS_DIR / WIDGET_IMAGES_SUBDIR)
     sub.mkdir(parents=True, exist_ok=True)
     suffix = Path(file.filename or "image").suffix or ".jpg"
     target = sub / f"{secrets.token_hex(8)}{suffix}"
-    target.write_bytes(await file.read())
+    target.write_bytes(raw)
     return {"path": f"/uploads/{WIDGET_IMAGES_SUBDIR}/{target.name}"}
 
 
@@ -6959,10 +6965,11 @@ def _pwa_checkin_label_module_title(st: dict[str, Any]) -> str:
 
 
 def _pwa_widget_title_icon_for_slug(cfg: dict[str, Any], slug_n: str) -> tuple[str, str]:
-    """Иконка и имя приложения для PWA экрана: из виджетов отметки/сводки или дефолт по slug."""
-    icon_url = "/uploads/widget_images/211.png"
+    """Иконка и имя PWA: settings.pwa_title / pwa_icon (виджеты) → имя экрана в конфиге → «Экран {slug}»."""
+    # Дефолт-иконка из статики (всегда 200), не из uploads/ тенанта — иначе 404 и пустой ярлык.
+    icon_url = "/static/pwa/icon_default.png"
     slug_key = slug_n.strip().lower()
-    slug_default_title = "Форпост" if slug_key in ("tv-1", "tv-2") else f"Экран {slug_n}"
+    slug_default_title = f"Экран {slug_n}"
     title = slug_default_title
     screens = cfg.get("screens") if isinstance(cfg, dict) else None
     if not isinstance(screens, list):
@@ -6991,10 +6998,8 @@ def _pwa_widget_title_icon_for_slug(cfg: dict[str, Any], slug_n: str) -> tuple[s
     visit = submits + monitors
     if not visit:
         fb_t, fb_i = _pwa_fallback_pwa_fields_from_widgets(visit_all, have_title=False, have_icon=False)
-        if slug_key in ("tv-1", "tv-2"):
-            chosen0 = (fb_t or slug_default_title or screen_title or title)[:64]
-        else:
-            chosen0 = (fb_t or screen_title or slug_default_title or title)[:64]
+        # Явный pwa_title / имя экрана, без хардкода бренда.
+        chosen0 = (fb_t or screen_title or slug_default_title)[:64]
         return chosen0, fb_i if fb_i else icon_url
     pwa_title_submit = ""
     pwa_title_monitor = ""
@@ -7032,23 +7037,14 @@ def _pwa_widget_title_icon_for_slug(cfg: dict[str, Any], slug_n: str) -> tuple[s
         pwa_title_pick = fb_t
     if not icon_pick and fb_i:
         icon_pick = fb_i
-    # «Заголовок модуля» не должен перебивать брендовый дефолт «Форпост» для tv-* без явного PWA-title.
-    if slug_key in ("tv-1", "tv-2"):
-        chosen = (
-            pwa_title_pick
-            or slug_default_title
-            or mod_submit
-            or mod_mon
-            or screen_title
-        )
-    else:
-        chosen = (
-            pwa_title_pick
-            or mod_submit
-            or mod_mon
-            or screen_title
-            or slug_default_title
-        )
+    # Приоритет: «Название ярлыка (PWA)» в виджете → имя экрана (админка) → подписи модуля → «Экран …».
+    chosen = (
+        pwa_title_pick
+        or screen_title
+        or mod_submit
+        or mod_mon
+        or slug_default_title
+    )
     final_icon = icon_pick if icon_pick else icon_url
     return chosen[:64], final_icon
 

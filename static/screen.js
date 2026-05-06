@@ -746,14 +746,19 @@ function ensureDeviceSettingsUi() {
   } catch (_) {}
 }
 
-// Capture install prompt when browser allows it.
+// Установка PWA: откладываем только если уже есть строка «Ярлык» в панели ⚙ (mobile_mode).
+// Иначе не вызываем preventDefault — Chrome покажет свой мини-баннер; DevTools не будет ругаться «Banner not shown».
 try {
   window.addEventListener("beforeinstallprompt", (e) => {
     try {
-      e.preventDefault();
-      window.__gsDeferredInstallPrompt = e;
       const row = document.getElementById("gs-device-pwa-install-row");
-      if (row) row.hidden = false;
+      if (row) {
+        e.preventDefault();
+        window.__gsDeferredInstallPrompt = e;
+        row.hidden = false;
+      } else {
+        window.__gsDeferredInstallPrompt = null;
+      }
     } catch (_) {}
   });
 } catch (_) {}

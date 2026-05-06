@@ -5,6 +5,7 @@ import { state, elements, GRID } from "./state.js";
 import { t, tf } from "./i18n-helpers.js";
 import { api } from "./api-client.js";
 import { escapeHtml, escapeHtmlAttr } from "./escape-html.js";
+import { MAX_WIDGET_IMAGE_UPLOAD_BYTES } from "./upload-limits.js";
 
 /** Как на сервере gs_checkin._PLACE_ID_RE — только допустимые id мест. */
 const CHECKIN_PLACE_ID_RE = /^[a-zA-Z0-9_-]{1,64}$/;
@@ -382,7 +383,7 @@ function settingInputs(widget, index) {
     parts.push(`<div class="settings-row">
       <label class="compact-field">
         <span>${escapeHtml(t("w.pwaTitle"))}</span>
-        <input type="text" class="standard-input wide-input" data-key="widget:${index}:settings.pwa_title" value="${pwaTitle}" placeholder="Форпост" maxlength="64">
+        <input type="text" class="standard-input wide-input" data-key="widget:${index}:settings.pwa_title" value="${pwaTitle}" placeholder="Например: Школа, Личка…" maxlength="64">
       </label>
       <div class="hint">${escapeHtml(t("w.pwaTitleHint"))}</div>
     </div>`);
@@ -512,6 +513,11 @@ export function updateWidgetField(path, value) {
 }
 
 export async function uploadWidgetImage(file, widgetIndex, slotIndex) {
+  if (!file) return;
+  if (file.size > MAX_WIDGET_IMAGE_UPLOAD_BYTES) {
+    alert(t("w.widgetImageTooLarge"));
+    return;
+  }
   const formData = new FormData();
   formData.append("file", file);
   const payload = await api("/api/admin/upload-widget-image", { method: "POST", body: formData });
@@ -548,6 +554,11 @@ export async function uploadEmergencySound(file, widgetIndex) {
 }
 
 export async function uploadEmergencyWidgetImage(file, widgetIndex) {
+  if (!file) return;
+  if (file.size > MAX_WIDGET_IMAGE_UPLOAD_BYTES) {
+    alert(t("w.widgetImageTooLarge"));
+    return;
+  }
   const formData = new FormData();
   formData.append("file", file);
   const payload = await api("/api/admin/upload-widget-image", { method: "POST", body: formData });
@@ -563,6 +574,11 @@ export async function uploadEmergencyWidgetImage(file, widgetIndex) {
 }
 
 export async function uploadCheckinPwaIcon(file, widgetIndex) {
+  if (!file) return;
+  if (file.size > MAX_WIDGET_IMAGE_UPLOAD_BYTES) {
+    alert(t("w.widgetImageTooLarge"));
+    return;
+  }
   const formData = new FormData();
   formData.append("file", file);
   const payload = await api("/api/admin/upload-widget-image", { method: "POST", body: formData });

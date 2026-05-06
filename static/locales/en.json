@@ -239,6 +239,7 @@
   "w.browseSub": "to widget_images",
   "w.addImage": "Add image",
   "w.imageHint": "Browse uploads to uploads/widget_images, separate from TV backgrounds. Multiple images rotate on a timer; at 0 only the first non-empty URL is shown. Low opacity places the layer under other widgets.",
+  "w.widgetImageTooLarge": "File is too large (max 1 MB).",
   "w.pwaIconUrl": "Shortcut icon (PWA)",
   "w.pwaIconBrowse": "Upload",
   "w.pwaIconHint": "Icon for installing a home-screen/desktop shortcut for this screen. Stored in uploads/widget_images and used in the webmanifest.",

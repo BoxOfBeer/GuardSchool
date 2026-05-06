@@ -51,6 +51,17 @@ def max_user_data_bytes() -> int:
     return 15 * 1024 * 1024
 
 
+def max_widget_image_upload_bytes() -> int:
+    """Картинки виджетов (изображение, аварийный экран, иконка PWA чек‑ина и т.д.) — маленькие файлы."""
+    raw = (os.environ.get("GUARDSCHOOL_MAX_WIDGET_IMAGE_UPLOAD_BYTES") or "").strip()
+    if raw:
+        try:
+            return max(4096, int(raw))
+        except ValueError:
+            pass
+    return 1024 * 1024
+
+
 def json_utf8_size(payload: Any) -> int:
     try:
         return len(json.dumps(payload, ensure_ascii=False).encode("utf-8"))

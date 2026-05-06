@@ -61,6 +61,7 @@ import { t, tf, getSectionTabs } from "./admin/i18n-helpers.js";
 import { api, downloadFile } from "./admin/api-client.js";
 import { populateAdminTimezoneSelect } from "./admin/timezone.js";
 import { escapeHtml, escapeHtmlAttr } from "./admin/escape-html.js";
+import { MAX_WIDGET_IMAGE_UPLOAD_BYTES } from "./admin/upload-limits.js";
 
 const WIDGET_TYPE_KEYS = new Set([
   "date",
@@ -1387,6 +1388,11 @@ function renderEmergencyTemplatesAdmin() {
       const nm = inp.getAttribute("data-em-screen-upload");
       const f = ev.target.files && ev.target.files[0];
       if (!nm || !f || state.meta?.saas_mode) return;
+      if (f.size > MAX_WIDGET_IMAGE_UPLOAD_BYTES) {
+        alert(t("w.widgetImageTooLarge"));
+        ev.target.value = "";
+        return;
+      }
       const formData = new FormData();
       formData.append("file", f);
       try {
