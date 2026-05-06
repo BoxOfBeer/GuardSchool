@@ -3100,10 +3100,15 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 @app.middleware("http")
 async def _tenant_middleware(request: Request, call_next):
     """
-    SaaS: по Host определяем школу и маппим data/ на tenants/<slug>/data.
-    Примеры: foo.guarddoc.ru → slug foo.
-    Если задан GUARDSCHOOL_PUBLIC_SCHOOL_HOST и Host совпадает с ним — slug берём из cookie
-    gs_saas_tenant (после входа на общем school.*), а не из поддомена.
+    SaaS: каталог данных schools → tenants/<slug>/data.
+
+    На проде один входной хост school.guarddoc.ru; поддомены под каждого клиента нет —
+    внутренний slug школы (папка тенанта, связка с лицензией в БД) задаётся cookie gs_saas_tenant
+    после авторизации/выбора школы, либо контекстом ТВ (Bearer / ?gs_tv_token= и т.д.).
+
+    Имя поддомена «school» никогда не становится tenant slug: иначе подтягивается устаревшая tenants/school/.
+    Дополнительно: если задан GUARDSCHOOL_PUBLIC_SCHOOL_HOST и Host ему совпадает — из поддомена slug не берём.
+    Резерв «tenant = левая часть *.guarddoc.ru» оставлен для редких отладочных/кастомных хостов.
     """
     from .tenant_ctx import set_tenant_slug
 
@@ -3122,10 +3127,17 @@ async def _tenant_middleware(request: Request, call_next):
             cook2 = _decode_saas_tenant_cookie_value(cook2_raw)
             if cook2 and 1 <= len(cook2) <= 64 and cook2 not in ("www", "admin"):
                 slug = cook2
-        # 3) Если cookie нет — subdomain tenant.
+        # 3) Резерв: tenant из поддомена *.guarddoc.ru (не основной сценарий: у вас только school.*).
+        # «school» не маппим в slug — общий вход; без cookie slug остаётся None (не подмешивать legacy tenants/school).
+        # Совпадение с GUARDSCHOOL_PUBLIC_SCHOOL_HOST тоже отключает вывод slug из Host.
         if not slug and host.endswith(".guarddoc.ru"):
             left = host[: -len(".guarddoc.ru")]
-            if left and left not in ("www", "admin"):
+            if (
+                left
+                and left not in ("www", "admin")
+                and left != "school"
+                and not _is_public_school_host(host)
+            ):
                 slug = left
         # portal: guarddoc.ru / www.guarddoc.ru -> slug остаётся None
         bound = _demo_middleware_binding_slug(request, slug)
@@ -7198,8 +7210,21 @@ def _pwa_widget_title_icon_for_slug(cfg: dict[str, Any], slug_n: str) -> tuple[s
     # Дефолт-иконка из статики (всегда 200), не из uploads/ тенанта — иначе 404 и пустой ярлык.
     icon_url = "/static/pwa/icon_default.png"
     slug_key = slug_n.strip().lower()
+    tenant_for_log = ""
+    try:
+        from .tenant_ctx import tenant_slug as _tsl
+
+        tenant_for_log = str(_tsl() or "").strip()
+    except Exception:
+        tenant_for_log = ""
+
     screens = cfg.get("screens") if isinstance(cfg, dict) else None
     if not isinstance(screens, list):
+        _log.warning(
+            "PWA manifest: у тенанта %r нет screens[] в конфиге (slug экрана %r) — name/icon по умолчанию",
+            tenant_for_log or "?",
+            slug_key,
+        )
         return _PWA_MANIFEST_DEFAULT_TITLE[:64], icon_url
     sc = next(
         (
@@ -7210,6 +7235,17 @@ def _pwa_widget_title_icon_for_slug(cfg: dict[str, Any], slug_n: str) -> tuple[s
         None,
     )
     if not isinstance(sc, dict):
+        know = [
+            str(s.get("slug") or "").strip()
+            for s in screens
+            if isinstance(s, dict) and str(s.get("slug") or "").strip()
+        ][:48]
+        _log.warning(
+            "PWA manifest: экран slug=%r не найден для тенанта %r — name/icon по умолчанию; в конфиге slugs=%r",
+            slug_key,
+            tenant_for_log or "?",
+            know,
+        )
         return _PWA_MANIFEST_DEFAULT_TITLE[:64], icon_url
     visit_all = _screen_widgets_ordered_with_carousel_children(sc)
     checkin_ordered: list[dict[str, Any]] = []
