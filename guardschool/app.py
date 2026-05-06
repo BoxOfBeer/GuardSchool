@@ -4687,14 +4687,28 @@ def screen_page(request: Request, slug: str) -> HTMLResponse:
     slug_for_manifest = _normalize_screen_slug_for_api(slug) or str(slug or "").strip().lower()
     manifest_line = ""
     if slug_for_manifest and re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", slug_for_manifest):
+        # В SaaS /pwa/screen/<slug>.webmanifest без тенанта даёт 404. Браузер запрашивает <link manifest>
+        # до выполнения screen.js — поэтому не вставляем заведомо битый href.
         tok_q = str(request.query_params.get("gs_tv_token") or "").strip()
-        q_parts = [f"v={quote(APP_VERSION, safe='')}"]
-        if tok_q:
-            q_parts.insert(0, f"gs_tv_token={quote(tok_q, safe='')}")
-        q = "?" + "&".join(q_parts)
-        manifest_line = (
-            f'<link rel="manifest" href="/pwa/screen/{quote(slug_for_manifest, safe="")}.webmanifest{q}" />\n'
-        )
+        if deployment_mode() == "saas" and saas_db_enabled():
+            tenant_for_manifest = _pwa_manifest_resolve_tenant_slug(request, slug_for_manifest)
+            if tenant_for_manifest:
+                q_parts = [f"v={quote(APP_VERSION, safe='')}"]
+                if tok_q:
+                    q_parts.insert(0, f"gs_tv_token={quote(tok_q, safe='')}")
+                q = "?" + "&".join(q_parts)
+                manifest_line = (
+                    f'<link rel="manifest" href="/pwa/screen/{quote(slug_for_manifest, safe="")}.webmanifest{q}" />\n'
+                )
+            # иначе: пусто — static/screen.js подставит /pwa/t/... или /pwa/screen/... с gs_tv_token из storage
+        else:
+            q_parts = [f"v={quote(APP_VERSION, safe='')}"]
+            if tok_q:
+                q_parts.insert(0, f"gs_tv_token={quote(tok_q, safe='')}")
+            q = "?" + "&".join(q_parts)
+            manifest_line = (
+                f'<link rel="manifest" href="/pwa/screen/{quote(slug_for_manifest, safe="")}.webmanifest{q}" />\n'
+            )
     html = raw.replace("__GS_ASSETS_VER__", APP_VERSION).replace("__GS_PWA_MANIFEST_LINK__", manifest_line)
     resp = HTMLResponse(
         content=html,
