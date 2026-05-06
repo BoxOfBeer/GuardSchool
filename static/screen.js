@@ -805,7 +805,6 @@ function gsMaybeAttachSaasManifestForScreenSlug(slug) {
     const s = String(slug || "").trim().toLowerCase();
     if (!s) return;
     const code = (localStorage.getItem(`gs_pwa_tv_code__${s}`) || "").trim().toLowerCase();
-    if (!code) return;
     let link = document.querySelector("link[rel='manifest']");
     if (!link) {
       link = document.createElement("link");
@@ -813,8 +812,17 @@ function gsMaybeAttachSaasManifestForScreenSlug(slug) {
       document.head.appendChild(link);
     }
     const vv = encodeURIComponent(String(window.__GS_APP_VERSION || "").trim());
-    const q = vv ? `?v=${vv}` : "";
-    link.href = `/pwa/t/${encodeURIComponent(code)}/${encodeURIComponent(s)}.webmanifest${q}`;
+    const bearer = (() => { try { return getGsTvBearer(); } catch (_) { return ""; } })();
+    const qParts = [];
+    if (bearer) qParts.push(`gs_tv_token=${encodeURIComponent(bearer)}`);
+    if (vv) qParts.push(`v=${vv}`);
+    const q = qParts.length ? `?${qParts.join("&")}` : "";
+    if (code) {
+      link.href = `/pwa/t/${encodeURIComponent(code)}/${encodeURIComponent(s)}.webmanifest${q}`;
+    } else if (bearer) {
+      // Если нет кода школы (tv_access), всё равно можно отдать manifest по device-token (tv_devices).
+      link.href = `/pwa/screen/${encodeURIComponent(s)}.webmanifest${q}`;
+    }
   } catch (_) {}
 }
 
