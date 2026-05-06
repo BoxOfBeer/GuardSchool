@@ -746,19 +746,15 @@ function ensureDeviceSettingsUi() {
   } catch (_) {}
 }
 
-// Установка PWA: откладываем только если уже есть строка «Ярлык» в панели ⚙ (mobile_mode).
-// Иначе не вызываем preventDefault — Chrome покажет свой мини-баннер; DevTools не будет ругаться «Banner not shown».
+// Chromium шлёт beforeinstallprompt когда SW + manifest уже готовы — часто это РАНЬШЕ первого ответа /screen poll
+// и рендера панели ⚙, тогда строка «Ярлык» ещё не в DOM. Всегда сохраняем событие; при создании UI показываем строку.
 try {
   window.addEventListener("beforeinstallprompt", (e) => {
     try {
+      e.preventDefault();
+      window.__gsDeferredInstallPrompt = e;
       const row = document.getElementById("gs-device-pwa-install-row");
-      if (row) {
-        e.preventDefault();
-        window.__gsDeferredInstallPrompt = e;
-        row.hidden = false;
-      } else {
-        window.__gsDeferredInstallPrompt = null;
-      }
+      if (row) row.hidden = false;
     } catch (_) {}
   });
 } catch (_) {}
