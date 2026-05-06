@@ -10,6 +10,7 @@ import html
 import io
 import ipaddress
 import json
+import logging
 import os
 import re
 import secrets
@@ -3087,6 +3088,8 @@ async def _guard_school_lifespan(_app: FastAPI):
             cancel_sync()
         bell_rupor_worker.stop_worker()
 
+
+_log = logging.getLogger(__name__)
 
 app = FastAPI(title="GuardSchool", lifespan=_guard_school_lifespan)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
@@ -7173,7 +7176,8 @@ def _pwa_fallback_pwa_fields_from_widgets(
     t_out = ""
     i_out = ""
     for w in visit_all:
-        if not isinstance(w, dict) or w.get("enabled") is False:
+        # enabled не фильтруем: поля ярлыка остаются в конфиге и для выключенного виджета.
+        if not isinstance(w, dict):
             continue
         st = w.get("settings") if isinstance(w.get("settings"), dict) else {}
         if not have_title and not t_out:
@@ -7210,7 +7214,7 @@ def _pwa_widget_title_icon_for_slug(cfg: dict[str, Any], slug_n: str) -> tuple[s
     visit_all = _screen_widgets_ordered_with_carousel_children(sc)
     checkin_ordered: list[dict[str, Any]] = []
     for w in visit_all:
-        if not isinstance(w, dict) or w.get("enabled") is False:
+        if not isinstance(w, dict):
             continue
         if str(w.get("type") or "") not in ("checkin_submit", "checkin_monitor"):
             continue
@@ -7341,6 +7345,11 @@ def pwa_manifest_for_tv_pair(request: Request, code: str, screen_slug: str) -> J
         cfg = load_config()
         title, icon_url = _pwa_widget_title_icon_for_slug(cfg, slug_n)
     except Exception:
+        _log.exception(
+            "PWA /pwa/t manifest: ошибка load_config или разбора pwa_* slug=%r tenant=%r",
+            slug_n,
+            tenant_slug,
+        )
         title, icon_url = _pwa_widget_title_icon_for_slug({}, slug_n)
     finally:
         try:
@@ -7387,6 +7396,11 @@ def pwa_manifest_for_screen_standalone(request: Request, screen_slug: str) -> JS
         cfg = load_config()
         title, icon_url = _pwa_widget_title_icon_for_slug(cfg, slug_n)
     except Exception:
+        _log.exception(
+            "PWA /pwa/screen manifest: ошибка load_config или разбора pwa_* slug=%r tenant=%r",
+            slug_n,
+            tenant_slug,
+        )
         title, icon_url = _pwa_widget_title_icon_for_slug({}, slug_n)
     finally:
         try:
