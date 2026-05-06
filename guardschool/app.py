@@ -6873,6 +6873,162 @@ def _pwa_manifest_icon_src_public(request: Request, rel_path: str) -> str:
         return rp
 
 
+_PWA_DEFAULT_ICON_REL_512 = "/static/pwa/icon_default.png"
+_PWA_DEFAULT_ICON_REL_192 = "/static/pwa/icon_default_192.png"
+_WIDGET_PWA_ICON_FILENAME_RE = re.compile(r"^[a-zA-Z0-9._-]{1,220}$")
+
+
+def _pwa_path_inside_dir_relaxed(base_dir: Path, candidate: Path) -> bool:
+    try:
+        candidate.resolve().relative_to(base_dir.resolve())
+        return True
+    except ValueError:
+        return False
+
+
+def _pwa_widget_uploads_icon_filename(icon_rel_no_query: str) -> str | None:
+    """Имя файла в uploads/widget_images/… или None (path traversal отсекаем)."""
+    cand = icon_rel_no_query.strip()
+    if not cand.startswith("/"):
+        cand = "/" + cand
+    prefix = f"/uploads/{WIDGET_IMAGES_SUBDIR}/"
+    if cand[: len(prefix)].lower() != prefix.lower():
+        return None
+    name = cand[len(prefix) :].lstrip("/")
+    if not name or "/" in name:
+        return None
+    stem = Path(name).stem.lower()
+    if stem.endswith("_gs_pwa192"):
+        return None
+    if not _WIDGET_PWA_ICON_FILENAME_RE.fullmatch(name):
+        return None
+    return name
+
+
+def _pwa_pil_image_size(path: Path) -> tuple[int, int] | None:
+    try:
+        from PIL import Image
+
+        with Image.open(path) as im:
+            w, h = im.size
+            if isinstance(w, int) and isinstance(h, int) and w > 0 and h > 0:
+                return (w, h)
+    except Exception:
+        pass
+    return None
+
+
+def _pwa_write_png_192_from_raster(src: Path, dst: Path) -> bool:
+    """Ровно 192×192 PNG — под manifest sizes:«192x192» (intrinsic должны совпадать с объявлением)."""
+    try:
+        from PIL import Image
+
+        with Image.open(src) as im:
+            conv = im.convert("RGBA") if im.mode in ("RGBA", "LA", "P") else im.convert("RGB")
+            if conv.mode != "RGBA":
+                conv = conv.convert("RGBA")
+            sm = conv.resize((192, 192), Image.Resampling.LANCZOS)
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        sm.save(dst, format="PNG", optimize=True)
+        return True
+    except Exception:
+        try:
+            if dst.exists():
+                dst.unlink()
+        except Exception:
+            pass
+        return False
+
+
+def _pwa_ensure_manifest_192_upload_rel(request: Request, icon_rel_clean: str) -> str | None:
+    """Копия 192×192 рядом с пользовательским файлом `<stem>_gs_pwa192.png` (обновление при более новой оригинале)."""
+    nm = _pwa_widget_uploads_icon_filename(icon_rel_clean)
+    if not nm:
+        return None
+    try:
+        from .tenant_ctx import map_data_path
+
+        fs_dir = map_data_path(UPLOADS_DIR / WIDGET_IMAGES_SUBDIR).resolve()
+    except Exception:
+        return None
+    src = (fs_dir / nm).resolve()
+    if not _pwa_path_inside_dir_relaxed(fs_dir, src) or not src.is_file():
+        return None
+    dst_nm = f"{src.stem}_gs_pwa192.png"
+    dst = (fs_dir / dst_nm).resolve()
+    if not _pwa_path_inside_dir_relaxed(fs_dir, dst):
+        return None
+    need = True
+    if dst.is_file():
+        try:
+            need = src.stat().st_mtime > dst.stat().st_mtime
+        except OSError:
+            need = True
+    if need and not _pwa_write_png_192_from_raster(src, dst):
+        return None
+    return f"/uploads/{WIDGET_IMAGES_SUBDIR}/{dst_nm}"
+
+
+def _pwa_manifest_raster_icons(
+    request: Request | None,
+    *,
+    icon_rel_clean: str,
+    mime: str,
+) -> list[dict[str, str]]:
+    """
+    Chromium: каждая запись icons[] — заявленные пиксели должны совпадать с фактическим размером
+    файла по src. Поэтому 192×192 — отдельный URL (копия), а не второй маркёр на файл 512×512.
+    """
+    if request is None:
+        return [
+            {"src": icon_rel_clean, "sizes": "any", "type": mime, "purpose": "any"},
+        ]
+    src_main = _pwa_manifest_icon_src_public(request, icon_rel_clean)
+    base_low = icon_rel_clean.lower()
+    # Встроенный fallback без загрузки: два статических файла с разными intrinsic.
+    if base_low.endswith(_PWA_DEFAULT_ICON_REL_512):
+        pub192 = _pwa_manifest_icon_src_public(request, _PWA_DEFAULT_ICON_REL_192)
+        pub512 = _pwa_manifest_icon_src_public(request, _PWA_DEFAULT_ICON_REL_512)
+        return [
+            {"src": pub192, "sizes": "192x192", "type": "image/png", "purpose": "any"},
+            {"src": pub512, "sizes": "512x512", "type": "image/png", "purpose": "any"},
+        ]
+    icons: list[dict[str, str]] = []
+    rel192 = _pwa_ensure_manifest_192_upload_rel(request, icon_rel_clean)
+    if rel192:
+        icons.append(
+            {
+                "src": _pwa_manifest_icon_src_public(request, rel192),
+                "sizes": "192x192",
+                "type": "image/png",
+                "purpose": "any",
+            }
+        )
+
+    up_fn = _pwa_widget_uploads_icon_filename(icon_rel_clean)
+    gw, gh = None, None
+    if up_fn:
+        try:
+            from .tenant_ctx import map_data_path
+
+            ud = map_data_path(UPLOADS_DIR / WIDGET_IMAGES_SUBDIR).resolve()
+            pn = (ud / up_fn).resolve()
+            if _pwa_path_inside_dir_relaxed(ud, pn) and pn.is_file():
+                sz = _pwa_pil_image_size(pn)
+                if sz:
+                    gw, gh = sz
+        except Exception:
+            gw, gh = None, None
+    if gw and gh:
+        icons.append({"src": src_main, "sizes": f"{gw}x{gh}", "type": mime, "purpose": "any"})
+    elif icons:
+        icons.append({"src": src_main, "sizes": "any", "type": mime, "purpose": "any"})
+    else:
+        # Не нашли файл на диске / статику — только любой масштаб
+        icons.append({"src": src_main, "sizes": "any", "type": mime, "purpose": "any"})
+    return icons
+
+
 def _pwa_manifest_icon_specs(
     icon_rel: str,
     *,
@@ -6881,33 +7037,32 @@ def _pwa_manifest_icon_specs(
     """
     Кортеж: список записей icons[] для manifest, MIME первой записи (для логики не обязательно).
 
-    ICO/SVG — только sizes:any. Растр (PNG/WebP/JPEG): одна физическая картинка, три записи
-    (`any`, `192x192`, `512x512`) с тем же URL — типичная схема для installability Chrome;
-    загрузите квадрат не менее 512×512, иначе браузер отклонит установку.
+    ICO/SVG — только sizes:any. Для PNG/WebP/JPEG см. _pwa_manifest_raster_icons (раздельный 192px URL).
     """
-    src = _pwa_manifest_icon_src_public(request, icon_rel) if request is not None else str(icon_rel or "")
-    base = (icon_rel or "").split("?", 1)[0].lower()
-    if base.endswith(".ico"):
+    icon_rel_clean = (icon_rel or "").split("?", 1)[0].strip()
+    src = (
+        _pwa_manifest_icon_src_public(request, icon_rel_clean)
+        if request is not None
+        else str(icon_rel_clean or "")
+    )
+    base_low = icon_rel_clean.lower()
+    if base_low.endswith(".ico"):
         return (
             [{"src": src, "sizes": "any", "type": "image/x-icon", "purpose": "any"}],
             "image/x-icon",
         )
-    if base.endswith(".svg") or base.endswith(".svgz"):
+    if base_low.endswith(".svg") or base_low.endswith(".svgz"):
         return (
             [{"src": src, "sizes": "any", "type": "image/svg+xml", "purpose": "any"}],
             "image/svg+xml",
         )
-    if base.endswith(".webp"):
+    if base_low.endswith(".webp"):
         mime = "image/webp"
-    elif base.endswith(".jpg") or base.endswith(".jpeg"):
+    elif base_low.endswith(".jpg") or base_low.endswith(".jpeg"):
         mime = "image/jpeg"
     else:
         mime = "image/png"
-    icons_raster: list[dict[str, str]] = [
-        {"src": src, "sizes": "any", "type": mime, "purpose": "any"},
-        {"src": src, "sizes": "192x192", "type": mime, "purpose": "any"},
-        {"src": src, "sizes": "512x512", "type": mime, "purpose": "any"},
-    ]
+    icons_raster = _pwa_manifest_raster_icons(request, icon_rel_clean=icon_rel_clean, mime=mime)
     return (icons_raster, mime)
 
 
