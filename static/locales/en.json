@@ -242,7 +242,7 @@
   "w.widgetImageTooLarge": "File is too large (max 1 MB).",
   "w.pwaIconUrl": "Shortcut icon (PWA)",
   "w.pwaIconBrowse": "Upload",
-  "w.pwaIconHint": "Icon for installing a home-screen/desktop shortcut for this screen. Stored in uploads/widget_images and used in the webmanifest.",
+  "w.pwaIconHint": "Icon for installing a home-screen/desktop shortcut for this screen. Stored in uploads/widget_images and used in the webmanifest. Chrome installability expects a square image at least 512×512 (512×512 PNG is ideal).",
   "w.pwaTitle": "Shortcut title (PWA)",
   "w.pwaTitleHint": "Name shown on the home screen/app list (instead of a domain-like label).",
   "w.titleFont": "Title font size",

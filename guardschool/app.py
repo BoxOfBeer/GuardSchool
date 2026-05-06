@@ -6881,7 +6881,9 @@ def _pwa_manifest_icon_specs(
     """
     Кортеж: список записей icons[] для manifest, MIME первой записи (для логики не обязательно).
 
-    ICO/SVG даём как sizes:any — не притворяемся 512 PNG.
+    ICO/SVG — только sizes:any. Растр (PNG/WebP/JPEG): одна физическая картинка, три записи
+    (`any`, `192x192`, `512x512`) с тем же URL — типичная схема для installability Chrome;
+    загрузите квадрат не менее 512×512, иначе браузер отклонит установку.
     """
     src = _pwa_manifest_icon_src_public(request, icon_rel) if request is not None else str(icon_rel or "")
     base = (icon_rel or "").split("?", 1)[0].lower()
@@ -6901,8 +6903,12 @@ def _pwa_manifest_icon_specs(
         mime = "image/jpeg"
     else:
         mime = "image/png"
-    # Не задаём выдуманные 192/512 и не смешиваем any+maskable: Chrome ругается, если файл другого размера.
-    return ([{"src": src, "sizes": "any", "type": mime, "purpose": "any"}], mime)
+    icons_raster: list[dict[str, str]] = [
+        {"src": src, "sizes": "any", "type": mime, "purpose": "any"},
+        {"src": src, "sizes": "192x192", "type": mime, "purpose": "any"},
+        {"src": src, "sizes": "512x512", "type": mime, "purpose": "any"},
+    ]
+    return (icons_raster, mime)
 
 
 def _pwa_manifest_screenshots_entries(request: Request | None) -> list[dict[str, str]]:
