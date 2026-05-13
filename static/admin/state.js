@@ -63,6 +63,8 @@ export const elements = {
   schoolNewsSaveBtn: document.getElementById("school-news-save-btn"),
   schoolNewsResetBtn: document.getElementById("school-news-reset-btn"),
   schoolNewsList: document.getElementById("school-news-list"),
+  schoolNewsGallery: document.getElementById("school-news-gallery"),
+  schoolNewsHybridPreview: document.getElementById("school-news-hybrid-preview-inner"),
   lessonImportStats: document.getElementById("lesson-import-stats"),
   weeklyScheduleExportBtn: document.getElementById("weekly-schedule-export-btn"),
   weeklyScheduleImportBtn: document.getElementById("weekly-schedule-import-btn"),

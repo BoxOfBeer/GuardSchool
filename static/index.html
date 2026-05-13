@@ -409,7 +409,12 @@
                     <button id="school-news-cover-pick-btn" type="button" class="secondary-btn compact-btn">Загрузить обложку с ПК</button>
                     <button id="school-news-cover-fetch-btn" type="button" class="secondary-btn compact-btn">Подтянуть обложку по ссылке</button>
                     <input id="school-news-cover-file" type="file" accept="image/*" hidden>
-                    <span class="hint" style="align-self:center">до 1 МБ; при удалении новости локальные картинки удаляются.</span>
+                    <span class="hint" style="align-self:center">до 5 МБ; при удалении новости локальные картинки удаляются.</span>
+                  </div>
+                  <div class="override-field override-field-wide school-news-gallery-section">
+                    <span class="override-field-label">Галерея (до 4 фото)</span>
+                    <p class="hint" style="margin:2px 0 8px">Дополнительные изображения с фиксированным порядком (как на экране). Текст и вложения по-прежнему в редакторе ниже.</p>
+                    <div id="school-news-gallery" class="school-news-gallery" aria-label="Галерея новости"></div>
                   </div>
                   <label class="override-field toggle-label"><input id="school-news-active" type="checkbox" checked><span>Активна</span></label>
                 </section>
@@ -439,6 +444,10 @@
                       <div id="school-news-editor" class="gs-rich-surface" contenteditable="true" spellcheck="true" aria-label="Текст новости"></div>
                     </div>
                     <textarea id="school-news-content" class="standard-input wide-input" rows="6" placeholder="Текст новости (служебное поле)" style="display:none"></textarea>
+                  </div>
+                  <div id="school-news-hybrid-preview" class="school-news-hybrid-preview" aria-live="polite">
+                    <div class="school-news-hybrid-preview-head">Как на экране (черновик)</div>
+                    <div id="school-news-hybrid-preview-inner" class="school-news-hybrid-preview-inner"></div>
                   </div>
                   <div class="override-form-actions">
                     <button id="school-news-save-btn" type="button" class="primary-btn">Сохранить новость</button>

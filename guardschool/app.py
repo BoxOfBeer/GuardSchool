@@ -1402,6 +1402,17 @@ def normalize_widget(widget: dict[str, Any]) -> dict[str, Any]:
         widget["settings"].setdefault("speedSec", 18)
     if widget["type"] in {"school_news", "rss_news"}:
         widget["settings"].setdefault("rotateSec", 12)
+        try:
+            legacy_fs = int(widget["settings"].get("fontSize") or 18)
+        except (TypeError, ValueError):
+            legacy_fs = 18
+        try:
+            body_fs = int(widget["settings"].get("bodyFontSize") or legacy_fs)
+        except (TypeError, ValueError):
+            body_fs = legacy_fs
+        body_fs = max(8, min(96, body_fs))
+        widget["settings"]["bodyFontSize"] = body_fs
+        widget["settings"]["fontSize"] = body_fs
     if widget["type"] == "holidays":
         widget["settings"].setdefault("count", 5)
     if widget["type"] in {"bell_status", "bell_countdown"}:
@@ -2000,6 +2011,27 @@ def load_announcements() -> list[dict[str, Any]]:
     return read_json(ANNOUNCEMENTS_PATH, [])
 
 
+SCHOOL_NEWS_COVER_MAX_BYTES = 5 * 1024 * 1024
+
+
+def _sanitize_school_news_display_html(raw: str) -> str:
+    """HTML для показа на ТВ/в превью: без script/on*, опасных вставок и гигантских полезных нагрузок."""
+    s = str(raw or "").strip()
+    if len(s) > 120_000:
+        s = s[:120_000]
+    s = re.sub(r"(?is)<script[^>]*>.*?</script>", "", s)
+    s = re.sub(r"(?is)</?script[^>]*>", "", s)
+    s = re.sub(r"(?is)<\s*iframe[^>]*>.*?</iframe>", "", s)
+    s = re.sub(r"(?is)<\s*(?:object|embed)[^>]*>.*?</(?:object|embed)>", "", s)
+    s = re.sub(r'(?is)on[a-z]+\s*=\s*"[^"]*"', "", s)
+    s = re.sub(r"(?is)on[a-z]+\s*=\s*'[^']*'", "", s)
+    s = re.sub(r'(?is)\sstyle\s*=\s*"[^"]*"', "", s)
+    s = re.sub(r"(?is)\sstyle\s*=\s*'[^']*'", "", s)
+    s = re.sub(r'(?is)href\s*=\s*"javascript:[^"]*"', 'href="#"', s)
+    s = re.sub(r"(?is)href\s*=\s*'javascript:[^']*'", "href='#'", s)
+    return s.strip()
+
+
 def _school_news_text_preview(raw_html: str) -> str:
     """Текст для виджета школьных новостей: без ограничения длины."""
     s = str(raw_html or "")
@@ -2032,15 +2064,8 @@ def sanitize_school_news_item(item: dict[str, Any], fallback_id: str = "") -> di
     content = re.sub(r"(?is)<script[^>]*>.*?</script>", "", content)
     content = re.sub(r"(?is)on[a-z]+\s*=\s*\"[^\"]*\"", "", content)
     content = re.sub(r"(?is)on[a-z]+\s*=\s*'[^']*'", "", content)
-    cover = str(item.get("cover_image") or "").strip()[:500]
-    if cover:
-        if cover.startswith("/uploads/"):
-            pass
-        elif re.fullmatch(r"(?i)https?://.{6,500}", cover):
-            # внешняя картинка (не управляем локальным файлом)
-            pass
-        else:
-            cover = ""
+    cover = _sanitize_one_news_image_url(item.get("cover_image"))
+    gallery_images = _sanitize_gallery_images(item.get("gallery_images"))
     created = schedule_date_iso(item.get("created_at")) or date.today().isoformat()
     active = bool(item.get("is_active", True))
     out = {
@@ -2049,10 +2074,12 @@ def sanitize_school_news_item(item: dict[str, Any], fallback_id: str = "") -> di
         "title": title,
         "content": content,
         "cover_image": cover,
+        "gallery_images": gallery_images,
         "created_at": created,
         "is_active": active,
     }
     out["summary"] = _school_news_text_preview(content)
+    out["display_html"] = _sanitize_school_news_display_html(content)
     return out
 
 
@@ -2093,6 +2120,32 @@ def _safe_unlink_upload_url(url: str) -> None:
         return
 
 
+SCHOOL_NEWS_GALLERY_MAX = 4
+
+
+def _sanitize_one_news_image_url(url: str) -> str:
+    u = str(url or "").strip()[:500]
+    if not u:
+        return ""
+    if u.startswith("/uploads/"):
+        return u
+    if re.fullmatch(r"(?i)https?://.{6,500}", u):
+        return u
+    return ""
+
+
+def _sanitize_gallery_images(raw: Any) -> list[str]:
+    out: list[str] = []
+    if isinstance(raw, list):
+        for x in raw:
+            if len(out) >= SCHOOL_NEWS_GALLERY_MAX:
+                break
+            s = _sanitize_one_news_image_url(x)
+            if s:
+                out.append(s)
+    return out
+
+
 def _extract_school_news_local_upload_urls(content_html: str) -> set[str]:
     s = str(content_html or "")
     out: set[str] = set()
@@ -2104,8 +2157,8 @@ def _extract_school_news_local_upload_urls(content_html: str) -> set[str]:
 def _save_school_news_image_bytes(news_id: str, data: bytes, content_type: str | None = None, source_name: str = "") -> str:
     if not data:
         raise HTTPException(status_code=400, detail="Пустой файл.")
-    if len(data) > 1024 * 1024:
-        raise HTTPException(status_code=413, detail="Файл слишком большой (макс. 1 МБ).")
+    if len(data) > SCHOOL_NEWS_COVER_MAX_BYTES:
+        raise HTTPException(status_code=413, detail="Файл слишком большой (макс. 5 МБ).")
     ensure_dirs()
     base = _school_news_uploads_dir()
     base.mkdir(parents=True, exist_ok=True)
@@ -2149,7 +2202,7 @@ def _save_school_news_image_bytes(news_id: str, data: bytes, content_type: str |
                 img.save(out, format="JPEG", quality=quality, optimize=True, progressive=False)
                 b = out.getvalue()
                 best = b
-                if len(b) <= 1024 * 1024:
+                if len(b) <= SCHOOL_NEWS_COVER_MAX_BYTES:
                     break
                 quality -= 10
             if best:
@@ -5416,7 +5469,47 @@ async def admin_school_news_cover_fetch(
         req = UrlRequest(url_raw, headers={"User-Agent": "GuardSchool/1.0"})
         with urlopen(req, timeout=8) as resp:
             ct = str(resp.headers.get("Content-Type") or "").strip()
-            data = resp.read(1024 * 1024 + 1)
+            data = resp.read(SCHOOL_NEWS_COVER_MAX_BYTES + 1)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Не удалось загрузить картинку: {e}")
+    url = _save_school_news_image_bytes(nid, data, content_type=ct, source_name=url_raw)
+    return {"status": "ok", "news_id": nid, "url": url}
+
+
+@app.post("/api/admin/school-news/gallery-upload")
+async def admin_school_news_gallery_upload(
+    request: Request,
+    file: UploadFile = File(...),
+    news_id: str = Form(default=""),
+) -> dict[str, Any]:
+    """То же хранение, что обложка; URL подставляется в нужный слот галереи на клиенте."""
+    require_auth(request)
+    nid = str(news_id or "").strip()[:64] or secrets.token_hex(6)
+    raw = await file.read()
+    url = _save_school_news_image_bytes(
+        nid,
+        raw,
+        content_type=file.content_type,
+        source_name=file.filename or "",
+    )
+    return {"status": "ok", "news_id": nid, "url": url}
+
+
+@app.post("/api/admin/school-news/gallery-fetch")
+async def admin_school_news_gallery_fetch(
+    request: Request,
+    payload: dict[str, Any] = Body(...),
+) -> dict[str, Any]:
+    require_auth(request)
+    url_raw = str(payload.get("url") or "").strip()
+    if not re.fullmatch(r"(?i)https?://.{6,500}", url_raw):
+        raise HTTPException(status_code=400, detail="Неверный URL (нужен http/https).")
+    nid = str(payload.get("news_id") or "").strip()[:64] or secrets.token_hex(6)
+    try:
+        req = UrlRequest(url_raw, headers={"User-Agent": "GuardSchool/1.0"})
+        with urlopen(req, timeout=8) as resp:
+            ct = str(resp.headers.get("Content-Type") or "").strip()
+            data = resp.read(SCHOOL_NEWS_COVER_MAX_BYTES + 1)
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Не удалось загрузить картинку: {e}")
     url = _save_school_news_image_bytes(nid, data, content_type=ct, source_name=url_raw)
@@ -5516,6 +5609,8 @@ def delete_admin_school_news(request: Request, news_id: str) -> dict[str, Any]:
     try:
         if deleted:
             _safe_unlink_upload_url(str(deleted.get("cover_image") or ""))
+            for u in deleted.get("gallery_images") or []:
+                _safe_unlink_upload_url(str(u))
             for u in _extract_school_news_local_upload_urls(str(deleted.get("content") or "")):
                 _safe_unlink_upload_url(u)
     except Exception:
@@ -5565,11 +5660,20 @@ def school_news_page(news_id: str) -> HTMLResponse:
         pass
     cover = str(row.get("cover_image") or "").strip()
     cover_html = f'<img src="{html.escape(cover)}" alt="" style="max-width:100%;border-radius:14px;margin:0 0 16px;">' if cover else ""
+    gal_raw = row.get("gallery_images") or []
+    gallery_urls = [str(u).strip() for u in gal_raw if isinstance(u, str) and str(u).strip()][:4]
+    gallery_html = ""
+    if gallery_urls:
+        cells = "".join(
+            f'<div style="flex:1 1 45%;min-width:140px"><img src="{html.escape(u)}" alt="" style="width:100%;border-radius:12px;object-fit:contain"></div>'
+            for u in gallery_urls
+        )
+        gallery_html = f'<div class="news-gallery" style="display:flex;flex-wrap:wrap;gap:10px;margin:0 0 16px">{cells}</div>'
     dt = html.escape(str(row.get("created_at") or ""))
     body = (
         "<!doctype html><html lang=\"ru\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
         f"<title>{title}</title><style>body{{margin:0;background:#0b1220;color:#e2e8f0;font:16px/1.5 Arial,sans-serif}}main{{max-width:900px;margin:0 auto;padding:20px}}h1{{margin:0 0 8px}}.meta{{opacity:.8;margin:0 0 12px}}a{{color:#38bdf8}}a:visited{{color:#60a5fa}}</style></head>"
-        f"<body><main><h1>{title}</h1><p class=\"meta\">{dt}</p>{cover_html}<article>{content}</article></main></body></html>"
+        f"<body><main><h1>{title}</h1><p class=\"meta\">{dt}</p>{cover_html}{gallery_html}<article>{content}</article></main></body></html>"
     )
     return HTMLResponse(body)
 

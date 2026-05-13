@@ -1884,14 +1884,253 @@ function renderOverrides() {
   });
 }
 
+const GS_SCHOOL_NEWS_GALLERY_SLOTS = 4;
+let gsSchoolNewsHybridPreviewTimer = null;
+
+function schoolNewsDisplayAdminPreview(html) {
+  let s = String(html || "").trim();
+  if (s.length > 120000) s = s.slice(0, 120000);
+  s = s.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "");
+  s = s.replace(/<\/?script[^>]*>/gi, "");
+  s = s.replace(/<\s*iframe[^>]*>[\s\S]*?<\/iframe>/gi, "");
+  s = s.replace(/<\s*(?:object|embed)[^>]*>[\s\S]*?<\/(?:object|embed)>/gi, "");
+  s = s.replace(/\son[a-z]+\s*=\s*"[^"]*"/gi, "");
+  s = s.replace(/\son[a-z]+\s*=\s*'[^']*'/gi, "");
+  s = s.replace(/\sstyle\s*=\s*"[^"]*"/gi, "");
+  s = s.replace(/\sstyle\s*=\s*'[^']*'/gi, "");
+  s = s.replace(/href\s*=\s*"javascript:[^"]*"/gi, 'href="#"');
+  s = s.replace(/href\s*=\s*'javascript:[^']*'/gi, "href='#'");
+  return s.trim();
+}
+
+function ensureSchoolNewsGallerySlots() {
+  const root = elements.schoolNewsGallery;
+  if (!root || root.dataset.gsGalleryBuilt) return;
+  root.dataset.gsGalleryBuilt = "1";
+  root.innerHTML = Array.from({ length: GS_SCHOOL_NEWS_GALLERY_SLOTS }, (_, i) => {
+    const upDis = i === 0 ? " disabled" : "";
+    const dnDis = i === GS_SCHOOL_NEWS_GALLERY_SLOTS - 1 ? " disabled" : "";
+    return `<div class="school-news-gallery-slot" data-slot="${i}">
+      <div class="school-news-gallery-slot-head">
+        <span>Фото ${i + 1}</span>
+        <span class="school-news-gallery-order">
+          <button type="button" class="secondary-btn compact-btn"${upDis} data-gallery-move="${i}" data-dir="-1">↑</button>
+          <button type="button" class="secondary-btn compact-btn"${dnDis} data-gallery-move="${i}" data-dir="1">↓</button>
+        </span>
+      </div>
+      <input type="text" class="standard-input wide-input school-news-gallery-url" data-gallery-url="${i}" placeholder="/uploads/… или https://…">
+      <div class="school-news-gallery-actions">
+        <button type="button" class="secondary-btn compact-btn" data-gallery-pc="${i}">С ПК</button>
+        <button type="button" class="secondary-btn compact-btn" data-gallery-fetch="${i}">По ссылке</button>
+        <button type="button" class="secondary-btn compact-btn" data-gallery-clear="${i}">Очистить</button>
+      </div>
+      <input type="file" accept="image/*" class="school-news-gallery-file" data-gallery-file="${i}" hidden>
+      <div class="school-news-gallery-thumb-wrap"><img class="school-news-gallery-thumb" data-gallery-thumb="${i}" alt=""></div>
+    </div>`;
+  }).join("");
+}
+
+function schoolNewsGalleryUrlInputs() {
+  if (!elements.schoolNewsGallery) return [];
+  return Array.from(elements.schoolNewsGallery.querySelectorAll("[data-gallery-url]")).sort(
+    (a, b) => Number(a.getAttribute("data-gallery-url")) - Number(b.getAttribute("data-gallery-url")),
+  );
+}
+
+function getSchoolNewsGalleryUrls() {
+  ensureSchoolNewsGallerySlots();
+  return schoolNewsGalleryUrlInputs().map((el) => String(el.value || "").trim());
+}
+
+function setSchoolNewsGalleryUrls(urls) {
+  ensureSchoolNewsGallerySlots();
+  const inputs = schoolNewsGalleryUrlInputs();
+  for (let i = 0; i < GS_SCHOOL_NEWS_GALLERY_SLOTS; i++) {
+    if (inputs[i]) inputs[i].value = urls[i] ? String(urls[i]) : "";
+  }
+  refreshSchoolNewsGalleryThumbs();
+}
+
+function refreshSchoolNewsGalleryThumbs() {
+  schoolNewsGalleryUrlInputs().forEach((input) => {
+    const i = input.getAttribute("data-gallery-url");
+    const img = elements.schoolNewsGallery?.querySelector(`[data-gallery-thumb="${i}"]`);
+    if (!img) return;
+    const u = String(input.value || "").trim();
+    if (u) {
+      img.src = u;
+      img.removeAttribute("hidden");
+    } else {
+      img.removeAttribute("src");
+      img.setAttribute("hidden", "hidden");
+    }
+  });
+}
+
+function schoolNewsGallerySwap(slot, dir) {
+  const j = Number(slot) + Number(dir);
+  if (j < 0 || j >= GS_SCHOOL_NEWS_GALLERY_SLOTS) return;
+  const inputs = schoolNewsGalleryUrlInputs();
+  const a = inputs[slot];
+  const b = inputs[j];
+  if (!a || !b) return;
+  const t = a.value;
+  a.value = b.value;
+  b.value = t;
+  refreshSchoolNewsGalleryThumbs();
+  scheduleSchoolNewsHybridPreview();
+}
+
+function scheduleSchoolNewsHybridPreview() {
+  try {
+    if (gsSchoolNewsHybridPreviewTimer) clearTimeout(gsSchoolNewsHybridPreviewTimer);
+  } catch (_) {}
+  gsSchoolNewsHybridPreviewTimer = setTimeout(() => {
+    refreshSchoolNewsHybridPreview();
+    gsSchoolNewsHybridPreviewTimer = null;
+  }, 140);
+}
+
+function getSchoolNewsBodyHtmlForPreview() {
+  try {
+    const ed = window.tinymce && typeof window.tinymce.get === "function" ? window.tinymce.get("school-news-content") : null;
+    if (ed && typeof ed.getContent === "function") return String(ed.getContent() || "").trim();
+  } catch (_) {}
+  return getSchoolNewsRichEditorHtml() || String(elements.schoolNewsContent?.value || "").trim();
+}
+
+function refreshSchoolNewsHybridPreview() {
+  const box = elements.schoolNewsHybridPreview;
+  if (!box) return;
+  const title = escapeHtml(String(elements.schoolNewsTitle?.value || "").trim() || "Заголовок");
+  const dt = escapeHtml(String(elements.schoolNewsDate?.value || "").trim());
+  const cover = String(elements.schoolNewsCover?.value || "").trim();
+  const urls = getSchoolNewsGalleryUrls().filter(Boolean);
+  const bodyRaw = getSchoolNewsBodyHtmlForPreview();
+  const bodySafe = schoolNewsDisplayAdminPreview(bodyRaw);
+  let coverBlock = "";
+  if (cover) {
+    coverBlock = `<div class="sn-hp-cover"><img src="${escapeHtmlAttr(cover)}" alt=""></div>`;
+  }
+  let gal = "";
+  if (urls.length) {
+    gal = `<div class="sn-hp-gallery">${urls.map((u) => `<img src="${escapeHtmlAttr(u)}" alt="">`).join("")}</div>`;
+  }
+  const bodyBlock = bodySafe
+    ? `<div class="sn-hp-body">${bodySafe}</div>`
+    : `<div class="sn-hp-body hint" style="opacity:.75">Текст новости (пусто)</div>`;
+  box.innerHTML = `<div class="sn-hp-title">${title}</div><div class="sn-hp-meta">${dt || "—"}</div>${coverBlock}${gal}${bodyBlock}`;
+}
+
+async function uploadSchoolNewsGalleryFromPc(slot, file) {
+  if (!file) return;
+  if (file.size > 5 * 1024 * 1024) {
+    alert("Файл слишком большой (максимум 5 МБ).");
+    return;
+  }
+  const nid = ensureSchoolNewsId();
+  const fd = new FormData();
+  fd.append("file", file);
+  fd.append("news_id", nid);
+  const r = await api("/api/admin/school-news/gallery-upload", { method: "POST", body: fd });
+  const url = String(r.url || "");
+  const inputs = schoolNewsGalleryUrlInputs();
+  const el = inputs[Number(slot)] || null;
+  if (el) el.value = url;
+  refreshSchoolNewsGalleryThumbs();
+  scheduleSchoolNewsHybridPreview();
+}
+
+async function fetchSchoolNewsGalleryFromUrl(slot) {
+  const inputs = schoolNewsGalleryUrlInputs();
+  const el = inputs[Number(slot)] || null;
+  const u = String(el?.value || "").trim();
+  if (!/^https?:\/\//i.test(u)) {
+    alert("Вставьте в поле слота ссылку вида http(s)://… и нажмите «По ссылке».");
+    return;
+  }
+  const nid = ensureSchoolNewsId();
+  const r = await api("/api/admin/school-news/gallery-fetch", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url: u, news_id: nid }),
+  });
+  const url = String(r.url || "");
+  if (el) el.value = url;
+  refreshSchoolNewsGalleryThumbs();
+  scheduleSchoolNewsHybridPreview();
+}
+
+function bindSchoolNewsGalleryAndPreviewOnce() {
+  if (window.__gsSchoolNewsGalleryBind) return;
+  window.__gsSchoolNewsGalleryBind = true;
+  ensureSchoolNewsGallerySlots();
+  const root = elements.schoolNewsGallery;
+  if (root) {
+    root.addEventListener("click", (ev) => {
+      const t = ev.target && ev.target.closest ? ev.target.closest("[data-gallery-move],[data-gallery-pc],[data-gallery-fetch],[data-gallery-clear]") : null;
+      if (!t) return;
+      const mv = t.getAttribute("data-gallery-move");
+      if (mv != null) {
+        const dir = Number(t.getAttribute("data-dir") || "0");
+        schoolNewsGallerySwap(Number(mv), dir);
+        return;
+      }
+      const pc = t.getAttribute("data-gallery-pc");
+      if (pc != null) {
+        const inp = root.querySelector(`input.school-news-gallery-file[data-gallery-file="${pc}"]`);
+        inp?.click();
+        return;
+      }
+      const ft = t.getAttribute("data-gallery-fetch");
+      if (ft != null) {
+        fetchSchoolNewsGalleryFromUrl(Number(ft)).catch((e) => alert(e && e.message ? e.message : String(e)));
+        return;
+      }
+      const cl = t.getAttribute("data-gallery-clear");
+      if (cl != null) {
+        const inputs = schoolNewsGalleryUrlInputs();
+        const idx = Number(cl);
+        if (inputs[idx]) inputs[idx].value = "";
+        refreshSchoolNewsGalleryThumbs();
+        scheduleSchoolNewsHybridPreview();
+      }
+    });
+    root.addEventListener("change", (ev) => {
+      const fin = ev.target && ev.target.closest ? ev.target.closest("input.school-news-gallery-file") : null;
+      if (!fin || !fin.files || !fin.files[0]) return;
+      const slot = Number(fin.getAttribute("data-gallery-file"));
+      uploadSchoolNewsGalleryFromPc(slot, fin.files[0]).catch((e) => alert(e && e.message ? e.message : String(e)));
+      fin.value = "";
+    });
+    root.addEventListener("input", (ev) => {
+      if (ev.target && ev.target.classList && ev.target.classList.contains("school-news-gallery-url")) {
+        refreshSchoolNewsGalleryThumbs();
+        scheduleSchoolNewsHybridPreview();
+      }
+    });
+  }
+  if (elements.schoolNewsCover) {
+    elements.schoolNewsCover.addEventListener("input", () => scheduleSchoolNewsHybridPreview());
+  }
+  if (elements.schoolNewsTitle) {
+    elements.schoolNewsTitle.addEventListener("input", () => scheduleSchoolNewsHybridPreview());
+  }
+  if (elements.schoolNewsDate) {
+    elements.schoolNewsDate.addEventListener("input", () => scheduleSchoolNewsHybridPreview());
+  }
+}
+
 function resetSchoolNewsForm() {
   if (elements.schoolNewsId) elements.schoolNewsId.value = "";
   if (elements.schoolNewsTitle) elements.schoolNewsTitle.value = "";
   if (elements.schoolNewsDate) elements.schoolNewsDate.value = new Date().toISOString().slice(0, 10);
   if (elements.schoolNewsCover) elements.schoolNewsCover.value = "";
   if (elements.schoolNewsActive) elements.schoolNewsActive.checked = true;
+  setSchoolNewsGalleryUrls([]);
   setSchoolNewsEditorContent("");
   state.editingSchoolNewsId = "";
+  scheduleSchoolNewsHybridPreview();
 }
 
 function getSchoolNewsEditorContent() {
@@ -1936,6 +2175,7 @@ function setSchoolNewsEditorContent(html) {
   const normalized = schoolNewsNormalizeEditorHtml(text);
   if (elements.schoolNewsEditor) elements.schoolNewsEditor.innerHTML = schoolNewsSanitizePreviewHtml(normalized);
   if (elements.schoolNewsContent) elements.schoolNewsContent.value = normalized;
+  scheduleSchoolNewsHybridPreview();
 }
 
 function getSchoolNewsRichEditorHtml() {
@@ -1953,6 +2193,7 @@ function syncSchoolNewsRichEditorToTextarea() {
   if (!elements.schoolNewsContent) return;
   const html = getSchoolNewsRichEditorHtml();
   elements.schoolNewsContent.value = html;
+  scheduleSchoolNewsHybridPreview();
 }
 
 function gsRichExec(cmd) {
@@ -2053,6 +2294,12 @@ async function ensureSchoolNewsTinyMce() {
       promotion: false,
       convert_urls: false,
       content_style: "body { font-family: Inter, Arial, sans-serif; font-size: 14px; }",
+      init_instance_callback(ed) {
+        try {
+          if (!ed || ed.id !== "school-news-content") return;
+          ed.on("keyup change Undo Redo SetContent", () => scheduleSchoolNewsHybridPreview());
+        } catch (_) {}
+      },
     });
     window.__gsSchoolNewsEditorInitDone = true;
   };
@@ -2087,8 +2334,8 @@ function ensureSchoolNewsId() {
 
 async function uploadSchoolNewsCoverFromPc(file) {
   if (!file) return;
-  if (file.size > 1024 * 1024) {
-    alert("Файл обложки слишком большой (максимум 1 МБ).");
+  if (file.size > 5 * 1024 * 1024) {
+    alert("Файл обложки слишком большой (максимум 5 МБ).");
     return;
   }
   const nid = ensureSchoolNewsId();
@@ -2097,6 +2344,7 @@ async function uploadSchoolNewsCoverFromPc(file) {
   fd.append("news_id", nid);
   const r = await api("/api/admin/school-news/cover-upload", { method: "POST", body: fd });
   if (elements.schoolNewsCover) elements.schoolNewsCover.value = String(r.url || "");
+  scheduleSchoolNewsHybridPreview();
 }
 
 async function fetchSchoolNewsCoverFromUrl(url) {
@@ -2112,9 +2360,11 @@ async function fetchSchoolNewsCoverFromUrl(url) {
     body: JSON.stringify({ url: u, news_id: nid }),
   });
   if (elements.schoolNewsCover) elements.schoolNewsCover.value = String(r.url || "");
+  scheduleSchoolNewsHybridPreview();
 }
 
 function renderSchoolNewsList() {
+  bindSchoolNewsGalleryAndPreviewOnce();
   const root = elements.schoolNewsList;
   if (!root) return;
   const items = Array.isArray(state.schoolNews) ? state.schoolNews : [];
@@ -2481,6 +2731,7 @@ function bindForm() {
         title: String(elements.schoolNewsTitle?.value || "").trim(),
         created_at: String(elements.schoolNewsDate?.value || "").trim(),
         cover_image: String(elements.schoolNewsCover?.value || "").trim(),
+        gallery_images: getSchoolNewsGalleryUrls().filter(Boolean),
         is_active: Boolean(elements.schoolNewsActive?.checked),
         content: getSchoolNewsEditorContent(),
       };
@@ -2510,12 +2761,16 @@ function bindForm() {
         const id = String(editBtn.getAttribute("data-news-edit") || "");
         const row = (state.schoolNews || []).find((item) => String(item.id || "") === id);
         if (!row) return;
+        bindSchoolNewsGalleryAndPreviewOnce();
         elements.schoolNewsId.value = String(row.id || "");
         elements.schoolNewsTitle.value = String(row.title || "");
         elements.schoolNewsDate.value = String(row.created_at || "");
         elements.schoolNewsCover.value = String(row.cover_image || "");
         elements.schoolNewsActive.checked = row.is_active !== false;
+        const gal = Array.isArray(row.gallery_images) ? row.gallery_images : [];
+        setSchoolNewsGalleryUrls(gal);
         setSchoolNewsEditorContent(String(row.content || ""));
+        scheduleSchoolNewsHybridPreview();
         return;
       }
       if (delBtn) {

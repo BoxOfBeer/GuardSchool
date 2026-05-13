@@ -199,6 +199,30 @@
       .replace(/</g, "&lt;");
   }
 
+  /** Совпадает с guardschool.app._sanitize_school_news_display_html (fallback для старых payload). */
+  function sanitizeSchoolNewsDisplayHtml(raw) {
+    let s = String(raw || "").trim();
+    if (s.length > 120000) s = s.slice(0, 120000);
+    s = s.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "");
+    s = s.replace(/<\/?script[^>]*>/gi, "");
+    s = s.replace(/<\s*iframe[^>]*>[\s\S]*?<\/iframe>/gi, "");
+    s = s.replace(/<\s*(?:object|embed)[^>]*>[\s\S]*?<\/(?:object|embed)>/gi, "");
+    s = s.replace(/\son[a-z]+\s*=\s*"[^"]*"/gi, "");
+    s = s.replace(/\son[a-z]+\s*=\s*'[^']*'/gi, "");
+    s = s.replace(/\sstyle\s*=\s*"[^"]*"/gi, "");
+    s = s.replace(/\sstyle\s*=\s*'[^']*'/gi, "");
+    s = s.replace(/href\s*=\s*"javascript:[^"]*"/gi, 'href="#"');
+    s = s.replace(/href\s*=\s*'javascript:[^']*'/gi, "href='#'");
+    return s.trim();
+  }
+
+  function schoolNewsBodyFontPx(settings) {
+    const raw = settings && settings.bodyFontSize != null && settings.bodyFontSize !== "" ? settings.bodyFontSize : settings && settings.fontSize;
+    const n = Number(raw);
+    const v = Number.isFinite(n) ? Math.round(n) : 18;
+    return Math.max(8, Math.min(96, v));
+  }
+
   function checkinWidgetRootStyle(ws) {
     const s = ws || {};
     const n = Number(s.fontSize);
@@ -523,7 +547,12 @@
     // Достаточно стабильный ключ: если поменялся набор/порядок новостей — перегенерим order.
     // id+created_at достаточно, summary может быть длинным.
     try {
-      return (rows || []).map((x) => `${String(x && x.id || "")}|${String(x && x.created_at || "")}`).join("\u0000");
+      return (rows || [])
+        .map(
+          (x) =>
+            `${String(x && x.id || "")}|${String(x && x.created_at || "")}|${(x && Array.isArray(x.gallery_images) ? x.gallery_images.map(String).join(",") : "").slice(0, 240)}`,
+        )
+        .join("\u0000");
     } catch (_) {
       return String((rows || []).length || 0);
     }
@@ -648,11 +677,14 @@
   function buildSchoolNews(widget, schoolNews = [], screen = null, ctx = null) {
     const L = tvUiStrings();
     const settings = widget.settings || {};
+    const bodyFs = schoolNewsBodyFontPx(settings);
+    const emojiFont =
+      'system-ui,"Segoe UI",Roboto,sans-serif,"Apple Color Emoji","Segoe UI Emoji","Segoe UI Symbol","Noto Color Emoji"';
     // Берём 3 последних активных — и ротируем их (а не весь список целиком).
     const rowsAll = Array.isArray(schoolNews) ? schoolNews.filter((x) => x && x.is_active !== false) : [];
     const rows = rowsAll.slice(0, 3);
     if (!rows.length) {
-      return `<div class="info-widget-box" style="background:${settings.background};color:${settings.color};"><div style="font-size:${settings.titleFontSize || 18}px;">${L.schoolNews}</div><div>${L.noSchoolNews}</div></div>`;
+      return `<div class="info-widget-box" style="background:${settings.background};color:${settings.color};font-family:${emojiFont};"><div style="font-size:${settings.titleFontSize || 18}px;">${L.schoolNews}</div><div>${L.noSchoolNews}</div></div>`;
     }
     // Как «Объявления»: без таймера. Переключаем только при показе (карусель) в уникальном порядке.
     const st = ensureSchoolNewsOrder(widget.id, rows);
@@ -660,14 +692,29 @@
     const pickIdx = isCarouselShow ? nextSchoolNewsIndex(widget.id, rows) : (st && Number.isFinite(st.currentIdx) ? st.currentIdx : 0);
     const item = rows[pickIdx] || rows[0];
     const title = escapeHtml(String(item.title || ""));
+    const rawBody = String(item.display_html != null && item.display_html !== "" ? item.display_html : item.content || "");
+    const bodyHtml = sanitizeSchoolNewsDisplayHtml(rawBody);
     const summaryText = String(item.summary || "");
-    const summaryHtml = escapeHtml(summaryText).replace(/\n/g, "<br>");
+    const summaryFallback = escapeHtml(summaryText).replace(/\n/g, "<br>");
     const cover = String(item.cover_image || "").trim();
+    const galleryList = Array.isArray(item.gallery_images)
+      ? item.gallery_images.map((u) => String(u || "").trim()).filter(Boolean).slice(0, 4)
+      : [];
+    const galleryHtml = galleryList.length
+      ? `<div class="gs-school-news-gallery" style="clear:both;display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 10px;">${galleryList
+          .map((u) => {
+            const v = encodeURIComponent(String(item.id || item.created_at || "")).slice(0, 80);
+            const sep = u.indexOf("?") >= 0 ? "&" : "?";
+            const src = v ? `${u}${sep}v=${v}` : u;
+            return `<img src="${escapeHtmlAttr(src)}" alt="" style="width:100%;max-height:min(28vh,220px);object-fit:contain;border-radius:8px;background:rgba(0,0,0,.12);">`;
+          })
+          .join("")}</div>`
+      : "";
     const created = String(item.created_at || "").trim();
     const createdLabel = created ? formatDateLabel(created) : "";
     // Для школьных новостей: без QR, без обрезки картинки, без ограничения длины текста.
     // Картинка слева (~20% ширины), текст «обтекает».
-    return `<article style="background:${settings.background};color:${settings.color};padding:10px;border-radius:10px;flex:1;min-height:0;overflow:auto;">
+    return `<article class="gs-school-news-card" style="background:${settings.background};color:${settings.color};padding:10px;border-radius:10px;flex:1;min-height:0;overflow:auto;font-family:${emojiFont};">
       <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:8px;">
         <div style="font-size:${settings.titleFontSize || 20}px;${settings.bold ? "font-weight:700;" : ""};flex:1 1 auto;min-width:0;white-space:normal;overflow:visible;overflow-wrap:anywhere;word-break:break-word;">${title || L.schoolNews}</div>
         <div style="font-size:12px;opacity:.85;white-space:nowrap;flex:0 0 auto;">${createdLabel}</div>
@@ -678,7 +725,8 @@
         const src = v ? `${cover}${sep}v=${v}` : cover;
         return `<img src="${escapeHtmlAttr(src)}" alt="${title}" style="float:left;width:30%;max-width:240px;margin:0 10px 6px 0;border-radius:8px;object-fit:contain;height:auto;max-height:none;">`;
       })() : ""}
-      <div style="font-size:${settings.fontSize || 18}px;line-height:1.35;white-space:normal;overflow:visible;overflow-wrap:anywhere;word-break:break-word;">${summaryHtml || escapeHtml(L.noSchoolNews)}</div>
+      ${galleryHtml}
+      <div class="gs-school-news-body" style="font-size:${bodyFs}px;line-height:1.35;white-space:normal;overflow:visible;overflow-wrap:anywhere;word-break:break-word;${settings.bold ? "font-weight:600;" : ""}">${bodyHtml || summaryFallback || escapeHtml(L.noSchoolNews)}</div>
       <div style="clear:both;"></div>
       <div style="margin-top:6px;font-size:12px;opacity:.85;">${rows.length > 1 ? `${Math.min(rows.length, (st && st.pos ? st.pos : 1))}/${rows.length}` : ""}</div>
     </article>`;
@@ -687,6 +735,7 @@
   function buildRssNews(widget, rssNews = []) {
     const L = tvUiStrings();
     const settings = widget.settings || {};
+    const bodyFs = schoolNewsBodyFontPx(settings);
     const rows = Array.isArray(rssNews) ? rssNews : [];
     if (!rows.length) {
       return `<div class="info-widget-box" style="background:${settings.background};color:${settings.color};"><div style="font-size:${settings.titleFontSize || 18}px;">${L.rssNews}</div><div>${L.noRssNews}</div></div>`;
@@ -699,7 +748,7 @@
     const url = String(item.url || "").trim();
     return `<article style="background:${settings.background};color:${settings.color};padding:10px;border-radius:10px;height:100%;overflow:hidden;">
       <div style="font-size:${settings.titleFontSize || 18}px;${settings.bold ? "font-weight:700;" : ""};margin-bottom:8px;">${title || L.rssNews}</div>
-      <div style="font-size:${settings.fontSize || 16}px;line-height:1.3;">${summary || L.noRssNews}</div>
+      <div style="font-size:${bodyFs}px;line-height:1.3;">${summary || L.noRssNews}</div>
       ${url ? `<div style="margin-top:8px;font-size:12px;opacity:.9;"><a href="${escapeHtmlAttr(url)}" style="color:${settings.color}" target="_blank" rel="noopener">Источник</a></div>` : ""}
     </article>`;
   }

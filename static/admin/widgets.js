@@ -124,8 +124,19 @@ function settingInputs(widget, index) {
   parts.push(widgetToggle(t("w.enabled"), widget.enabled, `widget:${index}:enabled`));
   parts.push(widgetToggle(t("w.backdrop"), widget.settings.backdrop !== false, `widget:${index}:settings.backdrop`));
   parts.push(widgetToggle("Только в меню", widget.menu_only === true, `widget:${index}:menu_only`));
-  if (["date", "time", "text", "bell_status", "holidays", "announcements", "school_news", "rss_news", "marquee", "emergency"].includes(widget.type)) {
+  const textStyleWidgets = ["date", "time", "text", "bell_status", "holidays", "announcements", "marquee", "emergency"];
+  const newsLikeWidgets = ["school_news", "rss_news"];
+  if (textStyleWidgets.includes(widget.type)) {
     parts.push(widgetInput(t("w.fontSize"), widget.settings.fontSize, `widget:${index}:settings.fontSize`, "number", "standard-input"));
+    parts.push(widgetInput(t("w.color"), widget.settings.color, `widget:${index}:settings.color`, "color", "standard-input"));
+    parts.push(widgetToggle(t("w.bold"), widget.settings.bold, `widget:${index}:settings.bold`));
+  }
+  if (newsLikeWidgets.includes(widget.type)) {
+    const bfs =
+      widget.settings.bodyFontSize != null && widget.settings.bodyFontSize !== ""
+        ? widget.settings.bodyFontSize
+        : widget.settings.fontSize;
+    parts.push(widgetInput(t("w.bodyFont"), bfs, `widget:${index}:settings.bodyFontSize`, "number", "standard-input"));
     parts.push(widgetInput(t("w.color"), widget.settings.color, `widget:${index}:settings.color`, "color", "standard-input"));
     parts.push(widgetToggle(t("w.bold"), widget.settings.bold, `widget:${index}:settings.bold`));
   }
