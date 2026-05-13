@@ -199,6 +199,27 @@
       .replace(/</g, "&lt;");
   }
 
+  /** Абсолютный URL для <img>: часть ТВ/WebView криво резолвит относительные /uploads/… */
+  function resolveSchoolNewsMediaSrc(u) {
+    const s = String(u || "").trim();
+    if (!s) return "";
+    if (s.startsWith("data:") || s.startsWith("blob:")) return s;
+    if (/^https?:\/\//i.test(s)) return s;
+    try {
+      const origin = global.location && global.location.origin ? String(global.location.origin) : "";
+      if (origin && s.startsWith("/")) return new URL(s, origin).href;
+    } catch (_) {}
+    return s;
+  }
+
+  function schoolNewsImageSrcWithV(raw, item) {
+    const base = resolveSchoolNewsMediaSrc(raw);
+    if (!base) return "";
+    const v = encodeURIComponent(String(item.id || item.created_at || "")).slice(0, 80);
+    const sep = base.indexOf("?") >= 0 ? "&" : "?";
+    return v ? `${base}${sep}v=${v}` : base;
+  }
+
   /** Совпадает с guardschool.app._sanitize_school_news_display_html (fallback для старых payload). */
   function sanitizeSchoolNewsDisplayHtml(raw) {
     let s = String(raw || "").trim();
@@ -700,35 +721,33 @@
     const galleryList = Array.isArray(item.gallery_images)
       ? item.gallery_images.map((u) => String(u || "").trim()).filter(Boolean).slice(0, 4)
       : [];
-    const galleryHtml = galleryList.length
-      ? `<div class="gs-school-news-gallery" style="clear:both;display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 10px;">${galleryList
-          .map((u) => {
-            const v = encodeURIComponent(String(item.id || item.created_at || "")).slice(0, 80);
-            const sep = u.indexOf("?") >= 0 ? "&" : "?";
-            const src = v ? `${u}${sep}v=${v}` : u;
-            return `<img src="${escapeHtmlAttr(src)}" alt="" style="width:100%;max-height:min(28vh,220px);object-fit:contain;border-radius:8px;background:rgba(0,0,0,.12);">`;
+    const mediaUrls = [];
+    if (cover) mediaUrls.push(cover);
+    for (let gi = 0; gi < galleryList.length; gi++) mediaUrls.push(galleryList[gi]);
+    const mediaCol = mediaUrls.length
+      ? `<div class="gs-school-news-media">${mediaUrls
+          .map((raw) => {
+            const src = schoolNewsImageSrcWithV(raw, item);
+            return src
+              ? `<img class="gs-school-news-side-img" src="${escapeHtmlAttr(src)}" alt="">`
+              : "";
           })
           .join("")}</div>`
       : "";
     const created = String(item.created_at || "").trim();
     const createdLabel = created ? formatDateLabel(created) : "";
-    // Для школьных новостей: без QR, без обрезки картинки, без ограничения длины текста.
-    // Картинка слева (~20% ширины), текст «обтекает».
-    return `<article class="gs-school-news-card" style="background:${settings.background};color:${settings.color};padding:10px;border-radius:10px;flex:1;min-height:0;overflow:auto;font-family:${emojiFont};">
-      <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:8px;">
-        <div style="font-size:${settings.titleFontSize || 20}px;${settings.bold ? "font-weight:700;" : ""};flex:1 1 auto;min-width:0;white-space:normal;overflow:visible;overflow-wrap:anywhere;word-break:break-word;">${title || L.schoolNews}</div>
-        <div style="font-size:12px;opacity:.85;white-space:nowrap;flex:0 0 auto;">${createdLabel}</div>
+    const rowClass = mediaCol ? "gs-school-news-row" : "gs-school-news-row gs-school-news-row--nomedia";
+    const bodyWeight = settings.bold ? "font-weight:600;" : "";
+    return `<article class="gs-school-news-card" style="background:${settings.background};color:${settings.color};font-family:${emojiFont};">
+      <div class="gs-school-news-head">
+        <div class="gs-school-news-title" style="font-size:${settings.titleFontSize || 20}px;${settings.bold ? "font-weight:700;" : ""}">${title || L.schoolNews}</div>
+        <div class="gs-school-news-date">${createdLabel}</div>
       </div>
-      ${cover ? (() => {
-        const v = encodeURIComponent(String(item.id || item.created_at || "")).slice(0, 80);
-        const sep = cover.indexOf("?") >= 0 ? "&" : "?";
-        const src = v ? `${cover}${sep}v=${v}` : cover;
-        return `<img src="${escapeHtmlAttr(src)}" alt="${title}" style="float:left;width:30%;max-width:240px;margin:0 10px 6px 0;border-radius:8px;object-fit:contain;height:auto;max-height:none;">`;
-      })() : ""}
-      ${galleryHtml}
-      <div class="gs-school-news-body" style="font-size:${bodyFs}px;line-height:1.35;white-space:normal;overflow:visible;overflow-wrap:anywhere;word-break:break-word;${settings.bold ? "font-weight:600;" : ""}">${bodyHtml || summaryFallback || escapeHtml(L.noSchoolNews)}</div>
-      <div style="clear:both;"></div>
-      <div style="margin-top:6px;font-size:12px;opacity:.85;">${rows.length > 1 ? `${Math.min(rows.length, (st && st.pos ? st.pos : 1))}/${rows.length}` : ""}</div>
+      <div class="${rowClass}">
+        ${mediaCol}
+        <div class="gs-school-news-body" style="font-size:${bodyFs}px;${bodyWeight}">${bodyHtml || summaryFallback || escapeHtml(L.noSchoolNews)}</div>
+      </div>
+      <div class="gs-school-news-foot">${rows.length > 1 ? `${Math.min(rows.length, (st && st.pos ? st.pos : 1))}/${rows.length}` : ""}</div>
     </article>`;
   }
 

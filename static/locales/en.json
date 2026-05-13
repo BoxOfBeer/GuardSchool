@@ -393,7 +393,7 @@
   "alert.importDone": "Import finished. Data updated.",
   "alert.session": "Session expired. Sign in again.",
   "api.error": "Request error",
-  "api.error413": "Request body too large (413). If the file is already small, the limit is usually the reverse proxy (nginx default client_max_body_size 1m)—raise it for this host. Otherwise shrink the file or set GUARDSCHOOL_MAX_WIDGET_IMAGE_UPLOAD_BYTES / GUARDSCHOOL_SCHOOL_NEWS_IMAGE_MAX_BYTES.",
+  "api.error413": "Request body too large (413). Often nginx (default client_max_body_size 1m): on the server use the snippet in the repo file cloud_guarddoc/nginx-guardschool-upload-limits.conf (scp + include instructions in the file header). Or reduce the file or set GUARDSCHOOL_MAX_WIDGET_IMAGE_UPLOAD_BYTES / GUARDSCHOOL_SCHOOL_NEWS_IMAGE_MAX_BYTES.",
   "api.downloadError": "Download error",
   "bells.soundNone": "No sound",
   "bells.soundsTitle": "Bell sounds",

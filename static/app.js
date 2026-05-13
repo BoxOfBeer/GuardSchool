@@ -2015,18 +2015,20 @@ function refreshSchoolNewsHybridPreview() {
   const urls = getSchoolNewsGalleryUrls().filter(Boolean);
   const bodyRaw = getSchoolNewsBodyHtmlForPreview();
   const bodySafe = schoolNewsDisplayAdminPreview(bodyRaw);
-  let coverBlock = "";
+  let mediaImgs = "";
   if (cover) {
-    coverBlock = `<div class="sn-hp-cover"><img src="${escapeHtmlAttr(cover)}" alt=""></div>`;
+    mediaImgs += `<img class="sn-hp-side-img" src="${escapeHtmlAttr(cover)}" alt="">`;
   }
-  let gal = "";
-  if (urls.length) {
-    gal = `<div class="sn-hp-gallery">${urls.map((u) => `<img src="${escapeHtmlAttr(u)}" alt="">`).join("")}</div>`;
+  for (let hi = 0; hi < urls.length; hi++) {
+    mediaImgs += `<img class="sn-hp-side-img" src="${escapeHtmlAttr(urls[hi])}" alt="">`;
   }
   const bodyBlock = bodySafe
     ? `<div class="sn-hp-body">${bodySafe}</div>`
     : `<div class="sn-hp-body hint" style="opacity:.75">Текст новости (пусто)</div>`;
-  box.innerHTML = `<div class="sn-hp-title">${title}</div><div class="sn-hp-meta">${dt || "—"}</div>${coverBlock}${gal}${bodyBlock}`;
+  const row = mediaImgs
+    ? `<div class="sn-hp-row"><div class="sn-hp-media">${mediaImgs}</div>${bodyBlock}</div>`
+    : `<div class="sn-hp-row sn-hp-row--nomedia">${bodyBlock}</div>`;
+  box.innerHTML = `<div class="sn-hp-title">${title}</div><div class="sn-hp-meta">${dt || "—"}</div>${row}`;
 }
 
 async function uploadSchoolNewsGalleryFromPc(slot, file) {

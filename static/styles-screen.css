@@ -807,6 +807,96 @@ body.screen-body {
   text-align: center;
 }
 
+/* Новости школы: слева столбик фото (обложка + галерея), справа текст — без лишней вертикальной сетки 2×2 */
+.gs-school-news-card {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  padding: 10px;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.gs-school-news-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+  flex: 0 0 auto;
+}
+
+.gs-school-news-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.gs-school-news-date {
+  font-size: 12px;
+  opacity: 0.85;
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
+.gs-school-news-row {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 10px;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.gs-school-news-row--nomedia {
+  display: block;
+}
+
+.gs-school-news-media {
+  flex: 0 0 auto;
+  width: 32%;
+  max-width: 280px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.gs-school-news-side-img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 200px;
+  object-fit: contain;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.gs-school-news-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  line-height: 1.35;
+  white-space: normal;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.gs-school-news-row--nomedia .gs-school-news-body {
+  width: 100%;
+}
+
+.gs-school-news-foot {
+  margin-top: 6px;
+  font-size: 12px;
+  opacity: 0.85;
+  flex: 0 0 auto;
+}
+
 .marquee-box {
   display: flex;
   align-items: center;

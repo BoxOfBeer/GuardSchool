@@ -393,7 +393,7 @@
   "alert.importDone": "Импорт завершен. Данные обновлены.",
   "alert.session": "Сессия истекла. Выполните вход снова.",
   "api.error": "Ошибка запроса",
-  "api.error413": "Слишком большое тело запроса (413). Если файл уже небольшой, чаще всего лимит на reverse-proxy (nginx по умолчанию client_max_body_size 1m) — увеличьте для домена школы. Иначе уменьшите файл или задайте GUARDSCHOOL_MAX_WIDGET_IMAGE_UPLOAD_BYTES / GUARDSCHOOL_SCHOOL_NEWS_IMAGE_MAX_BYTES.",
+  "api.error413": "Слишком большое тело запроса (413). Часто виноват nginx (по умолчанию client_max_body_size 1m): на сервере подключите фрагмент из репозитория — файл cloud_guarddoc/nginx-guardschool-upload-limits.conf (команды scp и include внутри комментария). Иначе уменьшите файл или задайте GUARDSCHOOL_MAX_WIDGET_IMAGE_UPLOAD_BYTES / GUARDSCHOOL_SCHOOL_NEWS_IMAGE_MAX_BYTES.",
   "api.downloadError": "Ошибка скачивания",
   "bells.soundNone": "Без звука",
   "bells.soundsTitle": "Звуки звонков",
