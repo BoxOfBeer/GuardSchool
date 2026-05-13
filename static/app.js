@@ -277,6 +277,11 @@ async function refreshSyncStatusLine() {
   if (!el) return;
   try {
     const st = await api("/api/admin/sync-status");
+    if (st.saas_no_file_sync) {
+      const rev = st.data_revision || "—";
+      el.textContent = `Синхронизация: в облачном режиме файловая выгрузка не используется | ревизия данных: ${rev}`;
+      return;
+    }
     const ss = st.sync_state || {};
     const rev = st.data_revision || "—";
     let msg = "";
@@ -1885,6 +1890,8 @@ function renderOverrides() {
 }
 
 const GS_SCHOOL_NEWS_GALLERY_SLOTS = 4;
+/** Мягкий предел в браузере (сервер: до 5 МиБ self-host, 10 МиБ SaaS; см. GUARDSCHOOL_SCHOOL_NEWS_IMAGE_MAX_BYTES). */
+const GS_SCHOOL_NEWS_MAX_UPLOAD_BYTES = 12 * 1024 * 1024;
 let gsSchoolNewsHybridPreviewTimer = null;
 
 function schoolNewsDisplayAdminPreview(html) {
@@ -2024,8 +2031,8 @@ function refreshSchoolNewsHybridPreview() {
 
 async function uploadSchoolNewsGalleryFromPc(slot, file) {
   if (!file) return;
-  if (file.size > 5 * 1024 * 1024) {
-    alert("Файл слишком большой (максимум 5 МБ).");
+  if (file.size > GS_SCHOOL_NEWS_MAX_UPLOAD_BYTES) {
+    alert("Файл слишком большой для загрузки (проверьте лимит сервера и nginx client_max_body_size).");
     return;
   }
   const nid = ensureSchoolNewsId();
@@ -2334,8 +2341,8 @@ function ensureSchoolNewsId() {
 
 async function uploadSchoolNewsCoverFromPc(file) {
   if (!file) return;
-  if (file.size > 5 * 1024 * 1024) {
-    alert("Файл обложки слишком большой (максимум 5 МБ).");
+  if (file.size > GS_SCHOOL_NEWS_MAX_UPLOAD_BYTES) {
+    alert("Файл слишком большой для загрузки (проверьте лимит сервера и nginx client_max_body_size).");
     return;
   }
   const nid = ensureSchoolNewsId();

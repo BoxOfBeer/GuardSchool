@@ -41,6 +41,10 @@ export async function api(url, options = {}) {
       window.location.href = "/login";
       throw new Error(t("alert.session"));
     }
+    if (response.status === 413) {
+      const d = apiDetailMessage(payload);
+      throw new Error(d || t("api.error413"));
+    }
     throw new Error(apiDetailMessage(payload) || t("api.error"));
   }
   return response.json();

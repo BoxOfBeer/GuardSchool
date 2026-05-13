@@ -62,6 +62,24 @@ def max_widget_image_upload_bytes() -> int:
     return 1024 * 1024
 
 
+def max_school_news_image_bytes() -> int:
+    """
+    Обложка и галерея школьных новостей (multipart upload).
+    Переменная GUARDSCHOOL_SCHOOL_NEWS_IMAGE_MAX_BYTES переопределяет лимит (байты).
+    По умолчанию в SaaS выше (10 МиБ), т.к. на проде часто nginx client_max_body_size ≥ 10m;
+    для self-host остаётся 5 МиБ как в UI «до 5 МБ».
+    """
+    raw = (os.environ.get("GUARDSCHOOL_SCHOOL_NEWS_IMAGE_MAX_BYTES") or "").strip()
+    if raw:
+        try:
+            return max(512 * 1024, int(raw))
+        except ValueError:
+            pass
+    if saas_mode():
+        return 10 * 1024 * 1024
+    return 5 * 1024 * 1024
+
+
 def json_utf8_size(payload: Any) -> int:
     try:
         return len(json.dumps(payload, ensure_ascii=False).encode("utf-8"))

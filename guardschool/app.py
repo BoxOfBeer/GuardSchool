@@ -54,6 +54,7 @@ from .gs_saas_limits import (
     json_utf8_size,
     max_schedule_json_bytes,
     max_schedule_xlsx_bytes,
+    max_school_news_image_bytes,
     max_user_data_bytes,
     max_weekly_zip_bytes,
     max_widget_image_upload_bytes,
@@ -2011,9 +2012,6 @@ def load_announcements() -> list[dict[str, Any]]:
     return read_json(ANNOUNCEMENTS_PATH, [])
 
 
-SCHOOL_NEWS_COVER_MAX_BYTES = 5 * 1024 * 1024
-
-
 def _sanitize_school_news_display_html(raw: str) -> str:
     """HTML для показа на ТВ/в превью: без script/on*, опасных вставок и гигантских полезных нагрузок."""
     s = str(raw or "").strip()
@@ -2157,8 +2155,16 @@ def _extract_school_news_local_upload_urls(content_html: str) -> set[str]:
 def _save_school_news_image_bytes(news_id: str, data: bytes, content_type: str | None = None, source_name: str = "") -> str:
     if not data:
         raise HTTPException(status_code=400, detail="Пустой файл.")
-    if len(data) > SCHOOL_NEWS_COVER_MAX_BYTES:
-        raise HTTPException(status_code=413, detail="Файл слишком большой (макс. 5 МБ).")
+    lim = max_school_news_image_bytes()
+    if len(data) > lim:
+        mb = round(lim / (1024 * 1024), 1)
+        raise HTTPException(
+            status_code=413,
+            detail=(
+                f"Файл слишком большой ({len(data)} байт), максимум {lim} (~{mb} МиБ). "
+                "Уменьшите изображение, задайте GUARDSCHOOL_SCHOOL_NEWS_IMAGE_MAX_BYTES или увеличьте client_max_body_size на nginx."
+            ),
+        )
     ensure_dirs()
     base = _school_news_uploads_dir()
     base.mkdir(parents=True, exist_ok=True)
@@ -2202,7 +2208,7 @@ def _save_school_news_image_bytes(news_id: str, data: bytes, content_type: str |
                 img.save(out, format="JPEG", quality=quality, optimize=True, progressive=False)
                 b = out.getvalue()
                 best = b
-                if len(b) <= SCHOOL_NEWS_COVER_MAX_BYTES:
+                if len(b) <= lim:
                     break
                 quality -= 10
             if best:
@@ -2212,6 +2218,16 @@ def _save_school_news_image_bytes(news_id: str, data: bytes, content_type: str |
             pass
     except Exception:
         pass
+
+    if len(data) > lim:
+        mb = round(lim / (1024 * 1024), 1)
+        raise HTTPException(
+            status_code=413,
+            detail=(
+                f"После обработки изображение всё ещё больше лимита {lim} байт (~{mb} МиБ). "
+                "Загрузите файл меньшего разрешения или увеличьте GUARDSCHOOL_SCHOOL_NEWS_IMAGE_MAX_BYTES."
+            ),
+        )
 
     fn = f"{nid}_{secrets.token_hex(4)}{ext}"
     (base / fn).write_bytes(data)
@@ -5088,9 +5104,20 @@ async def save_admin_config(request: Request) -> dict[str, str]:
 @app.get("/api/admin/sync-status")
 def get_admin_sync_status(request: Request) -> dict[str, Any]:
     require_auth(request)
-    if deployment_mode() == "saas":
-        raise HTTPException(status_code=404, detail="Not found.")
     from .gs_jsonio import read_json
+
+    if deployment_mode() == "saas":
+        cr: int | None = None
+        try:
+            cr = read_revision_from_database()
+        except Exception:
+            cr = None
+        return {
+            "sync_state": {},
+            "data_revision": compute_data_revision(),
+            "cloud_revision": cr,
+            "saas_no_file_sync": True,
+        }
 
     return {
         "sync_state": read_json(SYNC_STATE_PATH, {}),
@@ -5469,7 +5496,7 @@ async def admin_school_news_cover_fetch(
         req = UrlRequest(url_raw, headers={"User-Agent": "GuardSchool/1.0"})
         with urlopen(req, timeout=8) as resp:
             ct = str(resp.headers.get("Content-Type") or "").strip()
-            data = resp.read(SCHOOL_NEWS_COVER_MAX_BYTES + 1)
+            data = resp.read(max_school_news_image_bytes() + 1)
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Не удалось загрузить картинку: {e}")
     url = _save_school_news_image_bytes(nid, data, content_type=ct, source_name=url_raw)
@@ -5509,7 +5536,7 @@ async def admin_school_news_gallery_fetch(
         req = UrlRequest(url_raw, headers={"User-Agent": "GuardSchool/1.0"})
         with urlopen(req, timeout=8) as resp:
             ct = str(resp.headers.get("Content-Type") or "").strip()
-            data = resp.read(SCHOOL_NEWS_COVER_MAX_BYTES + 1)
+            data = resp.read(max_school_news_image_bytes() + 1)
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Не удалось загрузить картинку: {e}")
     url = _save_school_news_image_bytes(nid, data, content_type=ct, source_name=url_raw)
