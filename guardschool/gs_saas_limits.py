@@ -52,14 +52,14 @@ def max_user_data_bytes() -> int:
 
 
 def max_widget_image_upload_bytes() -> int:
-    """Картинки виджетов (изображение, аварийный экран, иконка PWA чек‑ина и т.д.) — маленькие файлы."""
+    """Картинки виджетов, аварийный экран, иконка PWA чек‑ина, картинки из widgets.js и т.п."""
     raw = (os.environ.get("GUARDSCHOOL_MAX_WIDGET_IMAGE_UPLOAD_BYTES") or "").strip()
     if raw:
         try:
             return max(4096, int(raw))
         except ValueError:
             pass
-    return 1024 * 1024
+    return 10 * 1024 * 1024
 
 
 def max_school_news_image_bytes() -> int:
