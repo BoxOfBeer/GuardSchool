@@ -158,6 +158,7 @@ from .gs_push import (
     delete_subscription as delete_push_subscription,
     list_subscriptions as list_push_subscriptions,
     rate_limit_decide as push_rate_limit_decide,
+    try_claim_content_push_revision_change,
     upsert_subscription as upsert_push_subscription,
     vapid_application_server_key,
     vapid_private_key,
@@ -5204,6 +5205,7 @@ async def save_admin_config(request: Request) -> dict[str, str]:
             )
     except Exception:
         pass
+    _maybe_push_screen_content_if_data_revision_changed(request)
     return {"status": "ok"}
 
 
@@ -5274,6 +5276,7 @@ async def admin_screen_bg_next(request: Request) -> dict[str, Any]:
     screen["background_rotate_cursor"] = max(0, cur) + 1
     screen["background_rotate_epoch"] = int(time.time())
     write_json(CONFIG_PATH, sanitize_config(config))
+    _maybe_push_screen_content_if_data_revision_changed(request)
     return {"status": "ok", "screen_id": sid}
 
 
@@ -5459,6 +5462,7 @@ async def upload_holidays(request: Request, file: UploadFile = File(...)) -> dic
     temp.write_bytes(await file.read())
     parsed = parse_holidays_excel(temp, lang=lang)
     write_json(HOLIDAYS_PATH, parsed)
+    _maybe_push_screen_content_if_data_revision_changed(request)
     return {"status": "ok", "rows": len(parsed)}
 
 
@@ -5472,6 +5476,7 @@ async def upload_announcements(request: Request, file: UploadFile = File(...)) -
     temp.write_bytes(await file.read())
     parsed = parse_announcements_excel(temp, lang=lang)
     write_json(ANNOUNCEMENTS_PATH, parsed)
+    _maybe_push_screen_content_if_data_revision_changed(request)
     return {"status": "ok", "rows": len(parsed)}
 
 
@@ -5485,6 +5490,7 @@ async def upload_marquee(request: Request, file: UploadFile = File(...)) -> dict
     temp.write_bytes(await file.read())
     parsed = parse_marquee_excel(temp, lang=lang)
     write_json(MARQUEE_PATH, parsed)
+    _maybe_push_screen_content_if_data_revision_changed(request)
     return {"status": "ok", "rows": len(parsed)}
 
 
@@ -5500,6 +5506,7 @@ async def upload_schedule(request: Request, file: UploadFile = File(...)) -> dic
     _saas_check_json_payload_size(request, parsed, "schedule.json")
     _saas_check_quota_for_path(request, SCHEDULE_PATH, parsed)
     write_json(SCHEDULE_PATH, parsed)
+    _maybe_push_screen_content_if_data_revision_changed(request)
     return {"status": "ok", "rows": len(parsed)}
 
 
@@ -5515,6 +5522,7 @@ async def upload_full_schedule(request: Request, file: UploadFile = File(...)) -
     _saas_check_json_payload_size(request, parsed, "full_schedule.json")
     _saas_check_quota_for_path(request, FULL_SCHEDULE_PATH, parsed)
     write_json(FULL_SCHEDULE_PATH, parsed)
+    _maybe_push_screen_content_if_data_revision_changed(request)
     return {"status": "ok", "rows": len(parsed)}
 
 
@@ -5530,6 +5538,7 @@ async def upload_schedule_sample(request: Request, file: UploadFile = File(...))
     _saas_check_json_payload_size(request, parsed, "schedule_sample.json")
     _saas_check_quota_for_path(request, SCHEDULE_SAMPLE_PATH, parsed)
     write_json(SCHEDULE_SAMPLE_PATH, parsed)
+    _maybe_push_screen_content_if_data_revision_changed(request)
     return {"status": "ok", "rows": len(parsed)}
 
 
@@ -5841,6 +5850,7 @@ async def save_overrides(request: Request) -> dict[str, str]:
             payload.append(out)
     _saas_check_quota_for_path(request, OVERRIDES_PATH, payload)
     write_json(OVERRIDES_PATH, payload)
+    _maybe_push_screen_content_if_data_revision_changed(request)
     return {"status": "ok"}
 
 
@@ -5850,6 +5860,7 @@ async def save_bells(request: Request) -> dict[str, str]:
     payload = await request.json()
     _saas_check_quota_for_path(request, BELL_SCHEDULES_PATH, payload)
     write_json(BELL_SCHEDULES_PATH, payload)
+    _maybe_push_screen_content_if_data_revision_changed(request)
     return {"status": "ok"}
 
 
@@ -5937,6 +5948,7 @@ async def import_weekly_schedule_bundle(request: Request, file: UploadFile = Fil
     raw = await _read_upload_capped(request, file, max_weekly_zip_bytes()) if saas_mode() else await file.read()
     import_weekly_schedule_bundle_bytes(raw, lang=lang)
     _saas_enforce_user_data_quota_after_multi_write(request)
+    _maybe_push_screen_content_if_data_revision_changed(request)
     return {
         "status": "ok",
         "full_schedule_rows": len(load_full_schedule()),
@@ -6687,7 +6699,7 @@ async def api_push_unsubscribe(request: Request, slug: str) -> dict[str, Any]:
 def api_push_test(
     request: Request,
     slug: str,
-    topic: str = Query("", description="Пусто — все подписки; checkin|emergency — как у реальных событий"),
+    topic: str = Query("", description="Пусто — все подписки; checkin|emergency|content|test — как у реальных событий"),
 ) -> dict[str, Any]:
     """Проверка Web Push: без topic — все подписки; с topic — только с включённой темой (как боевые события)."""
     slug_key = _normalize_screen_slug_for_api(slug)
@@ -6698,8 +6710,8 @@ def api_push_test(
         raise HTTPException(status_code=503, detail="Push на сервере не настроен (VAPID).")
     tenant_id = _screen_api_tenant_slug(request)
     topic_key = (topic or "").strip().lower()
-    if topic_key and topic_key not in ("checkin", "emergency", "test"):
-        raise HTTPException(status_code=400, detail="topic: checkin, emergency или пусто.")
+    if topic_key and topic_key not in ("checkin", "emergency", "content", "test"):
+        raise HTTPException(status_code=400, detail="topic: checkin, emergency, content или пусто.")
     if topic_key:
         subs = list_push_subscriptions(tenant_id=tenant_id, screen_slug=slug_key, topic=topic_key)
         all_subs = False
@@ -6714,6 +6726,8 @@ def api_push_test(
         hint = (
             "Нет подписки с темой «журнал сводки» на этот экран."
             if topic_key == "checkin"
+            else "Нет подписки с темой «обновления экрана» на этот экран."
+            if topic_key == "content"
             else "Нет подписки на этот экран — сначала нажмите «Включить уведомления»."
         )
         raise HTTPException(status_code=400, detail=hint)
@@ -6832,6 +6846,74 @@ def _notify_push_to_screen(
             topic,
             tenant_id,
         )
+
+
+def _screen_slugs_mobile_active(cfg: dict[str, Any]) -> list[str]:
+    """Активные экраны с mobile_mode — рассылка темы content (обновление данных без отметок/аварии)."""
+    out: list[str] = []
+    for sc in (cfg.get("screens") or []) if isinstance(cfg, dict) else []:
+        if not isinstance(sc, dict) or sc.get("is_active", True) is False:
+            continue
+        if not bool(sc.get("mobile_mode")):
+            continue
+        slug = _normalize_screen_slug_for_api(str(sc.get("slug") or ""))
+        if slug and slug not in out:
+            out.append(slug)
+    return out
+
+
+def _notify_push_screen_content_refresh_for_mobile_screens(
+    *,
+    tenant_id: str,
+    cfg: dict[str, Any],
+    title: str,
+    body: str,
+    tag_suffix: str,
+) -> None:
+    """
+    Тема content: на экране появились новые данные (расписание и т.п.).
+    Уходит только на slug с mobile_mode; подписка opt-in (чекбокс в панели устройства).
+    """
+    tid = (tenant_id or "local").strip() or "local"
+    ts = int(time.time())
+    suf = (tag_suffix or "data").strip().lower().replace(" ", "_")[:32] or "data"
+    for slug in _screen_slugs_mobile_active(cfg):
+        url = f"/screen/{quote(slug, safe='')}"
+        _notify_push_to_screen(
+            tenant_id=tid,
+            screen_slug=slug,
+            topic="content",
+            title=title,
+            body=body,
+            url=url,
+            notification_tag=f"{slug}:content:{suf}:{ts}",
+        )
+
+
+def _maybe_push_screen_content_if_data_revision_changed(request: Request) -> None:
+    """
+    Пуш темы «content» при любом изменении данных, входящих в compute_data_revision()
+    (config.json, расписания, праздники, объявления, бегущая строка, замены, звонки, changelog).
+
+    Журнал сводки и аварийный режим остаются отдельными темами (checkin / emergency).
+    """
+    try:
+        if not _push_enabled_on_server():
+            return
+        tid = _screen_api_tenant_slug(request)
+        new_rev = compute_data_revision()
+        if not try_claim_content_push_revision_change(tenant_id=tid, new_revision=new_rev):
+            return
+        cfg = load_config()
+        _notify_push_screen_content_refresh_for_mobile_screens(
+            tenant_id=tid,
+            cfg=cfg,
+            title="Обновление на экране",
+            body="На странице появились новые данные. Откройте экран, чтобы обновить.",
+            tag_suffix=f"rev_{new_rev[:12]}",
+        )
+    except Exception:
+        _log.exception("content push after data revision change")
 
 
 def _checkin_monitor_screens_for_events_slug(cfg: dict[str, Any], events_slug: str) -> list[str]:
@@ -6999,7 +7081,6 @@ def _notify_push_checkin_journal_new_row(
             body=body,
             url=url,
             notification_tag=tag,
-            skip_rate_limit=True,
         )
 
 
@@ -7040,7 +7121,6 @@ def _notify_push_checkin_journal_confirmed(
             body=body,
             url=url,
             notification_tag=tag,
-            skip_rate_limit=True,
         )
 
 
@@ -7068,7 +7148,6 @@ def _notify_push_checkin_journal_bulk_confirm(
             body=body,
             url=url,
             notification_tag=tag,
-            skip_rate_limit=True,
         )
 
 
@@ -7515,8 +7594,33 @@ def _pwa_fallback_pwa_fields_from_widgets(
     return t_out, i_out
 
 
+def _pwa_first_image_widget_icon_url(visit_enabled: list[dict[str, Any]]) -> str:
+    """
+    Иконка ярлыка из виджета «Изображение»: первая слот-картинка с URL под /uploads/...
+    (как у pwa_icon_url — иначе Chromium может отвергнуть иконку).
+    """
+    for w in visit_enabled:
+        if str(w.get("type") or "") != "image":
+            continue
+        st = w.get("settings") if isinstance(w.get("settings"), dict) else {}
+        raw_images = st.get("images")
+        if isinstance(raw_images, list):
+            for item in raw_images:
+                if not isinstance(item, dict):
+                    continue
+                u = str(item.get("url") or "").strip()
+                norm = _normalize_pwa_upload_icon_path(u)
+                if norm:
+                    return norm
+        legacy = str(st.get("imageUrl") or "").strip()
+        norm = _normalize_pwa_upload_icon_path(legacy)
+        if norm:
+            return norm
+    return ""
+
+
 def _pwa_widget_title_icon_for_slug(cfg: dict[str, Any], slug_n: str) -> tuple[str, str]:
-    """Имя и иконка в webmanifest: только поля «Название ярлыка (PWA)» / «Иконка ярлыка» в виджетах (по приоритету ниже)."""
+    """Имя и иконка в webmanifest: checkin (сводка/оперативная) → pwa_* у любых виджетов → изображение (лого) → дефолт."""
     # Дефолт-иконка из статики (всегда 200), не из uploads/ тенанта — иначе 404 и пустой ярлык.
     icon_url = "/static/pwa/icon_default.png"
     slug_key = slug_n.strip().lower()
@@ -7570,7 +7674,8 @@ def _pwa_widget_title_icon_for_slug(cfg: dict[str, Any], slug_n: str) -> tuple[s
     if not visit:
         fb_t, fb_i = _pwa_fallback_pwa_fields_from_widgets(visit_enabled, have_title=False, have_icon=False)
         chosen0 = (fb_t or _PWA_MANIFEST_DEFAULT_TITLE)[:64]
-        return chosen0, fb_i if fb_i else icon_url
+        icon0 = fb_i or _pwa_first_image_widget_icon_url(visit_enabled) or icon_url
+        return chosen0, icon0
     pwa_title_submit = ""
     pwa_title_monitor = ""
     icon_submit = ""
@@ -7609,6 +7714,10 @@ def _pwa_widget_title_icon_for_slug(cfg: dict[str, Any], slug_n: str) -> tuple[s
         pwa_title_pick = fb_t
     if not icon_pick and fb_i:
         icon_pick = fb_i
+    if not icon_pick:
+        img_icon = _pwa_first_image_widget_icon_url(visit_enabled)
+        if img_icon:
+            icon_pick = img_icon
     chosen = (pwa_title_pick or _PWA_MANIFEST_DEFAULT_TITLE)[:64]
     final_icon = icon_pick if icon_pick else icon_url
     return chosen, final_icon
@@ -8200,6 +8309,7 @@ async def admin_tv_access_pin_bypass(request: Request) -> dict[str, Any]:
     cfg = load_config()
     cfg["tv_pair_pin_bypass"] = enabled
     write_json(CONFIG_PATH, sanitize_config(cfg))
+    _maybe_push_screen_content_if_data_revision_changed(request)
     return {
         "status": "ok",
         "pin_bypass_from_db": enabled if db_written else False,

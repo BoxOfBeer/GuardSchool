@@ -535,6 +535,10 @@ function ensureDeviceSettingsUi() {
                 <button type="button" class="gs-device-help" id="gs-push-help-emergency" aria-label="Справка: аварийный режим">?</button>
               </div>
               <div class="gs-device-topic-row">
+                <label class="opt"><input type="checkbox" id="gs-push-topic-content" checked /> <span>Обновления экрана</span></label>
+                <button type="button" class="gs-device-help" id="gs-push-help-content" aria-label="Справка: обновления экрана">?</button>
+              </div>
+              <div class="gs-device-topic-row">
                 <label class="opt"><input type="checkbox" id="gs-push-topic-checkin" checked /> <span>Журнал сводки</span></label>
                 <button type="button" class="gs-device-help" id="gs-push-help-checkin" aria-label="Справка: журнал сводки">?</button>
               </div>
@@ -601,6 +605,8 @@ function ensureDeviceSettingsUi() {
         "Уведомления приходят даже когда страница закрыта (если браузер поддерживает Web Push). Разрешение у браузера запрашивается после «Включить уведомления».",
       "gs-push-help-emergency":
         "Пуш по теме «аварийный режим» отправляется при сохранении настроек в админке, когда меняется активный шаблон аварии — не при каждом показе «проблемы» на живом экране.",
+      "gs-push-help-content":
+        "Нейтральное оповещение, что на экране появились новые данные: сервер сравнивает общую «ревизию» (расписание, config, праздники, объявления, бегущая строка, замены уроков, звонки и т.д.). Не про отметки и не про аварийный шаблон — для них отдельные темы ниже. Рассылается на все экраны с «мобильным видом» в вашей организации; на устройстве приходит, если включена эта тема на этом slug.",
       "gs-push-help-checkin":
         "Новая отметка в журнале и подтверждение ✓. Подписка привязана к slug этого экрана: для сводки на tv-2 включайте уведомления именно на экране tv-2.",
       "gs-device-classes-help":
@@ -775,6 +781,7 @@ function ensureDeviceSettingsUi() {
       const enableBtn = panel.querySelector("#gs-push-enable");
       const disableBtn = panel.querySelector("#gs-push-disable");
       const emCb = panel.querySelector("#gs-push-topic-emergency");
+      const ctCb = panel.querySelector("#gs-push-topic-content");
       const chCb = panel.querySelector("#gs-push-topic-checkin");
       const testBtn = panel.querySelector("#gs-push-test");
       const miInp = panel.querySelector("#gs-push-min-interval");
@@ -853,6 +860,7 @@ function ensureDeviceSettingsUi() {
         });
         const topics = {
           emergency: Boolean(emCb && emCb.checked),
+          content: Boolean(ctCb && ctCb.checked),
           checkin: Boolean(chCb && chCb.checked),
         };
         const mi = Math.max(30, Math.min(86400, Number(miInp && miInp.value) || 300));
@@ -867,6 +875,7 @@ function ensureDeviceSettingsUi() {
         if (!r.ok) throw new Error(data.detail || `HTTP ${r.status}`);
         const topicBits = [];
         if (topics.emergency) topicBits.push("аварийный");
+        if (topics.content) topicBits.push("обновления экрана");
         if (topics.checkin) topicBits.push("журнал сводки");
         setStatus(
           topicBits.length
@@ -915,6 +924,7 @@ function ensureDeviceSettingsUi() {
               const data = await r.json().catch(() => ({}));
               if (!r.ok) throw new Error(data.detail || `HTTP ${r.status}`);
               const chOn = Boolean(chCb && chCb.checked);
+              const ctOn = Boolean(ctCb && ctCb.checked);
               let checkinTargets = null;
               if (chOn) {
                 try {
@@ -924,6 +934,17 @@ function ensureDeviceSettingsUi() {
                   );
                   const d2 = await r2.json().catch(() => ({}));
                   if (r2.ok) checkinTargets = d2.targets;
+                } catch (_) {}
+              }
+              let contentTargets = null;
+              if (ctOn) {
+                try {
+                  const r3 = await window.gsCheckinApiFetch(
+                    `${base}/api/screen/${encodeURIComponent(slug)}/push/test?topic=content`,
+                    { method: "POST" },
+                  );
+                  const d3 = await r3.json().catch(() => ({}));
+                  if (r3.ok) contentTargets = d3.targets;
                 } catch (_) {}
               }
               let msg =
@@ -937,6 +958,14 @@ function ensureDeviceSettingsUi() {
                     : "Тема «журнал сводки»: ошибка проверки. ";
               } else {
                 msg += "Галочка «журнал сводки» снята — push по отметкам не придёт. ";
+              }
+              if (ctOn) {
+                msg +=
+                  contentTargets != null
+                    ? `Тема «обновления экрана»: ${contentTargets}. `
+                    : "Тема «обновления экрана»: ошибка проверки. ";
+              } else {
+                msg += "Галочка «обновления экрана» снята — push по расписанию/контенту не придёт. ";
               }
               msg += "Смотрите баннер ОС.";
               setStatus(msg);

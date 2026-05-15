@@ -60,8 +60,46 @@ def ensure_push_tables() -> None:
                 last_sent_at INTEGER NOT NULL DEFAULT 0,
                 pending_count INTEGER NOT NULL DEFAULT 0
             );
+
+            CREATE TABLE IF NOT EXISTS content_push_revision (
+                tenant_id TEXT PRIMARY KEY,
+                revision TEXT NOT NULL
+            );
             """
         )
+
+
+def try_claim_content_push_revision_change(*, tenant_id: str, new_revision: str) -> bool:
+    """
+    Сравнивает compute_data_revision() с последней сохранённой для тенанта.
+
+    - Ревизия не менялась → False (рассылку не делаем).
+    - Первая запись для тенанта → сохраняем ревизию, False (без «приветственного» пуша).
+    - Ревизия изменилась → обновляем запись и True (вызывающий шлёт content-push).
+    """
+    ensure_push_tables()
+    tid = (tenant_id or "local").strip() or "local"
+    nr = (new_revision or "").strip()
+    if not nr:
+        return False
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT revision FROM content_push_revision WHERE tenant_id=?",
+            (tid,),
+        ).fetchone()
+        old = str(row[0]).strip() if row and row[0] is not None else None
+        if old == nr:
+            return False
+        conn.execute(
+            """
+            INSERT INTO content_push_revision (tenant_id, revision) VALUES (?, ?)
+            ON CONFLICT(tenant_id) DO UPDATE SET revision=excluded.revision
+            """,
+            (tid, nr),
+        )
+        if old is None:
+            return False
+        return True
 
 
 def utc_iso_now() -> str:
