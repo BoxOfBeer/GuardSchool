@@ -7351,20 +7351,23 @@ def _pwa_manifest_screenshots_entries(request: Request | None) -> list[dict[str,
     ]
 
 
+def _pwa_widget_enabled_for_manifest(w: dict[str, Any]) -> bool:
+    return isinstance(w, dict) and w.get("enabled") is not False
+
+
 def _pwa_fallback_pwa_fields_from_widgets(
     visit_all: list[dict[str, Any]],
     *,
     have_title: bool,
     have_icon: bool,
 ) -> tuple[str, str]:
-    """Берём pwa_title / pwa_icon_url из любого виджета (админ мог заполнить не у checkin)."""
+    """Берём pwa_title / pwa_icon_url из включённых виджетов (админ мог заполнить не у checkin)."""
     if have_title and have_icon:
         return "", ""
     t_out = ""
     i_out = ""
     for w in visit_all:
-        # enabled не фильтруем: поля ярлыка остаются в конфиге и для выключенного виджета.
-        if not isinstance(w, dict):
+        if not _pwa_widget_enabled_for_manifest(w):
             continue
         st = w.get("settings") if isinstance(w.get("settings"), dict) else {}
         if not have_title and not t_out:
@@ -7423,10 +7426,9 @@ def _pwa_widget_title_icon_for_slug(cfg: dict[str, Any], slug_n: str) -> tuple[s
         )
         return _PWA_MANIFEST_DEFAULT_TITLE[:64], icon_url
     visit_all = _screen_widgets_ordered_with_carousel_children(sc)
+    visit_enabled = [w for w in visit_all if _pwa_widget_enabled_for_manifest(w)]
     checkin_ordered: list[dict[str, Any]] = []
-    for w in visit_all:
-        if not isinstance(w, dict):
-            continue
+    for w in visit_enabled:
         if str(w.get("type") or "") not in ("checkin_submit", "checkin_monitor"):
             continue
         checkin_ordered.append(w)
@@ -7434,7 +7436,7 @@ def _pwa_widget_title_icon_for_slug(cfg: dict[str, Any], slug_n: str) -> tuple[s
     monitors = [w for w in checkin_ordered if str(w.get("type") or "") == "checkin_monitor"]
     visit = submits + monitors
     if not visit:
-        fb_t, fb_i = _pwa_fallback_pwa_fields_from_widgets(visit_all, have_title=False, have_icon=False)
+        fb_t, fb_i = _pwa_fallback_pwa_fields_from_widgets(visit_enabled, have_title=False, have_icon=False)
         chosen0 = (fb_t or _PWA_MANIFEST_DEFAULT_TITLE)[:64]
         return chosen0, fb_i if fb_i else icon_url
     pwa_title_submit = ""
@@ -7456,11 +7458,18 @@ def _pwa_widget_title_icon_for_slug(cfg: dict[str, Any], slug_n: str) -> tuple[s
                 icon_monitor = ip
             if pt and not pwa_title_monitor:
                 pwa_title_monitor = pt
-    # На одном экране часто и отметка, и сводка (tv-2): ярлык PWA — от сводки, не от оперативной.
+    if not pwa_title_monitor and monitors:
+        for w in monitors:
+            st_m = w.get("settings") if isinstance(w.get("settings"), dict) else {}
+            panel_t = str(st_m.get("panel_title") or "").strip()[:64]
+            if panel_t:
+                pwa_title_monitor = panel_t
+                break
+    # Сводка важнее оперативной, если на экране оба включены; выключенные виджеты не учитываем.
     pwa_title_pick = pwa_title_monitor or pwa_title_submit
     icon_pick = icon_monitor or icon_submit
     fb_t, fb_i = _pwa_fallback_pwa_fields_from_widgets(
-        visit_all,
+        visit_enabled,
         have_title=bool(pwa_title_pick),
         have_icon=bool(icon_pick),
     )
