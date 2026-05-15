@@ -3410,6 +3410,70 @@ def _tv_code_plaintext_for_tenant(tenant_slug: str) -> str:
         return ""
 
 
+def _tv_token_active_tenant(tok: str, screen_slug_norm: str) -> str | None:
+    """SaaS: tenant_slug, если device-token активен для данного экрана."""
+    if deployment_mode() != "saas" or not saas_db_enabled():
+        return None
+    tok_s = str(tok or "").strip()
+    slug_key = (screen_slug_norm or "").strip().lower()
+    if not tok_s or not slug_key:
+        return None
+    try:
+        th = tv_device_token_hash(tok_s)
+        now = utcnow()
+        with connect_public() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT tenant_slug, status, expires_at FROM tv_devices
+                    WHERE token_hash=%s AND lower(trim(screen_slug))=%s
+                    """,
+                    (th, slug_key),
+                )
+                row = cur.fetchone()
+        if not row:
+            return None
+        tenant_from_device, status, expires_at = row[0], row[1], row[2]
+        if status != "active":
+            return None
+        if expires_at is not None and expires_at <= now:
+            return None
+        out = str(tenant_from_device or "").strip().lower()
+        return out or None
+    except Exception:
+        return None
+
+
+def _tv_pwa_screen_url(code_canon: str, screen_slug: str, token: str = "", *, pwa: bool = False) -> str:
+    """Канонический URL экрана для PWA (второй ярлык не должен жить под /screen/)."""
+    code_q = quote(str(code_canon or "").strip(), safe="")
+    slug_q = quote(str(screen_slug or "").strip().lower(), safe="")
+    q_parts: list[str] = []
+    tok_s = str(token or "").strip()
+    if tok_s:
+        q_parts.append(f"gs_tv_token={quote(tok_s, safe='')}")
+    if pwa:
+        q_parts.append("pwa=1")
+    q = ("?" + "&".join(q_parts)) if q_parts else ""
+    return f"/t/{code_q}/{slug_q}{q}"
+
+
+def _pwa_tv_pair_html_manifest_link(request: Request, code_canon: str, slug_for_manifest: str) -> str:
+    slug_key = (slug_for_manifest or "").strip().lower()
+    code_key = _canonical_tv_school_code(_normalize_tv_pair_text(str(code_canon or "")))
+    if not slug_key or not code_key or not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", slug_key):
+        return ""
+    tok_q = str(request.query_params.get("gs_tv_token") or "").strip()
+    q_parts = [f"v={quote(APP_VERSION, safe='')}"]
+    if tok_q:
+        q_parts.insert(0, f"gs_tv_token={quote(tok_q, safe='')}")
+    q = "?" + "&".join(q_parts)
+    return (
+        f'<link rel="manifest" href="/pwa/t/{quote(code_key, safe="")}/'
+        f'{quote(slug_key, safe="")}.webmanifest{q}" />\n'
+    )
+
+
 def _pwa_screen_html_manifest_link(request: Request, slug_for_manifest: str) -> str:
     """
     <link rel=manifest> в screen.html до screen.js.
@@ -3430,13 +3494,74 @@ def _pwa_screen_html_manifest_link(request: Request, slug_for_manifest: str) -> 
         code = _canonical_tv_school_code(_normalize_tv_pair_text(_tv_code_plaintext_for_tenant(tenant)))
         if not code:
             return ""
-        return (
-            f'<link rel="manifest" href="/pwa/t/{quote(code, safe="")}/'
-            f'{quote(slug_key, safe="")}.webmanifest{q}" />\n'
-        )
+        return _pwa_tv_pair_html_manifest_link(request, code, slug_key)
     return (
         f'<link rel="manifest" href="/pwa/screen/{quote(slug_key, safe="")}.webmanifest{q}" />\n'
     )
+
+
+def _apply_saas_screen_tenant_from_request(request: Request, slug: str) -> None:
+    """Выставить tenant_ctx по gs_tenant / gs_tv_token (картинки /uploads на ТВ)."""
+    if deployment_mode() != "saas":
+        return
+    try:
+        explicit_tenant = str(request.query_params.get("gs_tenant") or "").strip().lower()
+        if explicit_tenant and 1 <= len(explicit_tenant) <= 64 and explicit_tenant not in ("www", "admin"):
+            from .tenant_ctx import set_tenant_slug
+
+            set_tenant_slug(explicit_tenant)
+        if not saas_db_enabled():
+            return
+        tok = str(request.query_params.get("gs_tv_token") or "").strip()
+        scr = _normalize_screen_slug_for_api(slug) or str(slug or "").strip().lower()
+        if not tok or not scr:
+            return
+        ts = _tv_token_active_tenant(tok, scr)
+        if ts:
+            from .tenant_ctx import set_tenant_slug
+
+            set_tenant_slug(ts)
+    except Exception:
+        pass
+
+
+def _render_screen_html_page(
+    request: Request,
+    slug: str,
+    *,
+    tv_code_for_manifest: str | None = None,
+) -> HTMLResponse:
+    _apply_saas_screen_tenant_from_request(request, slug)
+    raw = (STATIC_DIR / "screen.html").read_text(encoding="utf-8")
+    slug_for_manifest = _normalize_screen_slug_for_api(slug) or str(slug or "").strip().lower()
+    if tv_code_for_manifest:
+        manifest_line = _pwa_tv_pair_html_manifest_link(request, tv_code_for_manifest, slug_for_manifest)
+    else:
+        manifest_line = _pwa_screen_html_manifest_link(request, slug_for_manifest)
+    html = raw.replace("__GS_ASSETS_VER__", APP_VERSION).replace("__GS_PWA_MANIFEST_LINK__", manifest_line)
+    resp = HTMLResponse(
+        content=html,
+        headers={"Cache-Control": "no-cache, must-revalidate"},
+    )
+    if deployment_mode() == "saas":
+        try:
+            from .tenant_ctx import tenant_slug as _tenant_slug
+
+            ts2 = str(_tenant_slug() or "").strip()
+            if ts2 and 1 <= len(ts2) <= 64 and ts2 not in ("www", "admin"):
+                sec = (getattr(request.url, "scheme", "") == "https")
+                resp.set_cookie(
+                    SAAS_TENANT_COOKIE,
+                    _encode_saas_tenant_cookie_value(ts2),
+                    max_age=3600 * 24 * 30,
+                    httponly=True,
+                    samesite="lax",
+                    secure=sec,
+                    path="/",
+                )
+        except Exception:
+            pass
+    return resp
 
 
 def _school_entry_url() -> str:
@@ -4760,73 +4885,29 @@ def screen_page(request: Request, slug: str) -> HTMLResponse:
     HTML-страница ТВ. В SaaS обложки/загрузки живут в tenants/<slug>/data, а <img> не шлёт Bearer.
     Поэтому при заходе на экран с gs_tv_token из URL выставляем cookie тенанта, чтобы /uploads/* резолвился
     в правильный tenant data/ (иначе на ТВ «битые» картинки из-за 404 на /uploads/...).
+
+    Для установки второго PWA (?pwa=1 / ?gs_pwa_install=1) редирект на /t/{код}/{slug} — иначе Chrome
+    открывает уже установленный ярлык «Форпост» (scope /screen/ попадает в первое приложение).
     """
-    if deployment_mode() == "saas":
-        try:
-            # Явный tenant в URL (на случай, если ТВ открывает экран без device-token / без доступа к БД).
-            explicit_tenant = str(request.query_params.get("gs_tenant") or "").strip().lower()
-            if explicit_tenant and 1 <= len(explicit_tenant) <= 64 and explicit_tenant not in ("www", "admin"):
-                from .tenant_ctx import set_tenant_slug
-
-                set_tenant_slug(explicit_tenant)
-
-            if saas_db_enabled():
-                tok = str(request.query_params.get("gs_tv_token") or "").strip()
-                scr = _normalize_screen_slug_for_api(slug) or str(slug or "").strip().lower()
-                if tok and scr:
-                    from .tenant_ctx import set_tenant_slug
-
-                    th = tv_device_token_hash(tok)
-                    now = utcnow()
-                    with connect_public() as conn:
-                        with conn.cursor() as cur:
-                            cur.execute(
-                                """
-                                SELECT tenant_slug, status, expires_at FROM tv_devices
-                                WHERE token_hash=%s AND lower(trim(screen_slug)) = %s
-                                """,
-                                (th, scr),
-                            )
-                            row = cur.fetchone()
-                    if row:
-                        tenant_from_device, status, expires_at = row[0], row[1], row[2]
-                        if status == "active" and (expires_at is None or expires_at > now):
-                            ts = str(tenant_from_device or "").strip().lower()
-                            if ts:
-                                set_tenant_slug(ts)
-        except Exception:
-            pass
-
-    # ТВ часто кэширует HTML и JS; подставляем версию в URL статики (плейсхолдер в screen.html).
-    raw = (STATIC_DIR / "screen.html").read_text(encoding="utf-8")
     slug_for_manifest = _normalize_screen_slug_for_api(slug) or str(slug or "").strip().lower()
-    manifest_line = _pwa_screen_html_manifest_link(request, slug_for_manifest)
-    html = raw.replace("__GS_ASSETS_VER__", APP_VERSION).replace("__GS_PWA_MANIFEST_LINK__", manifest_line)
-    resp = HTMLResponse(
-        content=html,
-        headers={"Cache-Control": "no-cache, must-revalidate"},
-    )
-    if deployment_mode() == "saas":
-        try:
-            from .tenant_ctx import tenant_slug as _tenant_slug
-
-            ts2 = str(_tenant_slug() or "").strip()
-            if ts2 and 1 <= len(ts2) <= 64 and ts2 not in ("www", "admin"):
-                # Для TV/браузеров на устройствах чаще открывают screen по http внутри сети.
-                # Secure-cookie в таком случае не сохраняется, и /uploads снова "теряет" tenant.
-                sec = (getattr(request.url, "scheme", "") == "https")
-                resp.set_cookie(
-                    SAAS_TENANT_COOKIE,
-                    _encode_saas_tenant_cookie_value(ts2),
-                    max_age=3600 * 24 * 30,
-                    httponly=True,
-                    samesite="lax",
-                    secure=sec,
-                    path="/",
-                )
-        except Exception:
-            pass
-    return resp
+    if deployment_mode() == "saas" and saas_db_enabled() and slug_for_manifest:
+        q = request.query_params
+        want_pwa = str(q.get("pwa") or "").strip().lower() in ("1", "true", "yes")
+        want_inst = str(q.get("gs_pwa_install") or "").strip().lower() in ("1", "true", "yes")
+        if want_pwa or want_inst:
+            tok = str(q.get("gs_tv_token") or "").strip()
+            if tok:
+                tenant = _tv_token_active_tenant(tok, slug_for_manifest)
+                if tenant:
+                    code = _canonical_tv_school_code(
+                        _normalize_tv_pair_text(_tv_code_plaintext_for_tenant(tenant))
+                    )
+                    if code:
+                        return RedirectResponse(
+                            _tv_pwa_screen_url(code, slug_for_manifest, tok, pwa=True),
+                            status_code=302,
+                        )
+    return _render_screen_html_page(request, slug)
 
 
 @app.get("/screen/{slug}/menu")
@@ -6541,7 +6622,12 @@ def api_screen_tv_pair_link(request: Request, slug: str) -> dict[str, Any]:
     return {
         "status": "ok",
         "code": code_plain,
-        "url": f"/t/{code_plain}/{slug_key}",
+        "url": _tv_pwa_screen_url(
+            _canonical_tv_school_code(_normalize_tv_pair_text(code_plain)) or code_plain,
+            slug_key,
+            "",
+            pwa=True,
+        ),
     }
 
 
@@ -7523,12 +7609,13 @@ def _pwa_manifest_for_tv_pair(
     """
     icon_entries, _mime = _pwa_manifest_icon_specs(icon_url, request=request)
     start_url = f"/t/{quote(code_canon, safe='')}/{quote(screen_slug, safe='')}?pwa=1"
+    scope_path = f"/t/{quote(code_canon, safe='')}/{quote(screen_slug, safe='')}"
     manifest = {
         "name": app_title,
         "short_name": app_title[:24],
         "id": f"/pwa/t/{code_canon}/{screen_slug}",
         "start_url": start_url,
-        "scope": "/",
+        "scope": scope_path,
         "display": "standalone",
         "background_color": "#0f172a",
         "theme_color": "#0f172a",
@@ -7754,8 +7841,15 @@ def tv_pair_page(request: Request, code: str, screen_slug: str) -> Response:
             ts = str(tenant_slug or "").strip()
             if not _tv_pair_pin_bypass_effective(ts, pin_bypass_db):
                 return _tv_pair_pin_entry_file_response()
+            tok_in = str(request.query_params.get("gs_tv_token") or "").strip()
+            if tok_in:
+                tenant_tok = _tv_token_active_tenant(tok_in, slug_n)
+                if tenant_tok and tenant_tok == str(ts or "").strip().lower():
+                    return _render_screen_html_page(
+                        request, slug_n, tv_code_for_manifest=code_canon
+                    )
             # Установка ярлыка (PWA): если приложение уже установлено, нельзя каждый запуск создавать новый device-token.
-            # В режиме pwa=1 сначала пытаемся взять сохранённый токен из localStorage и перейти на /screen/{slug}?gs_tv_token=...
+            # В режиме pwa=1 сначала пытаемся взять сохранённый токен из localStorage и остаться на /t/{code}/{slug}.
             if str(request.query_params.get("pwa") or "").strip() in ("1", "true", "yes"):
                 # Manifest иконки/тенант-uploads требует cookie тенанта.
                 sec = session_cookie_secure(request)
@@ -7772,7 +7866,7 @@ def tv_pair_page(request: Request, code: str, screen_slug: str) -> Response:
                         f"var code={json.dumps(code_canon)}; var slug={json.dumps(slug_n)};"
                         "var k='gs_pwa_tv_token__'+code+'__'+slug;"
                         "var tok=localStorage.getItem(k)||'';"
-                        "if(tok&&tok.length>10){location.replace('/screen/'+encodeURIComponent(slug)+'?gs_tv_token='+encodeURIComponent(tok));return;}"
+                        "if(tok&&tok.length>10){location.replace('/t/'+encodeURIComponent(code)+'/'+encodeURIComponent(slug)+'?gs_tv_token='+encodeURIComponent(tok)+'&pwa=1');return;}"
                         "location.replace('/t/'+encodeURIComponent(code)+'/'+encodeURIComponent(slug)+'?pwa_pair=1');"
                         "}catch(e){location.replace('/t/"+ html.escape(code_canon, quote=True) + "/" + html.escape(slug_n, quote=True) + "?pwa_pair=1');}})();</script>"
                         "</body></html>"
@@ -7803,13 +7897,14 @@ def tv_pair_page(request: Request, code: str, screen_slug: str) -> Response:
                 (th, ts, slug_n, lab),
             )
         conn.commit()
-    loc = f"/screen/{quote(slug_n, safe='')}?gs_tv_token={quote(token, safe='')}"
+    is_pwa_pair = str(request.query_params.get("pwa_pair") or "").strip() in ("1", "true", "yes")
+    loc = _tv_pwa_screen_url(code_canon, slug_n, token, pwa=is_pwa_pair)
     # Часть ТВ-WebView даёт пустой экран на HTTP 302 с длинным Location — отдаём HTML и делаем переход из JS.
     loc_js = json.dumps(loc, ensure_ascii=False)
     loc_attr = html.escape(loc, quote=True)
     # Для PWA: сохранить токен 1 раз (если пришли из pwa_pair=1), чтобы последующие запуски ярлыка не плодили tv_devices.
     store_js = ""
-    if str(request.query_params.get("pwa_pair") or "").strip() in ("1", "true", "yes"):
+    if is_pwa_pair:
         store_js = (
             "<script>(function(){try{"
             f"var k='gs_pwa_tv_token__'+{json.dumps(code_canon)}+'__'+{json.dumps(slug_n)};"
@@ -7913,7 +8008,7 @@ async def tv_pair(request: Request) -> dict[str, Any]:
                 (th, tenant_slug, screen_slug, label),
             )
         conn.commit()
-    screen_path = f"/screen/{quote(screen_slug, safe='')}?gs_tv_token={quote(token, safe='')}"
+    screen_path = _tv_pwa_screen_url(code, screen_slug, token, pwa=False)
     return {
         "status": "ok",
         "token": token,

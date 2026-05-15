@@ -84,6 +84,52 @@ function getSlug() {
   }
 }
 
+/** Старый путь /screen/slug — Chrome открывает его внутри уже установленного PWA «Форпост». */
+function gsPathIsLegacyScreenRoute() {
+  try {
+    const p = window.location.pathname.split("/").filter(Boolean);
+    return p.length >= 2 && p[0] === "screen";
+  } catch (_) {
+    return false;
+  }
+}
+
+function gsBuildTvPairPageUrl(slug, code, token, withPwa) {
+  const s = encodeURIComponent(String(slug || "").trim().toLowerCase());
+  const c = encodeURIComponent(String(code || "").trim().toLowerCase());
+  if (!s || !c) return "";
+  let u = `/t/${c}/${s}`;
+  const qs = [];
+  if (token) qs.push(`gs_tv_token=${encodeURIComponent(String(token))}`);
+  if (withPwa) qs.push("pwa=1");
+  if (qs.length) u += `?${qs.join("&")}`;
+  return u;
+}
+
+async function gsNavigateToTvPairForPwaInstall() {
+  const slug = getSlug();
+  if (!slug) return false;
+  let code = (localStorage.getItem(`gs_pwa_tv_code__${slug}`) || "").trim().toLowerCase();
+  if (!code) {
+    try {
+      await gsTryHydrateSaasCodeForExistingScreenSession();
+    } catch (_) {}
+    code = (localStorage.getItem(`gs_pwa_tv_code__${slug}`) || "").trim().toLowerCase();
+  }
+  if (!code) return false;
+  let tok = "";
+  try {
+    tok = getGsTvBearer();
+  } catch (_) {}
+  const url = gsBuildTvPairPageUrl(slug, code, tok, true);
+  if (!url) return false;
+  try {
+    sessionStorage.setItem("gs_pwa_install_intent", "1");
+  } catch (_) {}
+  location.replace(url);
+  return true;
+}
+
 /**
  * Ключи гибрида (LAN) и токена ТВ в localStorage раньше были глобальными — на одном устройстве
  * открывали чужой хост/школу и тянули чужой primary + Bearer. Разделяем по host страницы.
@@ -501,10 +547,20 @@ async function gsPwaInstallFallbackMessage() {
     }
   } catch (_) {}
   const namePart = appLabel ? `«${appLabel}»` : "нужное приложение";
+  const slug = getSlug();
+  const code = (localStorage.getItem(`gs_pwa_tv_code__${slug}`) || "").trim().toLowerCase();
+  let tok = "";
+  try {
+    tok = getGsTvBearer();
+  } catch (_) {}
+  const pairUrl = code ? gsBuildTvPairPageUrl(slug, code, tok, true) : "";
+  const pairHint = pairUrl
+    ? `Откройте в новой вкладке Chrome (не внутри уже установленного «Форпост»):\n${location.origin}${pairUrl}\n\nи снова нажмите «Создать на рабочем столе».`
+    : "Откройте ссылку /t/…/slug?pwa=1 из админки (не /screen/…) и повторите.";
   return (
     `Браузер не открыл диалог установки (так бывает для второго ярлыка на ${location.hostname}).\n\n` +
     `Установите вручную: меню браузера → «Установить приложение» / «Добавить на главный экран» → ${namePart}.\n\n` +
-    `Либо откройте этот экран в новой вкладке по ссылке /t/…/slug и повторите.`
+    pairHint
   );
 }
 
@@ -624,6 +680,10 @@ function ensureDeviceSettingsUi() {
       if (installBtn) {
         installBtn.addEventListener("click", async () => {
           try {
+            if (gsPathIsLegacyScreenRoute()) {
+              const nav = await gsNavigateToTvPairForPwaInstall();
+              if (nav) return;
+            }
             const key = gsPwaManifestStorageKey();
             const dp = gsPwaDeferredInstallPromptForCurrentPage();
             if (dp && typeof dp.prompt === "function") {
