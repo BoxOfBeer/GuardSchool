@@ -7839,15 +7839,26 @@ def tv_pair_page(request: Request, code: str, screen_slug: str) -> Response:
                 )
             tenant_slug, _pin_salt, _pin_hash, pin_bypass_db = row[0], row[1], row[2], bool(row[3])
             ts = str(tenant_slug or "").strip()
-            if not _tv_pair_pin_bypass_effective(ts, pin_bypass_db):
-                return _tv_pair_pin_entry_file_response()
             tok_in = str(request.query_params.get("gs_tv_token") or "").strip()
+            # Валидный device-token должен открывать экран даже при выключенном обходе PIN
+            # (иначе после POST /api/tv/pair снова форма PIN на /t/…?gs_tv_token=…).
             if tok_in:
                 tenant_tok = _tv_token_active_tenant(tok_in, slug_n)
                 if tenant_tok and tenant_tok == str(ts or "").strip().lower():
                     return _render_screen_html_page(
                         request, slug_n, tv_code_for_manifest=code_canon
                     )
+                if not _tv_pair_pin_bypass_effective(ts, pin_bypass_db):
+                    return _tv_pair_pin_entry_file_response()
+                return _tv_pair_gate_notice_html(
+                    title="Сессия устарела",
+                    message=(
+                        "Токен подключения ТВ не принят (отозван, другой экран или устарел). "
+                        "Откройте новую ссылку из админки с ?gs_tv_token=… или обновите ярлык (?pwa_pair=1)."
+                    ),
+                )
+            if not _tv_pair_pin_bypass_effective(ts, pin_bypass_db):
+                return _tv_pair_pin_entry_file_response()
             # Установка ярлыка (PWA): если приложение уже установлено, нельзя каждый запуск создавать новый device-token.
             # В режиме pwa=1 сначала пытаемся взять сохранённый токен из localStorage и остаться на /t/{code}/{slug}.
             if str(request.query_params.get("pwa") or "").strip() in ("1", "true", "yes"):
