@@ -252,6 +252,31 @@ def vapid_private_key() -> str:
     )
 
 
+def vapid_private_key_for_webpush() -> str | Any:
+    """
+    Значение для pywebpush.webpush(vapid_private_key=...).
+
+    pywebpush: если аргумент — путь к файлу, вызывается Vapid.from_file(); иначе
+    Vapid.from_string(). PKCS#8 EC PEM из openssl проходит from_file/from_pem, но
+  ломает from_string (ASN.1 parsing error) — типичная причина «webpush failed» в логах.
+    """
+    fp = (os.environ.get("GUARDSCHOOL_VAPID_PRIVATE_KEY_FILE") or "").strip()
+    if fp:
+        p = Path(fp)
+        if p.is_file():
+            return str(p)
+    inline = (os.environ.get("GUARDSCHOOL_VAPID_PRIVATE_KEY") or "").strip()
+    pem = inline or vapid_private_key()
+    if not pem:
+        return ""
+    try:
+        from py_vapid import Vapid01
+
+        return Vapid01.from_pem(pem.encode("utf-8"))
+    except Exception:
+        return pem
+
+
 def vapid_application_server_key() -> str:
     """Base64URL (без padding) некомпрессированной точки P-256 для PushManager.subscribe."""
     pem = vapid_public_key()

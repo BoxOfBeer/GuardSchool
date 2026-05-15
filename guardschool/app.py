@@ -160,7 +160,7 @@ from .gs_push import (
     rate_limit_decide as push_rate_limit_decide,
     upsert_subscription as upsert_push_subscription,
     vapid_application_server_key,
-    vapid_private_key,
+    vapid_private_key_for_webpush,
     vapid_public_key,
     vapid_subject,
 )
@@ -6793,7 +6793,7 @@ def _notify_push_to_screen(
             webpush(
                 subscription_info={"endpoint": s["endpoint"], "keys": s["keys"]},
                 data=payload,
-                vapid_private_key=vapid_private_key(),
+                vapid_private_key=vapid_private_key_for_webpush(),
                 vapid_claims={"sub": vapid_subject()},
             )
             sent += 1
