@@ -7456,8 +7456,9 @@ def _pwa_widget_title_icon_for_slug(cfg: dict[str, Any], slug_n: str) -> tuple[s
                 icon_monitor = ip
             if pt and not pwa_title_monitor:
                 pwa_title_monitor = pt
-    pwa_title_pick = pwa_title_submit or pwa_title_monitor
-    icon_pick = icon_submit or icon_monitor
+    # На одном экране часто и отметка, и сводка (tv-2): ярлык PWA — от сводки, не от оперативной.
+    pwa_title_pick = pwa_title_monitor or pwa_title_submit
+    icon_pick = icon_monitor or icon_submit
     fb_t, fb_i = _pwa_fallback_pwa_fields_from_widgets(
         visit_all,
         have_title=bool(pwa_title_pick),
