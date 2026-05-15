@@ -6114,7 +6114,7 @@ async def api_checkin_post_event(request: Request) -> dict[str, Any]:
             comment=comment,
         )
     except Exception:
-        pass
+        _log.exception("push checkin new_row failed slug=%s event_id=%s", slug_key, saved.get("id"))
     return {
         "status": "ok",
         **saved,
@@ -6573,8 +6573,12 @@ async def api_push_unsubscribe(request: Request, slug: str) -> dict[str, Any]:
 
 
 @app.post("/api/screen/{slug}/push/test")
-def api_push_test(request: Request, slug: str) -> dict[str, Any]:
-    """Проверка Web Push без телефона: доставка на все подписки экрана (обходит rate-limit)."""
+def api_push_test(
+    request: Request,
+    slug: str,
+    topic: str = Query("", description="Пусто — все подписки; checkin|emergency — как у реальных событий"),
+) -> dict[str, Any]:
+    """Проверка Web Push: без topic — все подписки; с topic — только с включённой темой (как боевые события)."""
     slug_key = _normalize_screen_slug_for_api(slug)
     if not slug_key:
         raise HTTPException(status_code=404, detail="Экран не найден.")
@@ -6582,29 +6586,43 @@ def api_push_test(request: Request, slug: str) -> dict[str, Any]:
     if not _push_enabled_on_server():
         raise HTTPException(status_code=503, detail="Push на сервере не настроен (VAPID).")
     tenant_id = _screen_api_tenant_slug(request)
-    subs = list_push_subscriptions(tenant_id=tenant_id, screen_slug=slug_key, topic=None)
+    topic_key = (topic or "").strip().lower()
+    if topic_key and topic_key not in ("checkin", "emergency", "test"):
+        raise HTTPException(status_code=400, detail="topic: checkin, emergency или пусто.")
+    if topic_key:
+        subs = list_push_subscriptions(tenant_id=tenant_id, screen_slug=slug_key, topic=topic_key)
+        all_subs = False
+        topic_send = topic_key
+        title = f"GuardSchool — тест ({topic_key})"
+    else:
+        subs = list_push_subscriptions(tenant_id=tenant_id, screen_slug=slug_key, topic=None)
+        all_subs = True
+        topic_send = "test"
+        title = "GuardSchool — тест push"
     if not subs:
-        raise HTTPException(
-            status_code=400,
-            detail="Нет подписки на этот экран — сначала нажмите «Включить уведомления».",
+        hint = (
+            "Нет подписки с темой «журнал сводки» на этот экран."
+            if topic_key == "checkin"
+            else "Нет подписки на этот экран — сначала нажмите «Включить уведомления»."
         )
+        raise HTTPException(status_code=400, detail=hint)
     from datetime import datetime, timezone
 
     now = datetime.now(timezone.utc).strftime("%H:%M:%S UTC")
     _notify_push_to_screen(
         tenant_id=tenant_id,
         screen_slug=slug_key,
-        topic="test",
-        title="GuardSchool — тест push",
+        topic=topic_send,
+        title=title,
         body=(
             f"Сервер отправил в {now}. Если нет баннера: «Не беспокоить», настройки сайта в Windows, "
             f"или смотрите консоль SW (F12 → Application → Service Workers → Inspect)."
         ),
         url=f"/screen/{quote(slug_key, safe='')}",
-        all_subscribers=True,
+        all_subscribers=all_subs,
         skip_rate_limit=True,
     )
-    return {"status": "ok", "targets": len(subs)}
+    return {"status": "ok", "targets": len(subs), "topic": topic_key or "all"}
 
 
 def _tv_pair_pin_entry_file_response() -> FileResponse:
@@ -6660,6 +6678,7 @@ def _notify_push_to_screen(
         from pywebpush import webpush
     except Exception:
         return
+    sent = 0
     for s in subs:
         try:
             webpush(
@@ -6668,8 +6687,19 @@ def _notify_push_to_screen(
                 vapid_private_key=vapid_private_key(),
                 vapid_claims={"sub": vapid_subject()},
             )
-        except Exception:
+            sent += 1
+        except Exception as exc:
+            ep = str(s.get("endpoint") or "")[:72]
+            _log.warning("webpush failed screen=%s topic=%s endpoint=%s: %s", screen_slug, topic, ep, exc)
             continue
+    if subs and sent == 0:
+        _log.warning(
+            "webpush: 0/%d доставлено screen=%s topic=%s tenant=%s",
+            len(subs),
+            screen_slug,
+            topic,
+            tenant_id,
+        )
 
 
 def _checkin_monitor_screens_for_events_slug(cfg: dict[str, Any], events_slug: str) -> list[str]:

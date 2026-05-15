@@ -455,9 +455,16 @@ function gsInstallPushDebugListener() {
   } catch (_) {}
 }
 
-/** Плавающая шестерёнка и фильтр классов на устройстве — только при mobile_mode экрана (см. get_screen / screenPollUrl). */
+/** Плавающая шестерёнка и настройки устройства — только mobile_mode (ноут/телефон/сенсор), не «чистые» ТВ. */
 function gsShowScreenDeviceGear(screen) {
   return Boolean(screen && screen.mobile_mode);
+}
+
+function gsRevealPwaInstallRow() {
+  try {
+    const row = document.getElementById("gs-device-pwa-install-row");
+    if (row) row.hidden = false;
+  } catch (_) {}
 }
 
 function ensureDeviceSettingsUi() {
@@ -500,7 +507,7 @@ function ensureDeviceSettingsUi() {
         </div>
         <div class="gs-device-settings-checks" style="margin-top:8px">
           <label class="opt"><input type="checkbox" id="gs-push-topic-emergency" checked /> <span>Аварийный режим</span></label>
-          <label class="opt"><input type="checkbox" id="gs-push-topic-checkin" checked /> <span>Журнал сводки</span> <span class="hint" style="display:block;margin:2px 0 0 22px;opacity:.85;font-size:12px">новая строка и подтверждение ✓</span></label>
+          <label class="opt"><input type="checkbox" id="gs-push-topic-checkin" checked /> <span>Журнал сводки</span> <span class="hint" style="display:block;margin:2px 0 0 22px;opacity:.85;font-size:12px">новая отметка и подтверждение ✓. Подписка привязана к slug этого экрана: для сводки на tv-2 включайте уведомления на tv-2.</span></label>
         </div>
         <div class="gs-device-settings-checks" style="margin-top:6px">
           <label class="opt"><input type="checkbox" id="gs-push-debug" /> <span>Отладка push: консоль F12 и всплывашка (или <code>?gs_push_debug=1</code> в URL)</span></label>
@@ -594,10 +601,7 @@ function ensureDeviceSettingsUi() {
         });
       }
       // beforeinstallprompt может прийти до первого render() / ensureDeviceSettingsUi — тогда row ещё нет в DOM.
-      if (window.__gsDeferredInstallPrompt) {
-        const pwaRow = panel.querySelector("#gs-device-pwa-install-row");
-        if (pwaRow) pwaRow.hidden = false;
-      }
+      if (window.__gsDeferredInstallPrompt) gsRevealPwaInstallRow();
     } catch (_) {}
 
     // Push UI.
@@ -689,7 +693,14 @@ function ensureDeviceSettingsUi() {
         });
         const data = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error(data.detail || `HTTP ${r.status}`);
-        setStatus("Уведомления включены.");
+        const topicBits = [];
+        if (topics.emergency) topicBits.push("аварийный");
+        if (topics.checkin) topicBits.push("журнал сводки");
+        setStatus(
+          topicBits.length
+            ? `Уведомления включены (темы: ${topicBits.join(", ")}).`
+            : "Подписка сохранена, но все темы выключены — события не придут.",
+        );
       }
 
       async function unsubscribePush() {
@@ -727,15 +738,36 @@ function ensureDeviceSettingsUi() {
               const slug = getSlug();
               if (!slug) throw new Error("empty slug");
               const base = String(window.__lastScreenPollBase || "").trim().replace(/\/$/, "");
-              const url = `${base}/api/screen/${encodeURIComponent(slug)}/push/test`;
-              const r = await window.gsCheckinApiFetch(url, { method: "POST" });
+              const urlAll = `${base}/api/screen/${encodeURIComponent(slug)}/push/test`;
+              const r = await window.gsCheckinApiFetch(urlAll, { method: "POST" });
               const data = await r.json().catch(() => ({}));
               if (!r.ok) throw new Error(data.detail || `HTTP ${r.status}`);
-              setStatus(
-                "Тест отправлен (целей: " +
-                  String(data.targets != null ? data.targets : "?") +
-                  "). Смотрите баннер ОС или отладку."
-              );
+              const chOn = Boolean(chCb && chCb.checked);
+              let checkinTargets = null;
+              if (chOn) {
+                try {
+                  const r2 = await window.gsCheckinApiFetch(
+                    `${base}/api/screen/${encodeURIComponent(slug)}/push/test?topic=checkin`,
+                    { method: "POST" },
+                  );
+                  const d2 = await r2.json().catch(() => ({}));
+                  if (r2.ok) checkinTargets = d2.targets;
+                } catch (_) {}
+              }
+              let msg =
+                "Тест доставки: " +
+                String(data.targets != null ? data.targets : "?") +
+                " подписок (все темы). ";
+              if (chOn) {
+                msg +=
+                  checkinTargets != null
+                    ? `Тема «журнал сводки»: ${checkinTargets}. `
+                    : "Тема «журнал сводки»: ошибка проверки. ";
+              } else {
+                msg += "Галочка «журнал сводки» снята — push по отметкам не придёт. ";
+              }
+              msg += "Смотрите баннер ОС или отладку push.";
+              setStatus(msg);
             } catch (e) {
               setStatus(e.message || String(e));
             }
@@ -753,8 +785,7 @@ try {
     try {
       e.preventDefault();
       window.__gsDeferredInstallPrompt = e;
-      const row = document.getElementById("gs-device-pwa-install-row");
-      if (row) row.hidden = false;
+      gsRevealPwaInstallRow();
     } catch (_) {}
   });
 } catch (_) {}
@@ -848,6 +879,8 @@ async function gsTryHydrateSaasCodeForExistingScreenSession() {
     localStorage.setItem(key, code);
     // Подцепляем manifest сразу, без перезагрузки.
     gsMaybeAttachSaasManifestForScreenSlug(slug);
+    gsRevealPwaInstallRow();
+    if (window.__gsDeferredInstallPrompt) gsRevealPwaInstallRow();
   } catch (_) {}
 }
 
