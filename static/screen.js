@@ -552,7 +552,7 @@ function ensureDeviceSettingsUi() {
           </div>
         </div>
       </div>
-      <div class="gs-device-settings-row" id="gs-device-classes-row">
+      <div class="gs-device-settings-row" id="gs-device-classes-row" hidden>
         <div class="gs-device-field-head-row">
           <div class="gs-device-settings-field-head">Классы расписания на этом устройстве</div>
           <button type="button" class="gs-device-help" id="gs-device-classes-help" aria-label="Справка: классы расписания">?</button>
@@ -570,7 +570,10 @@ function ensureDeviceSettingsUi() {
           <div class="gs-device-settings-field-head">Виджеты (по типам)</div>
           <button type="button" class="gs-device-help" id="gs-device-widgets-help" aria-label="Справка: фильтр виджетов">?</button>
         </div>
-        <div id="gs-device-widgets" class="gs-device-settings-checks"></div>
+        <details class="gs-device-details" id="gs-device-widgets-details">
+          <summary>Типы виджетов в ленте</summary>
+          <div id="gs-device-widgets" class="gs-device-settings-checks" style="margin-top:4px"></div>
+        </details>
       </div>
       <div class="gs-device-settings-row gs-device-url-hint-wrap">
         <details class="gs-device-url-hint">
@@ -602,7 +605,7 @@ function ensureDeviceSettingsUi() {
         "gs-push-help-checkin":
           "Новая отметка в журнале и подтверждение ✓. Подписка привязана к slug этого экрана: для сводки на tv-2 включайте уведомления именно на экране tv-2.",
         "gs-device-classes-help":
-          "Список совпадает с полем «классы» в настройках виджета «Расписание». По умолчанию все классы отмечены — снимите лишнее. Настройка доступна только когда виджет «Расписание» включён на этом экране.",
+          "Список совпадает с полем «классы» в настройках виджета «Расписание». По умолчанию все классы отмечены — снимите лишнее. Блок настроек показывается только когда виджет «Расписание» включён на этом экране.",
         "gs-device-widgets-help":
           "Фильтр типов виджетов в ленте. Пустой список в хранилище = все типы. Сохранение «на устройстве» не должно сбрасывать отмеченные типы — см. галочку ниже.",
       };
@@ -2151,8 +2154,9 @@ function syncDeviceSettingsFromPayload(screenPayload) {
       (w) => w && w.type === "schedule" && w.enabled !== false,
     );
     if (classesRow) {
-      classesRow.hidden = false;
-      classesRow.setAttribute("aria-disabled", hasScheduleWidget ? "false" : "true");
+      const showClasses = Boolean(hasScheduleWidget);
+      classesRow.hidden = !showClasses;
+      classesRow.setAttribute("aria-hidden", showClasses ? "false" : "true");
     }
 
     const pickable = Array.isArray(screenPayload && screenPayload.pickable_classes)
@@ -2160,17 +2164,7 @@ function syncDeviceSettingsFromPayload(screenPayload) {
       : [];
     const canon = gsDeviceClassCanonFromSaved(slug, existing, pickable);
     wrapClasses.textContent = "";
-    if (wrapClasses) {
-      wrapClasses.classList.toggle("gs-device-classes-wrap-disabled", !hasScheduleWidget);
-    }
-    if (!hasScheduleWidget) {
-      const hintOff = document.createElement("div");
-      hintOff.className = "hint";
-      hintOff.style.fontSize = "13px";
-      hintOff.textContent =
-        "Настройка классов доступна только при включённом виджете «Расписание» на этом экране.";
-      wrapClasses.appendChild(hintOff);
-    } else {
+    if (hasScheduleWidget) {
       if (!pickable.length) {
         const hint = document.createElement("div");
         hint.className = "hint";

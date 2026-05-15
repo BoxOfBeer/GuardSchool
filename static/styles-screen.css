@@ -187,6 +187,42 @@ body.screen-body {
   cursor: pointer;
 }
 
+/* Панель ⚙ (#gs-device-settings-panel): кнопки примерно на 30% компактнее */
+#gs-device-settings-panel .gs-device-btn-primary,
+#gs-device-settings-panel .gs-device-btn-secondary {
+  padding: 7px 10px;
+  font-size: 12px;
+  font-weight: 650;
+  border-radius: 9px;
+}
+
+#gs-device-settings-panel .gs-device-settings-close {
+  padding: 5px 9px;
+  font-size: 12px;
+  border-radius: 9px;
+}
+
+#gs-device-settings-panel .gs-device-help {
+  width: 26px;
+  height: 26px;
+  font-size: 13px;
+}
+
+#gs-device-settings-panel .gs-device-settings-title {
+  font-size: 14px;
+}
+
+#gs-device-settings-panel .gs-device-settings-actions {
+  gap: 7px;
+  margin-top: 7px;
+}
+
+#gs-device-settings-panel .gs-device-settings-input {
+  padding: 8px 10px;
+  font-size: 14px;
+  border-radius: 10px;
+}
+
 .gs-device-settings-checks {
   display: grid;
   gap: 8px;
@@ -308,10 +344,6 @@ body.screen-body {
 .gs-device-details[open] > summary {
   margin-bottom: 6px;
   color: #e2e8f0;
-}
-
-.gs-device-classes-wrap-disabled {
-  opacity: 0.55;
 }
 
 #gs-device-classes-wrap {
