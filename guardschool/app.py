@@ -7249,9 +7249,11 @@ def _normalize_pwa_upload_icon_path(raw: object) -> str | None:
     cand = str(raw or "").strip()
     if not cand:
         return None
+    low = cand.lower()
+    if low.startswith("uploads/"):
+        cand = "/" + cand
     if cand.startswith("/uploads/"):
         return cand.split("?", 1)[0][:512]
-    low = cand.lower()
     if low.startswith(("http://", "https://")):
         try:
             path = urlparse(cand).path or ""
@@ -7297,7 +7299,8 @@ def _pwa_widget_uploads_icon_filename(icon_rel_no_query: str) -> str | None:
     """
     cand = icon_rel_no_query.strip()
     if not cand.startswith("/"):
-        cand = "/" + cand
+        if cand.lower().startswith("uploads/"):
+            cand = "/" + cand
     prefix = f"/uploads/{WIDGET_IMAGES_SUBDIR}/"
     if cand[: len(prefix)].lower() != prefix.lower():
         return None
@@ -7307,6 +7310,69 @@ def _pwa_widget_uploads_icon_filename(icon_rel_no_query: str) -> str | None:
     if not _WIDGET_PWA_ICON_FILENAME_RE.fullmatch(name):
         return None
     return name
+
+
+def _pwa_uploads_file_from_rel(icon_rel_no_query: str) -> Path | None:
+    """Локальный файл по публичному URL /uploads/... внутри data/uploads (SaaS: map_data_path)."""
+    cand = str(icon_rel_no_query or "").strip().split("?", 1)[0]
+    if not cand.startswith("/"):
+        if cand.lower().startswith("uploads/"):
+            cand = "/" + cand
+    if not cand.startswith("/uploads/"):
+        return None
+    rel = cand[len("/uploads/") :].lstrip("/")
+    if not rel or ".." in rel.split("/"):
+        return None
+    parts = [p for p in rel.split("/") if p and p != "."]
+    if not parts:
+        return None
+    try:
+        from .tenant_ctx import map_data_path
+
+        root = map_data_path(UPLOADS_DIR).resolve()
+        target = root.joinpath(*parts).resolve()
+        if not _pwa_path_inside_dir_relaxed(root, target):
+            return None
+        return target if target.is_file() else None
+    except Exception:
+        return None
+
+
+def _pwa_web_path_under_uploads(disk: Path) -> str | None:
+    try:
+        from .tenant_ctx import map_data_path
+
+        root = map_data_path(UPLOADS_DIR).resolve()
+        rel = disk.resolve().relative_to(root).as_posix()
+        return "/uploads/" + rel
+    except Exception:
+        return None
+
+
+def _pwa_ensure_192_next_to_resolved_file(src: Path) -> str | None:
+    """Рядом с любым растром в uploads создаёт/обновляет <stem>_gs_pwa192.png; возвращает публичный /uploads/..."""
+    try:
+        from .tenant_ctx import map_data_path
+
+        root = map_data_path(UPLOADS_DIR).resolve()
+        src_r = src.resolve()
+        if not _pwa_path_inside_dir_relaxed(root, src_r) or not src_r.is_file():
+            return None
+        fs_dir = src_r.parent
+        dst = (fs_dir / f"{src_r.stem}{_PWA_DERIVED_192_MARKER}.png").resolve()
+        if not _pwa_path_inside_dir_relaxed(fs_dir, dst):
+            return None
+        need = True
+        if dst.is_file():
+            try:
+                need = src_r.stat().st_mtime > dst.stat().st_mtime
+            except OSError:
+                need = True
+        if need and not _pwa_write_png_192_from_raster(src_r, dst):
+            return None
+        return _pwa_web_path_under_uploads(dst)
+    except Exception:
+        return None
 
 
 def _pwa_neighbor_original_upload_name(fs_dir: Path, derivative_nm: str) -> str | None:
@@ -7445,38 +7511,54 @@ def _pwa_manifest_raster_icons(
     nm = _pwa_widget_uploads_icon_filename(icon_rel_clean)
     path_512: Path | None = None
     path_192: Path | None = None
+    path_user: Path | None = None
+    fs_eff: Path | None = None
+    nm_eff: str | None = None
 
     if fs_dir and nm:
-        path_user = (fs_dir / nm).resolve()
-        if _pwa_path_inside_dir_relaxed(fs_dir, path_user) and path_user.is_file():
-            stem_low = Path(nm).stem.lower()
-            if stem_low.endswith(_PWA_DERIVED_192_MARKER):
-                path_192 = path_user
-                nm512 = _pwa_neighbor_original_upload_name(fs_dir, nm)
-                if nm512:
-                    cand512 = (fs_dir / nm512).resolve()
-                    if _pwa_path_inside_dir_relaxed(fs_dir, cand512) and cand512.is_file():
-                        path_512 = cand512
-            else:
-                path_512 = path_user
-                rel_gen = _pwa_ensure_manifest_192_upload_rel(request, icon_rel_clean)
-                if rel_gen:
-                    nm192 = rel_gen.rstrip("/").rsplit("/", 1)[-1]
-                    cand192 = (fs_dir / nm192).resolve()
-                    if _pwa_path_inside_dir_relaxed(fs_dir, cand192) and cand192.is_file():
-                        path_192 = cand192
+        cand_u = (fs_dir / nm).resolve()
+        if _pwa_path_inside_dir_relaxed(fs_dir, cand_u) and cand_u.is_file():
+            path_user = cand_u
+            fs_eff = fs_dir
+            nm_eff = nm
+    if path_user is None:
+        cand2 = _pwa_uploads_file_from_rel(icon_rel_clean)
+        if cand2 and cand2.is_file():
+            path_user = cand2
+            fs_eff = path_user.parent.resolve()
+            nm_eff = path_user.name
+
+    if path_user is not None and fs_eff is not None and nm_eff:
+        stem_low = Path(nm_eff).stem.lower()
+        if stem_low.endswith(_PWA_DERIVED_192_MARKER):
+            path_192 = path_user
+            nm512 = _pwa_neighbor_original_upload_name(fs_eff, nm_eff)
+            if nm512:
+                cand512 = (fs_eff / nm512).resolve()
+                if _pwa_path_inside_dir_relaxed(fs_eff, cand512) and cand512.is_file():
+                    path_512 = cand512
+        else:
+            path_512 = path_user
+            rel_gen = _pwa_ensure_manifest_192_upload_rel(request, icon_rel_clean)
+            if not rel_gen:
+                rel_gen = _pwa_ensure_192_next_to_resolved_file(path_user)
+            if rel_gen:
+                nm192 = rel_gen.rstrip("/").rsplit("/", 1)[-1]
+                cand192 = (fs_eff / nm192).resolve()
+                if _pwa_path_inside_dir_relaxed(fs_eff, cand192) and cand192.is_file():
+                    path_192 = cand192
 
     if path_192:
-        nm192_final = path_192.name
-        rel_192 = f"/uploads/{WIDGET_IMAGES_SUBDIR}/{nm192_final}"
-        icons.append(
-            {
-                "src": _pwa_manifest_icon_src_public(request, rel_192),
-                "sizes": "192x192",
-                "type": "image/png",
-                "purpose": "any",
-            }
-        )
+        rel_192 = _pwa_web_path_under_uploads(path_192)
+        if rel_192:
+            icons.append(
+                {
+                    "src": _pwa_manifest_icon_src_public(request, rel_192),
+                    "sizes": "192x192",
+                    "type": "image/png",
+                    "purpose": "any",
+                }
+            )
 
     if path_512:
         nm512_final = path_512.name
@@ -7484,15 +7566,16 @@ def _pwa_manifest_raster_icons(
         if sz:
             w, h = sz
             mime512 = _pwa_manifest_mime_for_upload_suffix(nm512_final)
-            rel_512 = f"/uploads/{WIDGET_IMAGES_SUBDIR}/{nm512_final}"
-            icons.append(
-                {
-                    "src": _pwa_manifest_icon_src_public(request, rel_512),
-                    "sizes": f"{w}x{h}",
-                    "type": mime512,
-                    "purpose": "any",
-                }
-            )
+            rel_512 = _pwa_web_path_under_uploads(path_512)
+            if rel_512:
+                icons.append(
+                    {
+                        "src": _pwa_manifest_icon_src_public(request, rel_512),
+                        "sizes": f"{w}x{h}",
+                        "type": mime512,
+                        "purpose": "any",
+                    }
+                )
 
     if icons:
         return icons
@@ -7608,7 +7691,7 @@ def _pwa_first_image_widget_icon_url(visit_enabled: list[dict[str, Any]]) -> str
             for item in raw_images:
                 if not isinstance(item, dict):
                     continue
-                u = str(item.get("url") or "").strip()
+                u = str(item.get("url") or item.get("imageUrl") or "").strip()
                 norm = _normalize_pwa_upload_icon_path(u)
                 if norm:
                     return norm
