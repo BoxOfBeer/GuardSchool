@@ -7290,6 +7290,31 @@ def _pwa_manifest_raster_icons(
     return icons
 
 
+def _pwa_ensure_chromium_install_icons(
+    icons: list[dict[str, str]], request: Request | None
+) -> list[dict[str, str]]:
+    """Chromium: для installability нужны 192×192 и 512×512 (sizes:any одной иконкой часто недостаточно)."""
+    if request is None:
+        return icons
+    has192 = any("192" in str(i.get("sizes") or "") for i in icons)
+    has512 = any("512" in str(i.get("sizes") or "") for i in icons)
+    if has192 and has512:
+        return icons
+    out = list(icons)
+    pub192 = _pwa_manifest_icon_src_public(request, _PWA_DEFAULT_ICON_REL_192)
+    pub512 = _pwa_manifest_icon_src_public(request, _PWA_DEFAULT_ICON_REL_512)
+    if not has192:
+        out.insert(
+            0,
+            {"src": pub192, "sizes": "192x192", "type": "image/png", "purpose": "any"},
+        )
+    if not has512:
+        out.append(
+            {"src": pub512, "sizes": "512x512", "type": "image/png", "purpose": "any"},
+        )
+    return out
+
+
 def _pwa_manifest_icon_specs(
     icon_rel: str,
     *,
@@ -7499,13 +7524,15 @@ def _pwa_manifest_for_tv_pair(
     - icon должен быть tenant-scoped (через /uploads/*, который резолвится по cookie тенанта).
     """
     icon_entries, _mime = _pwa_manifest_icon_specs(icon_url, request=request)
+    icon_entries = _pwa_ensure_chromium_install_icons(icon_entries, request)
     start_url = f"/t/{quote(code_canon, safe='')}/{quote(screen_slug, safe='')}?pwa=1"
+    scope_url = f"/t/{quote(code_canon, safe='')}/{quote(screen_slug, safe='')}/"
     manifest = {
         "name": app_title,
         "short_name": app_title[:24],
         "id": f"/pwa/t/{code_canon}/{screen_slug}",
         "start_url": start_url,
-        "scope": "/",
+        "scope": scope_url,
         "display": "standalone",
         "background_color": "#0f172a",
         "theme_color": "#0f172a",
@@ -7630,13 +7657,15 @@ def pwa_manifest_for_screen_standalone(request: Request, screen_slug: str) -> JS
             set_tenant_slug(None)
 
     icon_entries_sc, _mime_sc = _pwa_manifest_icon_specs(icon_url, request=request)
+    icon_entries_sc = _pwa_ensure_chromium_install_icons(icon_entries_sc, request)
     start_url = f"/screen/{quote(slug_n, safe='')}?pwa=1"
+    scope_url = f"/screen/{quote(slug_n, safe='')}/"
     manifest = {
         "name": title,
         "short_name": title[:24],
         "id": f"/pwa/screen/{tenant_slug}/{slug_n}",
         "start_url": start_url,
-        "scope": "/",
+        "scope": scope_url,
         "display": "standalone",
         "background_color": "#0f172a",
         "theme_color": "#0f172a",

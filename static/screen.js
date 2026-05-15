@@ -467,6 +467,47 @@ function gsRevealPwaInstallRow() {
   } catch (_) {}
 }
 
+/** Ключ манифеста: отдельный beforeinstallprompt на tv-1 и tv-2 (не один на весь домен). */
+function gsPwaManifestStorageKey() {
+  try {
+    const slug = getSlug();
+    const link = document.querySelector("link[rel='manifest']");
+    const href = link && link.href ? String(link.href) : "";
+    return `${slug}|${href}`;
+  } catch (_) {
+    return "";
+  }
+}
+
+function gsPwaDeferredInstallPromptForCurrentPage() {
+  try {
+    const key = gsPwaManifestStorageKey();
+    const map = window.__gsDeferredInstallPromptByKey;
+    if (key && map && map[key]) return map[key];
+    return window.__gsDeferredInstallPrompt || null;
+  } catch (_) {
+    return null;
+  }
+}
+
+async function gsPwaInstallFallbackMessage() {
+  let appLabel = "";
+  try {
+    const link = document.querySelector("link[rel='manifest']");
+    if (link && link.href) {
+      const r = await fetch(link.href, { cache: "no-store" });
+      const m = await r.json().catch(() => ({}));
+      appLabel = String((m && (m.short_name || m.name)) || "").trim();
+    }
+  } catch (_) {}
+  const namePart = appLabel ? `«${appLabel}»` : "нужное приложение";
+  return (
+    `Браузер не открыл диалог установки (так бывает для второго ярлыка на ${location.hostname}).\n\n` +
+    `Установите вручную: меню браузера → «Установить приложение» / «Добавить на главный экран» → ${namePart}.\n\n` +
+    `Либо откройте этот экран в новой вкладке по ссылке /t/…/slug и повторите.`
+  );
+}
+
 function ensureDeviceSettingsUi() {
   try {
     if (document.getElementById("gs-device-settings-btn")) return;
@@ -583,18 +624,20 @@ function ensureDeviceSettingsUi() {
       if (installBtn) {
         installBtn.addEventListener("click", async () => {
           try {
-            const dp = window.__gsDeferredInstallPrompt;
+            const key = gsPwaManifestStorageKey();
+            const dp = gsPwaDeferredInstallPromptForCurrentPage();
             if (dp && typeof dp.prompt === "function") {
               await dp.prompt();
               // In Chromium, dp.userChoice is a promise; ignore if absent.
               try { await dp.userChoice; } catch (_) {}
+              if (key && window.__gsDeferredInstallPromptByKey) {
+                delete window.__gsDeferredInstallPromptByKey[key];
+              }
               window.__gsDeferredInstallPrompt = null;
               if (row) row.hidden = true;
               return;
             }
-            alert(
-              "Браузер не показал диалог установки. Попробуйте: меню браузера → «Установить приложение» / «Добавить на главный экран»."
-            );
+            alert(await gsPwaInstallFallbackMessage());
           } catch (e) {
             alert(e && e.message ? e.message : String(e));
           }
@@ -781,11 +824,23 @@ function ensureDeviceSettingsUi() {
 // Chromium шлёт beforeinstallprompt когда SW + manifest уже готовы — часто это РАНЬШЕ первого ответа /screen poll
 // и рендера панели ⚙, тогда строка «Ярлык» ещё не в DOM. Всегда сохраняем событие; при создании UI показываем строку.
 try {
+  if (!window.__gsDeferredInstallPromptByKey) window.__gsDeferredInstallPromptByKey = {};
   window.addEventListener("beforeinstallprompt", (e) => {
     try {
       e.preventDefault();
+      const key = gsPwaManifestStorageKey();
+      if (key) window.__gsDeferredInstallPromptByKey[key] = e;
       window.__gsDeferredInstallPrompt = e;
       gsRevealPwaInstallRow();
+    } catch (_) {}
+  });
+  window.addEventListener("appinstalled", () => {
+    try {
+      const key = gsPwaManifestStorageKey();
+      if (key && window.__gsDeferredInstallPromptByKey) {
+        delete window.__gsDeferredInstallPromptByKey[key];
+      }
+      window.__gsDeferredInstallPrompt = null;
     } catch (_) {}
   });
 } catch (_) {}
@@ -848,11 +903,26 @@ function gsMaybeAttachSaasManifestForScreenSlug(slug) {
     if (bearer) qParts.push(`gs_tv_token=${encodeURIComponent(bearer)}`);
     if (vv) qParts.push(`v=${vv}`);
     const q = qParts.length ? `?${qParts.join("&")}` : "";
-    if (code) {
-      link.href = `/pwa/t/${encodeURIComponent(code)}/${encodeURIComponent(s)}.webmanifest${q}`;
-    } else if (bearer) {
-      // Если нет кода школы (tv_access), всё равно можно отдать manifest по device-token (tv_devices).
-      link.href = `/pwa/screen/${encodeURIComponent(s)}.webmanifest${q}`;
+    const nextHref = code
+      ? `/pwa/t/${encodeURIComponent(code)}/${encodeURIComponent(s)}.webmanifest${q}`
+      : bearer
+        ? `/pwa/screen/${encodeURIComponent(s)}.webmanifest${q}`
+        : "";
+    const prevAttr = link.getAttribute("href") || "";
+    if (!nextHref) return;
+    if (prevAttr !== nextHref) {
+      link.href = nextHref;
+      try {
+        if (window.__gsDeferredInstallPromptByKey) {
+          const wantKey = `${s}|${nextHref}`;
+          Object.keys(window.__gsDeferredInstallPromptByKey).forEach((k) => {
+            if (k.startsWith(`${s}|`) && k !== wantKey) {
+              delete window.__gsDeferredInstallPromptByKey[k];
+            }
+          });
+        }
+        window.__gsDeferredInstallPrompt = null;
+      } catch (_) {}
     }
   } catch (_) {}
 }
