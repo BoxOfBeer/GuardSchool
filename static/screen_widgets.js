@@ -90,7 +90,7 @@
       countdown: "До звонка",
       events: "События",
       announcements: "Объявления",
-      schoolNews: "Новости школы",
+      schoolNews: "Новости",
       rssNews: "RSS-лента",
       noAnnouncements: "Нет объявлений",
       noSchoolNews: "Нет новостей",

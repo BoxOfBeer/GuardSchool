@@ -530,7 +530,7 @@ def default_screen(name: str, slug: str) -> dict[str, Any]:
             {
                 "id": "school_news",
                 "type": "school_news",
-                "title": "Новости школы",
+                "title": "Новости",
                 "enabled": False,
                 "x": 0,
                 "y": 13,
@@ -663,7 +663,7 @@ def _default_emergency_templates() -> list[dict[str, Any]]:
             "id": "preset_crisis",
             "title": "Чрезвычайная ситуация",
             "settings": {
-                "text": "ЧРЕЗВЫЧАЙНАЯ СИТУАЦИЯ\nСледуйте плану действий персонала школы.",
+                "text": "ЧРЕЗВЫЧАЙНАЯ СИТУАЦИЯ\nСледуйте плану действий персонала.",
                 "fontSize": 40,
                 "color": "#ffffff",
                 "background": "#7f1d1d",
@@ -5091,7 +5091,7 @@ async def login(request: Request, response: Response, username: str = Form(...),
                     status_code=503,
                     detail=admin_msg(
                         loc,
-                        "Данные школы не подготовлены. Обратитесь к поддержке.",
+                        "Данные организации не подготовлены. Обратитесь к поддержке.",
                         "School tenant data is not provisioned.",
                     ),
                 )
@@ -5100,7 +5100,7 @@ async def login(request: Request, response: Response, username: str = Form(...),
                     status_code=503,
                     detail=admin_msg(
                         loc,
-                        "Несоответствие учётной записи и данных школы. Обратитесь к поддержке.",
+                        "Несоответствие учётной записи и данных организации. Обратитесь к поддержке.",
                         "Auth data mismatch for this school.",
                     ),
                 )
@@ -5779,7 +5779,7 @@ def school_news_page(news_id: str) -> HTMLResponse:
     row = next((item for item in load_school_news() if str(item.get("id") or "") == nid and item.get("is_active", True)), None)
     if not row:
         return HTMLResponse("<h1>Новость не найдена</h1>", status_code=404)
-    title = html.escape(str(row.get("title") or "Новость школы"))
+    title = html.escape(str(row.get("title") or "Новость"))
     content = str(row.get("content") or "")
     # Делает ссылки кликабельными/безопаснее в выдаче страницы новости.
     # (TinyMCE сам генерит <a>, но target/rel полезны на телефонах.)
@@ -7734,7 +7734,7 @@ def pwa_manifest_for_screen_standalone(request: Request, screen_slug: str) -> JS
         if not tenant_slug:
             raise HTTPException(
                 status_code=404,
-                detail="Откройте экран с ?gs_tv_token=… или войдите в школу; обновите страницу (нужна привязка к школе).",
+                detail="Откройте экран с ?gs_tv_token=… или войдите в панель управления; обновите страницу (нужна привязка к организации).",
             )
     else:
         tenant_slug = _pwa_manifest_resolve_tenant_slug(request, slug_n) or "local"
@@ -7824,8 +7824,8 @@ def tv_pair_page(request: Request, code: str, screen_slug: str) -> Response:
     """
     if deployment_mode() != "saas" or not saas_db_enabled():
         return _tv_pair_gate_notice_html(
-            title="ТВ-подключение",
-            message="В этой конфигурации сервера автоматическое подключение телевизора недоступно.",
+            title="Подключение экрана",
+            message="В этой конфигурации сервера автоматическое подключение по ссылке недоступно.",
             status=503,
         )
     code_raw = _normalize_tv_pair_text(_tv_path_code_segment(code)).lower()
@@ -7833,13 +7833,13 @@ def tv_pair_page(request: Request, code: str, screen_slug: str) -> Response:
     if not code_canon:
         return _tv_pair_gate_notice_html(
             title="Неверная ссылка",
-            message="Формат кода в адресе не распознан. Попросите администратора школы прислать ссылку для этого телевизора ещё раз.",
+            message="Формат кода в адресе не распознан. Попросите администратора прислать ссылку для этого устройства ещё раз.",
         )
     slug_n = _normalize_screen_slug_for_api(str(screen_slug or ""))
     if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", slug_n):
         return _tv_pair_gate_notice_html(
             title="Неверная ссылка",
-            message="Имя экрана в адресе не распознано. Попросите администратора школы прислать ссылку ещё раз.",
+            message="Имя экрана в адресе не распознано. Попросите администратора прислать ссылку ещё раз.",
         )
     now_ts = time.time()
     pair_key = _tv_pair_client_key(request, code_canon)
@@ -7858,7 +7858,7 @@ def tv_pair_page(request: Request, code: str, screen_slug: str) -> Response:
                 _tv_pair_record_failure(pair_key, now_ts)
                 return _tv_pair_gate_notice_html(
                     title="Ссылка недействительна",
-                    message="Код школы в ссылке не найден или был обновлён. Попросите администратора школы в программе снова сгенерировать код для телевизора и прислать новую ссылку.",
+                    message="Код в ссылке не найден или был обновлён. Попросите администратора в программе снова сгенерировать код для устройства и прислать новую ссылку.",
                 )
             tenant_slug, _pin_salt, _pin_hash, pin_bypass_db = row[0], row[1], row[2], bool(row[3])
             ts = str(tenant_slug or "").strip()
@@ -7876,8 +7876,8 @@ def tv_pair_page(request: Request, code: str, screen_slug: str) -> Response:
                 return _tv_pair_gate_notice_html(
                     title="Сессия устарела",
                     message=(
-                        "Токен подключения ТВ не принят (отозван, другой экран или устарел). "
-                        "Откройте новую ссылку из админки с ?gs_tv_token=… или обновите ярлык (?pwa_pair=1)."
+                        "Токен подключения экрана не принят (отозван, другой экран или устарел). "
+                        "Откройте новую ссылку из панели управления с ?gs_tv_token=… или обновите ярлык (?pwa_pair=1)."
                     ),
                 )
             if not _tv_pair_pin_bypass_effective(ts, pin_bypass_db):
@@ -7980,7 +7980,7 @@ def tv_pair_page(request: Request, code: str, screen_slug: str) -> Response:
 @app.post("/api/tv/pair")
 async def tv_pair(request: Request) -> dict[str, Any]:
     """
-    Pairing ТВ по короткому коду школы + PIN.
+    Pairing экрана по короткому коду организации + PIN.
     Возвращает device-token (Bearer) и URL для перехода на /screen/{slug}.
     """
     if deployment_mode() != "saas" or not saas_db_enabled():

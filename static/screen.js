@@ -594,28 +594,128 @@ function ensureDeviceSettingsUi() {
     document.body.appendChild(btn);
     document.body.appendChild(panel);
 
+    const helpTitles = {
+      "gs-device-pwa-help":
+        "Чтобы добавить этот экран как приложение или ярлык, нажмите кнопку слева. Если браузер не открыл диалог установки, откройте меню браузера и выберите «Установить приложение» или «Добавить на главный экран».",
+      "gs-push-master-help":
+        "Уведомления приходят даже когда страница закрыта (если браузер поддерживает Web Push). Разрешение у браузера запрашивается после «Включить уведомления».",
+      "gs-push-help-emergency":
+        "Пуш по теме «аварийный режим» отправляется при сохранении настроек в админке, когда меняется активный шаблон аварии — не при каждом показе «проблемы» на живом экране.",
+      "gs-push-help-checkin":
+        "Новая отметка в журнале и подтверждение ✓. Подписка привязана к slug этого экрана: для сводки на tv-2 включайте уведомления именно на экране tv-2.",
+      "gs-device-classes-help":
+        "Список совпадает с полем «классы» в настройках виджета «Расписание». По умолчанию все классы отмечены — снимите лишнее. Блок настроек показывается только когда виджет «Расписание» включён на этом экране.",
+      "gs-device-widgets-help":
+        "Фильтр типов виджетов в ленте. Пустой список в хранилище = все типы. Сохранение «на устройстве» не должно сбрасывать отмеченные типы — см. галочку ниже.",
+    };
     try {
-      const helpTitles = {
-        "gs-device-pwa-help":
-          "Чтобы добавить этот экран как приложение или ярлык, нажмите кнопку слева. Если браузер не открыл диалог установки, откройте меню браузера и выберите «Установить приложение» или «Добавить на главный экран».",
-        "gs-push-master-help":
-          "Уведомления приходят даже когда страница закрыта (если браузер поддерживает Web Push). Разрешение у браузера запрашивается после «Включить уведомления».",
-        "gs-push-help-emergency":
-          "Пуш по теме «аварийный режим» отправляется при сохранении настроек в админке, когда меняется активный шаблон аварии — не при каждом показе «проблемы» на живом экране.",
-        "gs-push-help-checkin":
-          "Новая отметка в журнале и подтверждение ✓. Подписка привязана к slug этого экрана: для сводки на tv-2 включайте уведомления именно на экране tv-2.",
-        "gs-device-classes-help":
-          "Список совпадает с полем «классы» в настройках виджета «Расписание». По умолчанию все классы отмечены — снимите лишнее. Блок настроек показывается только когда виджет «Расписание» включён на этом экране.",
-        "gs-device-widgets-help":
-          "Фильтр типов виджетов в ленте. Пустой список в хранилище = все типы. Сохранение «на устройстве» не должно сбрасывать отмеченные типы — см. галочку ниже.",
-      };
       for (const id of Object.keys(helpTitles)) {
         const el = panel.querySelector("#" + id);
         if (el) el.setAttribute("title", helpTitles[id]);
       }
     } catch (_) {}
 
+    const helpPopover = document.createElement("div");
+    helpPopover.id = "gs-device-help-popover";
+    helpPopover.className = "gs-device-help-popover";
+    helpPopover.hidden = true;
+    helpPopover.setAttribute("role", "tooltip");
+    document.body.appendChild(helpPopover);
+
+    let helpPopoverAnchor = null;
+
+    function hideGsDeviceHelpPopover() {
+      try {
+        helpPopover.hidden = true;
+        helpPopover.textContent = "";
+        helpPopover.removeAttribute("style");
+        if (helpPopoverAnchor) {
+          helpPopoverAnchor.setAttribute("aria-expanded", "false");
+          helpPopoverAnchor = null;
+        }
+      } catch (_) {}
+    }
+
+    function positionGsDeviceHelpPopover(anchor) {
+      const r = anchor.getBoundingClientRect();
+      const margin = 8;
+      const gap = 10;
+      helpPopover.hidden = false;
+      try {
+        void helpPopover.offsetHeight;
+      } catch (_) {}
+      const pr = helpPopover.getBoundingClientRect();
+      let left = r.left + r.width / 2 - pr.width / 2;
+      let top = r.bottom + gap;
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      if (left < margin) left = margin;
+      if (left + pr.width > vw - margin) left = Math.max(margin, vw - pr.width - margin);
+      if (top + pr.height > vh - margin) top = r.top - pr.height - gap;
+      if (top < margin) top = margin;
+      helpPopover.style.left = left + "px";
+      helpPopover.style.top = top + "px";
+    }
+
+    panel.addEventListener("click", (ev) => {
+      try {
+        const hel = ev.target && ev.target.closest && ev.target.closest(".gs-device-help");
+        if (hel && panel.contains(hel)) {
+          ev.preventDefault();
+          ev.stopPropagation();
+          const id = hel.id;
+          const text = (id && helpTitles[id]) || hel.getAttribute("title") || "";
+          if (!text) return;
+          if (helpPopoverAnchor === hel && !helpPopover.hidden) {
+            hideGsDeviceHelpPopover();
+            return;
+          }
+          hideGsDeviceHelpPopover();
+          helpPopoverAnchor = hel;
+          hel.setAttribute("aria-expanded", "true");
+          helpPopover.textContent = text;
+          positionGsDeviceHelpPopover(hel);
+          return;
+        }
+        if (!helpPopover.hidden) {
+          if (helpPopover.contains(ev.target)) return;
+          hideGsDeviceHelpPopover();
+        }
+      } catch (_) {}
+    });
+
+    panel.addEventListener(
+      "scroll",
+      () => {
+        try {
+          if (helpPopoverAnchor && !helpPopover.hidden) positionGsDeviceHelpPopover(helpPopoverAnchor);
+        } catch (_) {}
+      },
+      { passive: true }
+    );
+
+    document.addEventListener(
+      "keydown",
+      (ev) => {
+        try {
+          if (ev.key === "Escape" && !helpPopover.hidden) hideGsDeviceHelpPopover();
+        } catch (_) {}
+      },
+      true
+    );
+
+    window.addEventListener(
+      "resize",
+      () => {
+        try {
+          hideGsDeviceHelpPopover();
+        } catch (_) {}
+      },
+      { passive: true }
+    );
+
     const toggle = (show) => {
+      if (!show) hideGsDeviceHelpPopover();
       panel.hidden = !show;
     };
     btn.addEventListener("click", () => toggle(panel.hidden));
@@ -626,6 +726,7 @@ function ensureDeviceSettingsUi() {
       (ev) => {
         try {
           if (panel.hidden) return;
+          if (!helpPopover.hidden && helpPopover.contains(ev.target)) return;
           if (panel.contains(ev.target) || btn.contains(ev.target)) return;
           toggle(false);
         } catch (_) {}
@@ -1191,7 +1292,7 @@ const GS_DEVICE_WIDGET_TYPE_LABELS = {
   carousel: "Карусель",
   holidays: "Праздники",
   announcements: "Объявления",
-  school_news: "Новости школы",
+  school_news: "Новости",
   rss_news: "RSS-лента",
   rss_feed: "RSS-лента",
   external_news: "Внешние новости",

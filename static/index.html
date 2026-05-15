@@ -18,7 +18,7 @@
 </head>
 <body class="admin-body">
   <div id="demo-session-banner" class="demo-session-banner" hidden role="status">
-    <span data-i18n="top.demoBanner">Временная сессия по ссылке «Демо» (/demo/…), это не обычный вход под паролем школы. Чтобы работать в боевом кабинете: «Выйти из демо», затем войдите через /login своим логином и паролем администратора.</span>
+    <span data-i18n="top.demoBanner">Временная сессия по ссылке «Демо» (/demo/…), это не обычный вход под паролем администратора. Чтобы работать в боевом кабинете: «Выйти из демо», затем войдите через /login своим логином и паролем администратора.</span>
     <button type="button" id="demo-session-logout-btn" class="secondary-btn compact-btn" data-i18n="top.demoLogout">Выйти из демо</button>
   </div>
   <div class="admin-shell admin-shell--sidebar">
@@ -252,7 +252,7 @@
           <section class="admin-subpanel schedule-subpanel-overrides" aria-labelledby="schedule-override-title">
             <h3 id="schedule-override-title" class="admin-subpanel-title" data-i18n="schedule.overridesTitle">Ручные замены</h3>
             <p class="hint admin-subpanel-lead" data-i18n="schedule.overridesLead">Замена на конкретную дату для класса и номера урока.</p>
-            <p class="hint schedule-overrides-prune-hint" data-i18n="schedule.overridesPruneHint">Замены с прошедшей датой удаляются автоматически (по календарю школы).</p>
+            <p class="hint schedule-overrides-prune-hint" data-i18n="schedule.overridesPruneHint">Замены с прошедшей датой удаляются автоматически (по календарю организации).</p>
             <div class="override-form-grid">
               <label class="override-field"><span class="override-field-label" data-i18n="schedule.date">Дата</span><input id="override-date" class="standard-input" type="date"></label>
               <label class="override-field"><span class="override-field-label" data-i18n="schedule.class">Класс</span><input id="override-class" class="standard-input" type="text" data-i18n-placeholder="schedule.phClass" placeholder="Напр. 7А"></label>
@@ -397,7 +397,7 @@
               <div class="program-settings-general-grid program-settings-news-grid">
                 <section class="program-settings-block program-settings-news-editor-top">
                   <h3 class="program-settings-changelog-title" data-i18n="programSettings.tabSchoolNews">Новости</h3>
-                  <p class="hint admin-subpanel-lead" data-i18n="programSettings.schoolNewsLead">Публикации для виджета «Новости школы» на всех экранах: достижения, мероприятия, олимпиады, объявления администрации.</p>
+                  <p class="hint admin-subpanel-lead" data-i18n="programSettings.schoolNewsLead">Публикации для виджета «Новости» на всех экранах: достижения, мероприятия, олимпиады, объявления администрации.</p>
                   <input id="school-news-id" type="hidden">
                   <label class="override-field override-field-wide"><span class="override-field-label">Заголовок</span><input id="school-news-title-input" class="standard-input" type="text" placeholder="Название новости"></label>
                   <label class="override-field"><span class="override-field-label">Дата</span><input id="school-news-date" class="standard-input" type="date"></label>
@@ -490,13 +490,13 @@
               <div class="program-settings-general-grid program-settings-tv-grid">
                 <section id="tv-non-saas-info" class="program-settings-block program-settings-block--full" hidden>
                   <h3 class="program-settings-changelog-title" data-i18n="programSettings.tvNonSaasTitle">ТВ в облаке (SaaS)</h3>
-                  <p class="hint" data-i18n="programSettings.tvNonSaasBody">Код школы, PIN и ссылки вида <code>/t/…/…</code> доступны только в режиме развёртывания SaaS. Для локальной или гибридной установки адреса опроса ТВ задаются в «Общее» → блок «Сеть для ТВ».</p>
+                  <p class="hint" data-i18n="programSettings.tvNonSaasBody">Код подключения, PIN и ссылки вида <code>/t/…/…</code> доступны только в режиме развёртывания SaaS. Для локальной или гибридной установки адреса опроса ТВ задаются в «Общее» → блок «Сеть для ТВ».</p>
                 </section>
                 <section id="tv-saas-controls" class="program-settings-block program-settings-block--full" hidden>
-                  <h4 id="tv-access-head" class="settings-popover-subhead" style="margin-top: 0" hidden data-i18n="programSettings.tvSaaSHead">Подключение ТВ (SaaS)</h4>
+                  <h4 id="tv-access-head" class="settings-popover-subhead" style="margin-top: 0" hidden data-i18n="programSettings.tvSaaSHead">Подключение экранов (SaaS)</h4>
                   <div id="tv-access-wrap" class="settings-row" hidden>
                     <p class="hint" style="margin-top: 0" data-i18n-html="programSettings.tvSaaSIntro">
-                      Сгенерируйте короткий код школы, задайте PIN (4–12 цифр) и используйте ссылки для экранов:
+                      Сгенерируйте короткий код подключения, задайте PIN (4–12 цифр) и используйте ссылки для экранов:
                       <code>/t/&lt;код&gt;/&lt;экран&gt;</code>.
                       PIN для ТВ хранится <strong>отдельно</strong> от кнопки «Сохранить» вверху: его меняют только поле ниже и «Сохранить PIN».
                       После «Сгенерировать код» старые ссылки и QR с прежним кодом <strong>перестают работать</strong>.
@@ -666,7 +666,7 @@
           <div class="card-header">
             <h2 data-i18n="stats.title">Статистика ТВ</h2>
           </div>
-          <p class="hint stats-intro-short" data-i18n-html="stats.introShort">Здесь видно, кто сейчас открыл страницу экрана у вас в школе.</p>
+          <p class="hint stats-intro-short" data-i18n-html="stats.introShort">Здесь видно, кто сейчас открыл страницу экрана у вас.</p>
           <details class="stats-details">
             <summary class="stats-details-summary" data-i18n="stats.detailsToggle">Подробнее для администратора</summary>
             <div class="stats-details-body">

@@ -125,7 +125,7 @@ go.addEventListener("click", async () => {
       let hint = "";
       if (r.status === 403) {
         hint =
-          "\n\nЕсли PIN точно верный: обновите страницу (Ctrl+F5), откройте ссылку из админки заново. Кнопка «Сгенерировать код» отключает старые ссылки. PIN задаётся только кнопкой «Сохранить PIN» в блоке ТВ, а не общей «Сохранить» конфигурации.";
+          "\n\nЕсли PIN верный: обновите страницу (Ctrl+F5) и откройте ссылку из программы заново. После «Сгенерировать код» старые ссылки перестают работать. PIN сохраняется только кнопкой «Сохранить PIN» в разделе настроек ТВ, а не общей «Сохранить» конфигурации.";
       } else if (r.status === 429) {
         hint = "\n\nСлишком много попыток — подождите минуту и повторите.";
       }
@@ -137,7 +137,7 @@ go.addEventListener("click", async () => {
       const t = sanitizeGsTvBearerToken(String(data.token || ""));
       if (t) localStorage.setItem("gs_tv_bearer", t);
     } catch (_) {}
-    // Для PWA на /screen/<slug>: сохранить код школы, чтобы подцепить tenant-manifest.
+    // Для PWA на /screen/<slug>: сохранить код пары ТВ, чтобы подцепить tenant-manifest.
     try {
       const sl2 = normalizeTvPairText(screen_slug).toLowerCase();
       const code2 = normalizeTvPairText(code).toLowerCase();

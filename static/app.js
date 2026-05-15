@@ -363,7 +363,7 @@ async function refreshTvAccessUi() {
       elements.tvPinBypassChk.removeAttribute("data-loading");
     }
     if (elements.tvCodeOut) {
-      const head = tslug ? `Школа (тенант): ${tslug}\n\n` : "";
+      const head = tslug ? `Организация (тенант): ${tslug}\n\n` : "";
       const envHint = state.tvPinBypassEnv
         ? "\n\nНа сервере задан GUARDSCHOOL_TV_PAIR_BYPASS_PIN — обход PIN включён в окружении; чекбокс ниже заблокирован.\n"
         : "";
@@ -373,8 +373,8 @@ async function refreshTvAccessUi() {
         (code
           ? `КОД ШКОЛЫ:\n${code}\n\nСсылки ниже готовы. «Сгенерировать код» отменяет старые ссылки и QR.`
           : configured
-            ? "Код школы уже сгенерирован, но не может быть показан. Нажмите «Сгенерировать код», чтобы установить новый код."
-            : "Код школы ещё не создан. Нажмите «Сгенерировать код», затем задайте PIN.");
+            ? "Код подключения уже сгенерирован, но не может быть показан. Нажмите «Сгенерировать код», чтобы установить новый код."
+            : "Код подключения ещё не создан. Нажмите «Сгенерировать код», затем задайте PIN.");
     }
   } catch (e) {
     if (elements.tvCodeOut) elements.tvCodeOut.textContent = `Ошибка: ${e.message || String(e)}`;
@@ -513,7 +513,7 @@ function bindProgramSettingsModalOnce() {
         const pinLine = ip ? `\n\nPIN ТВ (показан один раз):\n${ip}\n` : "";
         const hint = r.pin_hint ? `\n${String(r.pin_hint)}` : "";
         const ts = String(r.tenant_slug || "").trim();
-        const head = ts ? `Школа (тенант): ${ts}\n\n` : "";
+        const head = ts ? `Организация (тенант): ${ts}\n\n` : "";
         elements.tvCodeOut.textContent =
           `${head}КОД ШКОЛЫ:\n${code}\n\nСохраните код и обновите QR/ссылки. Старый код перестаёт работать.${pinLine}${hint}`;
       }
@@ -768,7 +768,7 @@ function createDefaultScreen(index) {
       {
         id: "school_news",
         type: "school_news",
-        title: "Новости школы",
+        title: "Новости",
         enabled: false,
         x: 0, y: 13, w: 16, h: 11,
         settings: {
@@ -1177,7 +1177,7 @@ const CLIENT_EMERGENCY_DEFAULTS = [
     id: "preset_crisis",
     title: "Чрезвычайная ситуация",
     settings: {
-      text: "ЧРЕЗВЫЧАЙНАЯ СИТУАЦИЯ\nСледуйте плану действий персонала школы.",
+      text: "ЧРЕЗВЫЧАЙНАЯ СИТУАЦИЯ\nСледуйте плану действий персонала.",
       fontSize: 40,
       color: "#ffffff",
       background: "#7f1d1d",
