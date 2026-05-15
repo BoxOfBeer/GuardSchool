@@ -173,9 +173,18 @@ body.screen-body {
   border-radius: 12px;
   padding: 10px 12px;
   font-weight: 700;
-  background: linear-gradient(135deg, #38bdf8, #0ea5e9);
-  color: #031422;
+  background: linear-gradient(180deg, #d1fae5 0%, #a7f3d0 55%, #86efac 100%);
+  color: #064e3b;
   cursor: pointer;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.35) inset;
+}
+
+.gs-device-btn-primary:hover {
+  filter: brightness(1.04);
+}
+
+.gs-device-btn-primary:active {
+  filter: brightness(0.97);
 }
 
 .gs-device-btn-secondary {
@@ -362,11 +371,21 @@ body.screen-body {
   color: #cbd5e1;
   list-style-position: outside;
   padding: 4px 0;
+  text-decoration: underline;
+  text-decoration-color: rgba(148, 163, 184, 0.65);
+  text-underline-offset: 3px;
 }
 
 .gs-device-details[open] > summary {
   margin-bottom: 6px;
   color: #e2e8f0;
+  text-decoration-color: rgba(226, 232, 240, 0.55);
+}
+
+.gs-device-push-interval-row {
+  padding: 0;
+  margin: 12px 0 0;
+  gap: 6px;
 }
 
 #gs-device-classes-wrap {
@@ -388,6 +407,9 @@ body.screen-body {
   cursor: pointer;
   font-weight: 600;
   color: #94a3b8;
+  text-decoration: underline;
+  text-decoration-color: rgba(148, 163, 184, 0.55);
+  text-underline-offset: 3px;
 }
 
 .gs-device-url-hint-body {

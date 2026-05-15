@@ -539,11 +539,11 @@ function ensureDeviceSettingsUi() {
                 <button type="button" class="gs-device-help" id="gs-push-help-checkin" aria-label="Справка: журнал сводки">?</button>
               </div>
             </div>
+            <div class="gs-device-settings-row gs-device-push-interval-row">
+              <label for="gs-push-min-interval">Не чаще, чем раз в (сек)</label>
+              <input id="gs-push-min-interval" class="gs-device-settings-input" type="number" min="30" max="86400" value="300" />
+            </div>
           </details>
-          <div class="gs-device-settings-row" style="padding:0;margin-top:10px">
-            <label for="gs-push-min-interval">Не чаще, чем раз в (сек)</label>
-            <input id="gs-push-min-interval" class="gs-device-settings-input" type="number" min="30" max="86400" value="300" />
-          </div>
           <div class="gs-device-settings-actions" style="justify-content:flex-start;padding:6px 0 0;flex-wrap:wrap;gap:8px">
             <button type="button" class="gs-device-btn-primary" id="gs-push-enable">Включить уведомления</button>
             <button type="button" class="gs-device-btn-secondary" id="gs-push-disable">Отключить</button>
@@ -604,7 +604,7 @@ function ensureDeviceSettingsUi() {
       "gs-push-help-checkin":
         "Новая отметка в журнале и подтверждение ✓. Подписка привязана к slug этого экрана: для сводки на tv-2 включайте уведомления именно на экране tv-2.",
       "gs-device-classes-help":
-        "Список совпадает с полем «классы» в настройках виджета «Расписание». По умолчанию все классы отмечены — снимите лишнее. Блок настроек показывается только когда виджет «Расписание» включён на этом экране.",
+        "Список совпадает с полем «классы» в настройках виджета «Расписание». Блок виден, когда «Расписание» включено в конфигурации экрана и не снято в фильтре «Типы виджетов в ленте» ниже.",
       "gs-device-widgets-help":
         "Фильтр типов виджетов в ленте. Пустой список в хранилище = все типы. Сохранение «на устройстве» не должно сбрасывать отмеченные типы — см. галочку ниже.",
     };
@@ -2251,13 +2251,36 @@ function syncDeviceSettingsFromPayload(screenPayload) {
     }
 
     const screen = (screenPayload && screenPayload.screen) || {};
+
+    const filterMwTypes = (arr) =>
+      (arr || []).map((x) => String(x || "").trim()).filter((t) => t && !GS_DEVICE_MW_EXCLUDED_TYPES.has(t));
+    const fromPayload = filterMwTypes(
+      Array.isArray(screenPayload && screenPayload.device_widget_types)
+        ? screenPayload.device_widget_types
+        : [],
+    );
+    const types = fromPayload.length > 0 ? fromPayload : gsMwTypesFallbackFromEnabledWidgets(screen);
+    const rawMwSaved = String(localStorage.getItem(`gs_mw_${slug}`) || "").trim();
+    const mwPartsRaw = rawMwSaved ? rawMwSaved.split(",").map((x) => x.trim()).filter(Boolean) : [];
+    const mwParts = mwPartsRaw.filter((t) => !GS_DEVICE_MW_EXCLUDED_TYPES.has(t));
+    const hadExcludedOnly = mwPartsRaw.length > 0 && mwParts.length === 0;
+    const selectedTypes = new Set();
+    if (!rawMwSaved || hadExcludedOnly) {
+      if (types.length) types.forEach((t) => selectedTypes.add(String(t)));
+    } else {
+      mwParts.forEach((t) => selectedTypes.add(String(t)));
+    }
+
     const hasScheduleWidget = (screen.widgets || []).some(
       (w) => w && w.type === "schedule" && w.enabled !== false,
     );
+    const scheduleInDeviceTypeList = types.some((t) => String(t) === "schedule");
+    const showScheduleClassesUi = Boolean(
+      hasScheduleWidget && scheduleInDeviceTypeList && selectedTypes.has("schedule"),
+    );
     if (classesRow) {
-      const showClasses = Boolean(hasScheduleWidget);
-      classesRow.hidden = !showClasses;
-      classesRow.setAttribute("aria-hidden", showClasses ? "false" : "true");
+      classesRow.hidden = !showScheduleClassesUi;
+      classesRow.setAttribute("aria-hidden", showScheduleClassesUi ? "false" : "true");
     }
 
     const pickable = Array.isArray(screenPayload && screenPayload.pickable_classes)
@@ -2265,7 +2288,7 @@ function syncDeviceSettingsFromPayload(screenPayload) {
       : [];
     const canon = gsDeviceClassCanonFromSaved(slug, existing, pickable);
     wrapClasses.textContent = "";
-    if (hasScheduleWidget) {
+    if (showScheduleClassesUi) {
       if (!pickable.length) {
         const hint = document.createElement("div");
         hint.className = "hint";
@@ -2291,24 +2314,6 @@ function syncDeviceSettingsFromPayload(screenPayload) {
       }
     }
 
-    const filterMwTypes = (arr) =>
-      (arr || []).map((x) => String(x || "").trim()).filter((t) => t && !GS_DEVICE_MW_EXCLUDED_TYPES.has(t));
-    const fromPayload = filterMwTypes(
-      Array.isArray(screenPayload && screenPayload.device_widget_types)
-        ? screenPayload.device_widget_types
-        : [],
-    );
-    const types = fromPayload.length > 0 ? fromPayload : gsMwTypesFallbackFromEnabledWidgets(screen);
-    const rawMwSaved = String(localStorage.getItem(`gs_mw_${slug}`) || "").trim();
-    const mwPartsRaw = rawMwSaved ? rawMwSaved.split(",").map((x) => x.trim()).filter(Boolean) : [];
-    const mwParts = mwPartsRaw.filter((t) => !GS_DEVICE_MW_EXCLUDED_TYPES.has(t));
-    const hadExcludedOnly = mwPartsRaw.length > 0 && mwParts.length === 0;
-    const selectedTypes = new Set();
-    if (!rawMwSaved || hadExcludedOnly) {
-      if (types.length) types.forEach((t) => selectedTypes.add(String(t)));
-    } else {
-      mwParts.forEach((t) => selectedTypes.add(String(t)));
-    }
     wrapWidgets.textContent = "";
     types.forEach((t) => {
       const key = String(t);
@@ -2326,8 +2331,12 @@ function syncDeviceSettingsFromPayload(screenPayload) {
     });
 
     btnApply.onclick = () => {
+      const scheduleMwChecked = [...wrapWidgets.querySelectorAll('input[type="checkbox"]')].some(
+        (inp) => String(inp.value) === "schedule" && inp.checked,
+      );
       const scheduleClassesInactive =
         !hasScheduleWidget ||
+        !scheduleMwChecked ||
         ![...wrapClasses.querySelectorAll('input[type="checkbox"]')].length;
       const boxes = scheduleClassesInactive
         ? []
