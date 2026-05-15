@@ -160,9 +160,11 @@ from .gs_push import (
     rate_limit_decide as push_rate_limit_decide,
     upsert_subscription as upsert_push_subscription,
     vapid_application_server_key,
+    vapid_private_key,
     vapid_private_key_for_webpush,
     vapid_public_key,
     vapid_subject,
+    webpush_subscription_stale,
 )
 from .gs_portal_cms import load_portal_cms_merged, sanitize_portal_cms_payload, write_portal_cms
 from .saas_db import cleanup_expired_demo_sessions, ensure_public_schema, saas_db_enabled
@@ -6798,8 +6800,29 @@ def _notify_push_to_screen(
             )
             sent += 1
         except Exception as exc:
-            ep = str(s.get("endpoint") or "")[:72]
-            _log.warning("webpush failed screen=%s topic=%s endpoint=%s: %s", screen_slug, topic, ep, exc)
+            ep_short = str(s.get("endpoint") or "")[:72]
+            full_ep = str(s.get("endpoint") or "").strip()
+            if webpush_subscription_stale(exc) and full_ep:
+                n = delete_push_subscription(
+                    tenant_id=tenant_id,
+                    screen_slug=screen_slug,
+                    endpoint=full_ep,
+                )
+                _log.info(
+                    "webpush stale subscription removed screen=%s topic=%s endpoint=%s deleted=%s",
+                    screen_slug,
+                    topic,
+                    ep_short,
+                    n,
+                )
+            else:
+                _log.warning(
+                    "webpush failed screen=%s topic=%s endpoint=%s: %s",
+                    screen_slug,
+                    topic,
+                    ep_short,
+                    exc,
+                )
             continue
     if subs and sent == 0:
         _log.warning(

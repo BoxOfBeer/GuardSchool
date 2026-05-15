@@ -428,79 +428,6 @@ window.gsCheckinApiFetch = function gsCheckinApiFetch(url, init) {
   return fetch(url, Object.assign({}, i, { credentials: "include", headers: headers }));
 };
 
-/** Включение: в URL «?gs_push_debug=1», снять — «?gs_push_debug=0» или снять галочку в панели. */
-function gsPushDebugEnabled() {
-  try {
-    const sp = new URLSearchParams(window.location.search || "");
-    if (sp.get("gs_push_debug") === "1") localStorage.setItem("gs_push_debug", "1");
-    if (sp.get("gs_push_debug") === "0") localStorage.removeItem("gs_push_debug");
-    return localStorage.getItem("gs_push_debug") === "1";
-  } catch (_) {
-    return false;
-  }
-}
-
-function gsPushDebugToast(locLabel, d) {
-  if (!gsPushDebugEnabled()) return;
-  try {
-    let host = document.getElementById("gs-push-debug-host");
-    if (!host) {
-      host = document.createElement("div");
-      host.id = "gs-push-debug-host";
-      host.style.cssText =
-        "position:fixed;right:12px;bottom:12px;z-index:2147483000;max-width:min(420px,94vw);display:flex;flex-direction:column;gap:8px;pointer-events:none;font:13px/1.35 system-ui,sans-serif;";
-      document.body.appendChild(host);
-    }
-    const wrap = document.createElement("div");
-    wrap.style.cssText =
-      "background:#1e293b;color:#e2e8f0;padding:10px 12px;border-radius:10px;box-shadow:0 8px 28px rgba(0,0,0,.35);pointer-events:auto;border:1px solid #334155;";
-    const t1 = document.createElement("div");
-    t1.style.cssText = "font-weight:600;margin-bottom:4px";
-    t1.textContent = "Push дошёл до SW " + (locLabel ? "(" + locLabel + ")" : "");
-    const t2 = document.createElement("div");
-    t2.style.cssText = "opacity:.9;font-size:12px";
-    t2.textContent = "Дальше вызывается showNotification(). Если баннера нет — «Не беспокоить», Chrome → Сайт → Уведомления, настройки Windows.";
-    const t3 = document.createElement("div");
-    t3.style.cssText = "opacity:.85;font-size:11px;margin-top:6px;word-break:break-word";
-    t3.textContent = String(d && d.title ? d.title : "") + (d && d.body ? " — " + String(d.body).slice(0, 120) : "");
-    wrap.appendChild(t1);
-    wrap.appendChild(t2);
-    wrap.appendChild(t3);
-    host.appendChild(wrap);
-    window.setTimeout(() => {
-      try {
-        wrap.remove();
-      } catch (_) {}
-    }, 14000);
-  } catch (_) {}
-}
-
-function gsInstallPushDebugListener() {
-  try {
-    if (window.__gsPushDebugListenerInstalled) return;
-    window.__gsPushDebugListenerInstalled = true;
-    if (!("serviceWorker" in navigator)) return;
-    navigator.serviceWorker.addEventListener("message", (ev) => {
-      const d = ev && ev.data;
-      if (!d || d.type !== "gs-push-debug") return;
-      if (!gsPushDebugEnabled()) return;
-      let locLabel = "";
-      try {
-        locLabel = d.receivedAt ? new Date(d.receivedAt).toLocaleString() : "";
-      } catch (_) {}
-      try {
-        console.warn(
-          "[GuardSchool push → страница]",
-          locLabel || d.receivedAt,
-          "SW получил push, далее showNotification()",
-          d
-        );
-      } catch (_) {}
-      gsPushDebugToast(locLabel, d);
-    });
-  } catch (_) {}
-}
-
 /** Плавающая шестерёнка и настройки устройства — только mobile_mode (ноут/телефон/сенсор), не «чистые» ТВ. */
 function gsShowScreenDeviceGear(screen) {
   return Boolean(screen && screen.mobile_mode);
@@ -586,43 +513,50 @@ function ensureDeviceSettingsUi() {
       </div>
       <div class="gs-device-settings-row" id="gs-device-pwa-install-row" hidden>
         <div class="gs-device-settings-field-head">Ярлык на рабочий стол</div>
-        <div class="gs-device-classes-hint" id="gs-device-pwa-install-hint">
-          Чтобы добавить этот экран как приложение/ярлык, используйте кнопку ниже. Если браузер не поддерживает установку,
-          откройте меню браузера и выберите «Установить приложение» / «Добавить на главный экран».
-        </div>
-        <div class="gs-device-settings-actions" style="justify-content:flex-start;padding:10px 0 0">
+        <div class="gs-device-inline-actions">
           <button type="button" class="gs-device-btn-primary" id="gs-device-pwa-install">Создать на рабочем столе</button>
+          <button type="button" class="gs-device-help" id="gs-device-pwa-help" aria-label="Справка по ярлыку">?</button>
         </div>
       </div>
       <div class="gs-device-settings-row" id="gs-device-push-row" hidden>
-        <div class="gs-device-settings-field-head">Уведомления (оффлайн)</div>
-        <div class="gs-device-classes-hint">
-          Уведомления приходят даже когда страница закрыта (если браузер поддерживает Web Push). Запрос разрешения появится после нажатия кнопки.
+        <div class="gs-device-field-head-row">
+          <label class="opt gs-device-push-master" style="margin:0;flex:1;min-width:0">
+            <input type="checkbox" id="gs-push-panel-on" />
+            <span>Уведомления (оффлайн)</span>
+          </label>
+          <button type="button" class="gs-device-help" id="gs-push-master-help" aria-label="Справка по уведомлениям">?</button>
         </div>
-        <div class="gs-device-classes-hint" style="margin-top:8px">
-          Пуш по теме «аварийный режим» уходит при <b>сохранении настроек в админке</b>, когда меняется активный шаблон аварии — не при каждом показе «проблемы» на живом экране.
-        </div>
-        <div class="gs-device-settings-checks" style="margin-top:8px">
-          <label class="opt"><input type="checkbox" id="gs-push-topic-emergency" checked /> <span>Аварийный режим</span></label>
-          <label class="opt"><input type="checkbox" id="gs-push-topic-checkin" checked /> <span>Журнал сводки</span> <span class="hint" style="display:block;margin:2px 0 0 22px;opacity:.85;font-size:12px">новая отметка и подтверждение ✓. Подписка привязана к slug этого экрана: для сводки на tv-2 включайте уведомления на tv-2.</span></label>
-        </div>
-        <div class="gs-device-settings-checks" style="margin-top:6px">
-          <label class="opt"><input type="checkbox" id="gs-push-debug" /> <span>Отладка push: консоль F12 и всплывашка (или <code>?gs_push_debug=1</code> в URL)</span></label>
-        </div>
-        <div class="gs-device-settings-row" style="padding:0;margin-top:8px">
-          <label>Не чаще, чем раз в (сек)</label>
-          <input id="gs-push-min-interval" class="gs-device-settings-input" type="number" min="30" max="86400" value="300" />
-        </div>
-        <div class="gs-device-settings-actions" style="justify-content:flex-start;padding:10px 0 0;flex-wrap:wrap;gap:8px">
-          <button type="button" class="gs-device-btn-primary" id="gs-push-enable">Включить уведомления</button>
-          <button type="button" class="gs-device-btn-secondary" id="gs-push-disable">Отключить</button>
-          <button type="button" class="gs-device-btn-secondary" id="gs-push-test">Тест с сервера</button>
-          <span class="hint" id="gs-push-status"></span>
+        <div id="gs-push-gated" hidden>
+          <details class="gs-device-details" id="gs-push-modes-details">
+            <summary>Темы уведомлений</summary>
+            <div class="gs-device-settings-checks" style="margin-top:4px">
+              <div class="gs-device-topic-row">
+                <label class="opt"><input type="checkbox" id="gs-push-topic-emergency" checked /> <span>Аварийный режим</span></label>
+                <button type="button" class="gs-device-help" id="gs-push-help-emergency" aria-label="Справка: аварийный режим">?</button>
+              </div>
+              <div class="gs-device-topic-row">
+                <label class="opt"><input type="checkbox" id="gs-push-topic-checkin" checked /> <span>Журнал сводки</span></label>
+                <button type="button" class="gs-device-help" id="gs-push-help-checkin" aria-label="Справка: журнал сводки">?</button>
+              </div>
+            </div>
+          </details>
+          <div class="gs-device-settings-row" style="padding:0;margin-top:10px">
+            <label for="gs-push-min-interval">Не чаще, чем раз в (сек)</label>
+            <input id="gs-push-min-interval" class="gs-device-settings-input" type="number" min="30" max="86400" value="300" />
+          </div>
+          <div class="gs-device-settings-actions" style="justify-content:flex-start;padding:6px 0 0;flex-wrap:wrap;gap:8px">
+            <button type="button" class="gs-device-btn-primary" id="gs-push-enable">Включить уведомления</button>
+            <button type="button" class="gs-device-btn-secondary" id="gs-push-disable">Отключить</button>
+            <button type="button" class="gs-device-btn-secondary" id="gs-push-test">Тест с сервера</button>
+            <span class="hint" id="gs-push-status"></span>
+          </div>
         </div>
       </div>
-      <div class="gs-device-settings-row" id="gs-device-classes-row" hidden>
-        <div class="gs-device-settings-field-head">Классы расписания на этом устройстве</div>
-        <div class="gs-device-classes-hint">Показывается только при включённом виджете «Расписание» на экране; список совпадает с полем «классы» в его настройках. По умолчанию все отмечены — снимите лишнее.</div>
+      <div class="gs-device-settings-row" id="gs-device-classes-row">
+        <div class="gs-device-field-head-row">
+          <div class="gs-device-settings-field-head">Классы расписания на этом устройстве</div>
+          <button type="button" class="gs-device-help" id="gs-device-classes-help" aria-label="Справка: классы расписания">?</button>
+        </div>
         <div id="gs-device-classes-wrap" class="gs-device-settings-checks"></div>
       </div>
       <div class="gs-device-settings-row">
@@ -632,8 +566,10 @@ function ensureDeviceSettingsUi() {
         </div>
       </div>
       <div class="gs-device-settings-row">
-        <div class="gs-device-settings-field-head">Виджеты (по типам)</div>
-        <div class="gs-device-classes-hint">Фильтр типов виджетов в ленте. Пустой список в хранилище = все типы. Сохранение «на устройстве» не должно сбрасывать отмеченные типы — см. галочку ниже.</div>
+        <div class="gs-device-field-head-row">
+          <div class="gs-device-settings-field-head">Виджеты (по типам)</div>
+          <button type="button" class="gs-device-help" id="gs-device-widgets-help" aria-label="Справка: фильтр виджетов">?</button>
+        </div>
         <div id="gs-device-widgets" class="gs-device-settings-checks"></div>
       </div>
       <div class="gs-device-settings-row gs-device-url-hint-wrap">
@@ -654,6 +590,27 @@ function ensureDeviceSettingsUi() {
 
     document.body.appendChild(btn);
     document.body.appendChild(panel);
+
+    try {
+      const helpTitles = {
+        "gs-device-pwa-help":
+          "Чтобы добавить этот экран как приложение или ярлык, нажмите кнопку слева. Если браузер не открыл диалог установки, откройте меню браузера и выберите «Установить приложение» или «Добавить на главный экран».",
+        "gs-push-master-help":
+          "Уведомления приходят даже когда страница закрыта (если браузер поддерживает Web Push). Разрешение у браузера запрашивается после «Включить уведомления».",
+        "gs-push-help-emergency":
+          "Пуш по теме «аварийный режим» отправляется при сохранении настроек в админке, когда меняется активный шаблон аварии — не при каждом показе «проблемы» на живом экране.",
+        "gs-push-help-checkin":
+          "Новая отметка в журнале и подтверждение ✓. Подписка привязана к slug этого экрана: для сводки на tv-2 включайте уведомления именно на экране tv-2.",
+        "gs-device-classes-help":
+          "Список совпадает с полем «классы» в настройках виджета «Расписание». По умолчанию все классы отмечены — снимите лишнее. Настройка доступна только когда виджет «Расписание» включён на этом экране.",
+        "gs-device-widgets-help":
+          "Фильтр типов виджетов в ленте. Пустой список в хранилище = все типы. Сохранение «на устройстве» не должно сбрасывать отмеченные типы — см. галочку ниже.",
+      };
+      for (const id of Object.keys(helpTitles)) {
+        const el = panel.querySelector("#" + id);
+        if (el) el.setAttribute("title", helpTitles[id]);
+      }
+    } catch (_) {}
 
     const toggle = (show) => {
       panel.hidden = !show;
@@ -715,33 +672,41 @@ function ensureDeviceSettingsUi() {
       const disableBtn = panel.querySelector("#gs-push-disable");
       const emCb = panel.querySelector("#gs-push-topic-emergency");
       const chCb = panel.querySelector("#gs-push-topic-checkin");
-      const dbgCb = panel.querySelector("#gs-push-debug");
       const testBtn = panel.querySelector("#gs-push-test");
       const miInp = panel.querySelector("#gs-push-min-interval");
+      const panelOn = panel.querySelector("#gs-push-panel-on");
+      const gated = panel.querySelector("#gs-push-gated");
       const canPush = Boolean(window.isSecureContext && window.Notification && navigator.serviceWorker && ("PushManager" in window));
       if (pushRow && canPush) pushRow.hidden = false;
+
+      function gsPushControlsStorageKey(slug) {
+        return "gs_push_controls_" + String(slug || "").trim().toLowerCase();
+      }
+
+      function syncPushGatedVisibility() {
+        if (!gated || !panelOn) return;
+        gated.hidden = !panelOn.checked;
+      }
+
+      if (panelOn && gated) {
+        try {
+          const sk = getSlug();
+          panelOn.checked = localStorage.getItem(gsPushControlsStorageKey(sk)) === "1";
+        } catch (_) {}
+        syncPushGatedVisibility();
+        panelOn.addEventListener("change", () => {
+          try {
+            const sk = getSlug();
+            if (panelOn.checked) localStorage.setItem(gsPushControlsStorageKey(sk), "1");
+            else localStorage.removeItem(gsPushControlsStorageKey(sk));
+          } catch (_) {}
+          syncPushGatedVisibility();
+        });
+      }
 
       function setStatus(msg) {
         if (st) st.textContent = msg || "";
       }
-
-      try {
-        gsPushDebugEnabled();
-        if (dbgCb) {
-          dbgCb.checked = gsPushDebugEnabled();
-          dbgCb.addEventListener("change", () => {
-            try {
-              if (dbgCb.checked) localStorage.setItem("gs_push_debug", "1");
-              else localStorage.removeItem("gs_push_debug");
-            } catch (_) {}
-            setStatus(
-              dbgCb.checked
-                ? "Отладка: смотрите Console (эта вкладка) и «Application → Service workers → Inspect»."
-                : ""
-            );
-          });
-        }
-      } catch (_) {}
 
       function urlBase64ToUint8Array(base64String) {
         const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
@@ -869,7 +834,7 @@ function ensureDeviceSettingsUi() {
               } else {
                 msg += "Галочка «журнал сводки» снята — push по отметкам не придёт. ";
               }
-              msg += "Смотрите баннер ОС или отладку push.";
+              msg += "Смотрите баннер ОС.";
               setStatus(msg);
             } catch (e) {
               setStatus(e.message || String(e));
@@ -940,11 +905,6 @@ function gsMaybeRegisterServiceWorker() {
     navigator.serviceWorker.register("/sw.js").catch(() => {});
   } catch (_) {}
 }
-
-try {
-  gsPushDebugEnabled();
-  gsInstallPushDebugListener();
-} catch (_) {}
 
 function gsMaybeAttachSaasManifestForScreenSlug(slug) {
   try {
@@ -2177,14 +2137,22 @@ function syncDeviceSettingsFromPayload(screenPayload) {
     const persisted = Boolean(existing.persist);
     chkPersist.checked = persisted;
 
+    const panelOn = panel.querySelector("#gs-push-panel-on");
+    const gatedPush = panel.querySelector("#gs-push-gated");
+    if (panelOn && gatedPush) {
+      try {
+        panelOn.checked = localStorage.getItem(`gs_push_controls_${slug}`) === "1";
+      } catch (_) {}
+      gatedPush.hidden = !panelOn.checked;
+    }
+
     const screen = (screenPayload && screenPayload.screen) || {};
     const hasScheduleWidget = (screen.widgets || []).some(
       (w) => w && w.type === "schedule" && w.enabled !== false,
     );
     if (classesRow) {
-      const showClasses = Boolean(hasScheduleWidget);
-      classesRow.hidden = !showClasses;
-      classesRow.setAttribute("aria-hidden", showClasses ? "false" : "true");
+      classesRow.hidden = false;
+      classesRow.setAttribute("aria-disabled", hasScheduleWidget ? "false" : "true");
     }
 
     const pickable = Array.isArray(screenPayload && screenPayload.pickable_classes)
@@ -2192,7 +2160,17 @@ function syncDeviceSettingsFromPayload(screenPayload) {
       : [];
     const canon = gsDeviceClassCanonFromSaved(slug, existing, pickable);
     wrapClasses.textContent = "";
-    if (hasScheduleWidget) {
+    if (wrapClasses) {
+      wrapClasses.classList.toggle("gs-device-classes-wrap-disabled", !hasScheduleWidget);
+    }
+    if (!hasScheduleWidget) {
+      const hintOff = document.createElement("div");
+      hintOff.className = "hint";
+      hintOff.style.fontSize = "13px";
+      hintOff.textContent =
+        "Настройка классов доступна только при включённом виджете «Расписание» на этом экране.";
+      wrapClasses.appendChild(hintOff);
+    } else {
       if (!pickable.length) {
         const hint = document.createElement("div");
         hint.className = "hint";
@@ -2253,11 +2231,13 @@ function syncDeviceSettingsFromPayload(screenPayload) {
     });
 
     btnApply.onclick = () => {
-      const scheduleRowHidden = !classesRow || classesRow.hidden;
-      const boxes = scheduleRowHidden
+      const scheduleClassesInactive =
+        !hasScheduleWidget ||
+        ![...wrapClasses.querySelectorAll('input[type="checkbox"]')].length;
+      const boxes = scheduleClassesInactive
         ? []
         : [...wrapClasses.querySelectorAll('input[type="checkbox"]')];
-      const checked = scheduleRowHidden
+      const checked = scheduleClassesInactive
         ? []
         : [...wrapClasses.querySelectorAll('input[type="checkbox"]:checked')].map((x) => String(x.value));
       let classes = "";
@@ -2280,7 +2260,7 @@ function syncDeviceSettingsFromPayload(screenPayload) {
       const persist = chkPersist.checked;
       try {
         if (classes) localStorage.setItem(`gs_classes_${slug}`, classes);
-        else if (!scheduleRowHidden && boxes.length) localStorage.removeItem(`gs_classes_${slug}`);
+        else if (!scheduleClassesInactive && boxes.length) localStorage.removeItem(`gs_classes_${slug}`);
         try {
           localStorage.removeItem(`gs_grid_${slug}`);
         } catch (_) {}

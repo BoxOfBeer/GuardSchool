@@ -148,6 +148,22 @@ def delete_subscription(*, tenant_id: str, screen_slug: str, endpoint: str) -> i
         return int(cur.rowcount or 0)
 
 
+def webpush_subscription_stale(exc: BaseException) -> bool:
+    """Подписка отозвана/истекла (FCM/Mozilla отвечают 410 Gone)."""
+    try:
+        from pywebpush import WebPushException
+
+        if isinstance(exc, WebPushException):
+            resp = getattr(exc, "response", None)
+            code = getattr(resp, "status_code", None) if resp is not None else None
+            if code == 410:
+                return True
+    except Exception:
+        pass
+    msg = str(exc or "").lower()
+    return "410" in msg and ("gone" in msg or "expired" in msg or "unsubscribed" in msg)
+
+
 def list_subscriptions(*, tenant_id: str, screen_slug: str, topic: str | None = None) -> list[dict[str, Any]]:
     ensure_push_tables()
     tid = (tenant_id or "local").strip() or "local"
