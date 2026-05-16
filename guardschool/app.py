@@ -7284,6 +7284,18 @@ _PWA_DERIVED_192_MARKER = "_gs_pwa192"
 _PWA_MANIFEST_DEFAULT_TITLE = "Приложение"
 
 
+def _pwa_manifest_json_with_version(manifest: dict[str, Any]) -> dict[str, Any]:
+    """Копия тела webmanifest + gs_pwa_manifest_version (=APP_VERSION).
+
+    Меняется при каждом релизе вместе с `?v=` на href манифеста в HTML — браузер чаще подтягивает
+    свежий JSON; часть движков учитывает изменения полей манифеста при обновлении установленного PWA.
+    Поле не из спецификации W3C — префикс gs_, на клиентов без поддержки не влияет.
+    """
+    out = dict(manifest)
+    out["gs_pwa_manifest_version"] = APP_VERSION
+    return out
+
+
 def _pwa_path_inside_dir_relaxed(base_dir: Path, candidate: Path) -> bool:
     try:
         candidate.resolve().relative_to(base_dir.resolve())
@@ -7838,7 +7850,7 @@ def _pwa_manifest_for_tv_pair(
         "screenshots": _pwa_manifest_screenshots_entries(request),
     }
     resp = JSONResponse(
-        content=manifest,
+        content=_pwa_manifest_json_with_version(manifest),
         headers={
             "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
             "Pragma": "no-cache",
@@ -7969,7 +7981,7 @@ def pwa_manifest_for_screen_standalone(request: Request, screen_slug: str) -> JS
         "screenshots": _pwa_manifest_screenshots_entries(request),
     }
     resp = JSONResponse(
-        content=manifest,
+        content=_pwa_manifest_json_with_version(manifest),
         headers={
             "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
             "Pragma": "no-cache",

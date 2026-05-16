@@ -491,6 +491,43 @@ async function gsPwaInstallFallbackMessage() {
   );
 }
 
+/** Панель ⚙: номер сборки GuardSchool и ревизия данных с сервера (не отдельные виджеты — их версий в API нет). */
+function gsUpdateDevicePanelVersionLabels(payload) {
+  try {
+    const wrap = document.getElementById("gs-device-version-lines");
+    if (!wrap) return;
+    const pageVer = String(typeof window !== "undefined" && window.__GS_APP_VERSION ? window.__GS_APP_VERSION : "").trim();
+    const poll = payload && typeof payload === "object" ? payload : null;
+    const srvVer = poll && poll.app_version != null ? String(poll.app_version).trim() : "";
+    const rev = poll && poll.revision != null ? String(poll.revision).trim() : "";
+    const showVer = srvVer || pageVer || "—";
+    wrap.textContent = "";
+    const l1 = document.createElement("div");
+    l1.className = "gs-device-version-line";
+    l1.textContent = "GuardSchool: " + showVer;
+    wrap.appendChild(l1);
+    if (rev) {
+      const short = rev.length > 24 ? rev.slice(0, 20) + "…" : rev;
+      const l2 = document.createElement("div");
+      l2.className = "gs-device-version-line gs-device-version-rev";
+      l2.textContent = "Данные на сервере: " + short;
+      l2.title = "Ревизия конфигурации и контента: " + rev;
+      wrap.appendChild(l2);
+    } else {
+      const l2 = document.createElement("div");
+      l2.className = "gs-device-version-line gs-device-version-muted";
+      l2.textContent = "После ответа сервера появится метка данных.";
+      wrap.appendChild(l2);
+    }
+    if (srvVer && pageVer && srvVer !== pageVer) {
+      const l3 = document.createElement("div");
+      l3.className = "gs-device-version-line gs-device-version-stale";
+      l3.textContent = "Сервер новее этой вкладки — обновите страницу.";
+      wrap.appendChild(l3);
+    }
+  } catch (_) {}
+}
+
 function ensureDeviceSettingsUi() {
   try {
     if (document.getElementById("gs-device-settings-btn")) return;
@@ -510,6 +547,10 @@ function ensureDeviceSettingsUi() {
       <div class="gs-device-settings-head">
         <div class="gs-device-settings-title">Настройки для этого устройства</div>
         <button type="button" class="gs-device-settings-close" id="gs-device-settings-close">Закрыть</button>
+      </div>
+      <div class="gs-device-settings-row gs-device-version-row" id="gs-device-version-row">
+        <div class="gs-device-settings-field-head">Версия</div>
+        <div id="gs-device-version-lines" class="gs-device-version-lines" aria-live="polite"></div>
       </div>
       <div class="gs-device-settings-row" id="gs-device-pwa-install-row" hidden>
         <div class="gs-device-settings-field-head">Ярлык на рабочий стол</div>
@@ -975,6 +1016,9 @@ function ensureDeviceSettingsUi() {
           })();
         });
       }
+    } catch (_) {}
+    try {
+      gsUpdateDevicePanelVersionLabels(window.__lastScreenPayload);
     } catch (_) {}
   } catch (_) {}
 }
@@ -2602,6 +2646,9 @@ async function refresh() {
     window.__lastScreenPollMs = nextDelay;
     try {
       render(payload);
+      try {
+        gsUpdateDevicePanelVersionLabels(payload);
+      } catch (_) {}
       lastRenderOkAt = Date.now();
       hideCrashBanner();
     } catch (e) {

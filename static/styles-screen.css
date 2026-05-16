@@ -125,6 +125,39 @@ body.screen-body {
   margin-bottom: 8px;
 }
 
+.gs-device-version-row {
+  margin-top: 4px;
+  margin-bottom: 6px;
+}
+
+.gs-device-version-lines {
+  font-size: 12px;
+  line-height: 1.45;
+  color: rgba(226, 232, 240, 0.88);
+  word-break: break-all;
+}
+
+.gs-device-version-line {
+  margin: 2px 0 0;
+}
+
+.gs-device-version-rev {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 11px;
+  color: rgba(148, 163, 184, 0.95);
+}
+
+.gs-device-version-muted {
+  color: rgba(148, 163, 184, 0.75);
+  font-style: italic;
+}
+
+.gs-device-version-stale {
+  margin-top: 6px;
+  color: #fcd34d;
+  font-weight: 600;
+}
+
 .gs-device-settings-title {
   font-weight: 800;
   font-size: 15px;

@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.02.043",
+    "timestamp": "2026-05-16T18:00:00",
+    "message": "Экран (мобильная панель ⚙): блок «Версия» — номер сборки GuardSchool (с сервера или со страницы), ревизия данных с API; предупреждение, если сервер новее загруженной вкладки. Поднят APP_VERSION для cache-bust screen.js."
+  },
+  {
+    "version": "1.02.042",
+    "timestamp": "2026-05-16T12:00:00",
+    "message": "PWA webmanifest: в JSON добавлено поле gs_pwa_manifest_version (=APP_VERSION), чтобы при релизе менялось тело манифеста вместе с cache-bust ?v= в screen.html; поднят APP_VERSION. Не гарантирует отдельный системный диалог «обновить» во всех браузерах, но улучшает согласованность версии манифеста и продукта."
+  },
+  {
     "version": "1.02.041",
     "timestamp": "2026-05-13T12:00:00",
     "message": "Новости школы на экране/ТВ: вёрстка «медиа слева столбиком (обложка + до 4 фото галереи), текст справа» вместо сетки 2×2 и float; стили .gs-school-news-* в styles-screen.css и styles.css; для ТВ/WebView относительные /uploads/… приводятся к абсолютному URL; убран инлайн max-height с min() (совместимость движков). Админка: черновик «как на экране» (.sn-hp-row / .sn-hp-media) под ту же схему. Облако: файл cloud_guarddoc/nginx-guardschool-upload-limits.conf (client_max_body_size, команды scp/include), правки README и примера nginx-портала; локали api.error413 — подсказка про nginx и env лимитов. Синхронизированы APP_VERSION и query-параметры статики."
