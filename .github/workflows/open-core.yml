@@ -1,0 +1,28 @@
+name: open-core
+
+on:
+  push:
+    branches: [main, master, saas-hybrid]
+  pull_request:
+    branches: [main, master, saas-hybrid]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Syntax check JS
+        run: |
+          node --check static/screen_widgets.js
+          node --check static/widgets/carousel-runtime.js
+      - name: Unit tests (full tree)
+        run: python -m unittest discover -s tests -q
+      - name: Locale parity
+        run: python tools/check_locales.py
+      - name: Verify open-core bundle
+        run: python tools/verify_open_core.py

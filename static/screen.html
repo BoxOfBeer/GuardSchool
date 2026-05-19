@@ -68,18 +68,26 @@
 </head>
 <body class="screen-body">
   <div id="gs-audio-hint" class="gs-audio-hint" role="status">
-    Коснитесь экрана или нажмите любую клавишу один раз — чтобы браузер разрешил звук звонков.
+    Коснитесь экрана или нажмите любую клавишу один раз — чтобы браузер разрешил звук сигналов.
   </div>
   <div id="gs-crash-banner" class="gs-crash-banner" role="status" hidden></div>
   <div id="screen-root" class="tv-screen"></div>
+  <script src="/static/widgets/plugins-manifest.js?v=__GS_ASSETS_VER__"></script>
   <script>
     (function () {
       try {
         var ts = Date.now();
-        var s1 = document.createElement("script");
-        s1.src = "/static/screen_widgets.js?v=__GS_ASSETS_VER__&tvts=" + ts;
-        s1.defer = true;
-        document.body.appendChild(s1);
+        var widgetScripts = ["/static/tv-locales.js", "/static/widgets/runtime.js", "/static/widgets/carousel-runtime.js", "/static/screen_widgets.js"];
+        var plugins = window.GUARD_SCHOOL_TV_WIDGET_PLUGINS || [];
+        for (var pi = 0; pi < plugins.length; pi++) {
+          widgetScripts.push("/static/widgets/" + plugins[pi]);
+        }
+        for (var wi = 0; wi < widgetScripts.length; wi++) {
+          var sw = document.createElement("script");
+          sw.src = widgetScripts[wi] + "?v=__GS_ASSETS_VER__&tvts=" + ts;
+          sw.defer = true;
+          document.body.appendChild(sw);
+        }
         var s2 = document.createElement("script");
         s2.src = "/static/screen.js?v=__GS_ASSETS_VER__&tvts=" + ts;
         s2.defer = true;

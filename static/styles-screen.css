@@ -1065,6 +1065,32 @@ body.screen-body {
   display: block;
 }
 
+.gs-school-news-row--wrap {
+  display: block;
+}
+
+.gs-school-news-row--wrap::after {
+  content: "";
+  display: table;
+  clear: both;
+}
+
+.gs-school-news-float-img {
+  float: left;
+  width: 32%;
+  height: auto;
+  max-height: 200px;
+  margin: 0 12px 8px 0;
+  object-fit: contain;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.gs-school-news-row--wrap .gs-school-news-body {
+  display: block;
+  width: auto;
+}
+
 .gs-school-news-media {
   flex: 0 0 auto;
   width: 32%;

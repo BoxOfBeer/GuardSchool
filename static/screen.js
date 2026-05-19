@@ -1359,8 +1359,8 @@ const GS_DEVICE_WIDGET_TYPE_LABELS = {
   date: "Дата",
   time: "Время",
   text: "Текст",
-  bell_status: "Звонки",
-  bell_countdown: "До звонка",
+  bell_status: "Сигналы",
+  bell_countdown: "До сигнала",
   schedule: "Расписание",
   carousel: "Карусель",
   holidays: "Праздники",
@@ -1917,6 +1917,12 @@ function shouldSoftRefreshWidget(widget, scheduleChanged, staticChanged) {
 
 function render(screenPayload) {
   window.__lastScreenPayload = screenPayload;
+  try {
+    const g = window.GuardSchoolScreen;
+    if (g && g.setWidgetTypesAvailable && screenPayload && screenPayload.widget_types_available) {
+      g.setWidgetTypesAvailable(screenPayload.widget_types_available);
+    }
+  } catch (_) {}
   try {
     // Для уже подключённых устройств: получить /t/<code>/<slug> и сохранить code → manifest → install prompt.
     // Делаем best-effort и только один раз на сессию.

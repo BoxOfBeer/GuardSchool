@@ -1432,6 +1432,32 @@ button {
   display: block;
 }
 
+.sn-hp-row--wrap {
+  display: block;
+}
+
+.sn-hp-row--wrap::after {
+  content: "";
+  display: table;
+  clear: both;
+}
+
+.sn-hp-float-img {
+  float: left;
+  width: 32%;
+  height: auto;
+  max-height: 140px;
+  margin: 0 10px 8px 0;
+  object-fit: contain;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.sn-hp-row--wrap .sn-hp-body {
+  display: block;
+  width: auto;
+}
+
 .sn-hp-media {
   flex: 0 0 auto;
   width: 32%;
@@ -1722,6 +1748,105 @@ button {
 
 .program-settings-block .settings-popover-subhead:first-child {
   margin-top: 0;
+}
+
+.capabilities-overview {
+  margin-top: 8px;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.cap-overview-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92em;
+}
+
+.cap-overview-table td {
+  padding: 4px 6px;
+  vertical-align: top;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.15);
+}
+
+.cap-overview-name {
+  color: rgba(226, 232, 240, 0.95);
+}
+
+.cap-status-badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 0.85em;
+  white-space: nowrap;
+}
+
+.cap-status-badge--available {
+  background: rgba(34, 197, 94, 0.2);
+  color: #86efac;
+}
+
+.cap-status-badge--missing,
+.cap-status-badge--unavailable {
+  background: rgba(148, 163, 184, 0.2);
+  color: #cbd5e1;
+}
+
+.cap-status-badge--disabled,
+.cap-status-badge--locked {
+  background: rgba(234, 179, 8, 0.18);
+  color: #fde047;
+}
+
+.cap-status-badge--error {
+  background: rgba(239, 68, 68, 0.2);
+  color: #fca5a5;
+}
+
+.widget-registry-issues {
+  margin: 8px 0 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(248, 113, 113, 0.35);
+}
+
+.widget-registry-issues-list {
+  margin: 6px 0 0;
+  padding-left: 1.2em;
+  font-size: 0.92em;
+}
+
+.widget-schema-hint {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.85em;
+  opacity: 0.85;
+}
+
+.widget-schema-fields {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(148, 163, 184, 0.25);
+}
+
+.widget-schema-fields-title {
+  margin: 0 0 8px;
+  font-size: 0.88em;
+}
+
+.widget-schema-invalid {
+  outline: 1px solid rgba(239, 68, 68, 0.85);
+  outline-offset: 1px;
+}
+
+.widget-schema-error {
+  color: #fca5a5;
+  margin-top: 4px;
+}
+
+.capability-gated,
+.capability-section-gated {
+  opacity: 0.55;
 }
 
 .program-settings-rss-sep {
@@ -3516,6 +3641,52 @@ label.bell-file-upload:hover {
   font-size: 14px;
 }
 
+.widget-missing,
+.widget-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 12px;
+  min-height: 48px;
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.widget-missing {
+  background: rgba(120, 113, 108, 0.2);
+  color: var(--muted);
+}
+
+.widget-error {
+  background: rgba(185, 28, 28, 0.12);
+  color: #991b1b;
+}
+
+.widget-error-detail {
+  margin-top: 6px;
+  font-size: 12px;
+}
+
+.widget-item-warning {
+  margin: 6px 0 0;
+  color: #b45309;
+}
+
+.capability-gated {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.capability-section-gated .capability-section-banner {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: rgba(180, 83, 9, 0.12);
+  color: #92400e;
+}
+
 .bell-status-box {
   display: grid;
   gap: 6px;
@@ -3579,6 +3750,32 @@ label.bell-file-upload:hover {
 
 .gs-school-news-row--nomedia {
   display: block;
+}
+
+.gs-school-news-row--wrap {
+  display: block;
+}
+
+.gs-school-news-row--wrap::after {
+  content: "";
+  display: table;
+  clear: both;
+}
+
+.gs-school-news-float-img {
+  float: left;
+  width: 32%;
+  height: auto;
+  max-height: 200px;
+  margin: 0 12px 8px 0;
+  object-fit: contain;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.gs-school-news-row--wrap .gs-school-news-body {
+  display: block;
+  width: auto;
 }
 
 .gs-school-news-media {

@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-_datas = [('static', 'static')]
+_datas = [('static', 'static'), ('widgets', 'widgets')]
 _ico = Path(SPECPATH) / 'ico.png'
 if _ico.is_file():
     _datas.append((str(_ico), '.'))

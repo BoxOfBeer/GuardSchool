@@ -16,10 +16,31 @@ from typing import Any
 
 log = logging.getLogger("guard_school.local_audio")
 
+from .gs_app_config import DEFAULT_BELL_TRIGGER_SEC_WINDOW, load_config, sanitize_audio_stream
+from .gs_paths import BREAK_MUSIC_DIR
+from .gs_schedule_bells import (
+    BREAK_ORCH_FADE_SEC,
+    BREAK_ORCH_HEAD_SEC,
+    BREAK_ORCH_SILENCE_SEC,
+    BREAK_ORCH_START_BELL_SEC,
+    MORNING_PRE_FIRST_LESSON_MIN,
+    PRE_BELL_AFADE_IN_SEC,
+    PRE_BELL_FIRE_SEC_WINDOW,
+    PRE_BELL_LEAD_MINUTES,
+    PRE_BELL_MAX_DURATION_SEC,
+    audio_trigger_sec_window,
+    bell_audio_url_to_path,
+    build_bell_audio_payload,
+    build_bell_status,
+    entry_academic_num,
+    time_to_minutes,
+)
+
+
+
 # После terminate ffplay поток runner ещё освобождает семафор — без паузы новый звонок часто ловит «занято».
 _AFTER_STOP_GRACE_SEC = 0.1
 
-_app_module: Any = None
 
 _play_sem = threading.Semaphore(1)
 _active_proc: subprocess.Popen | None = None
@@ -66,13 +87,6 @@ def _payload_sec_window(payload: dict[str, Any], audio: dict[str, Any]) -> int:
     return max(5, min(55, w))
 
 
-def _app() -> Any:
-    global _app_module
-    if _app_module is None:
-        from . import app
-
-        _app_module = app
-    return _app_module
 
 
 def _creationflags() -> int:
@@ -310,21 +324,19 @@ def _dt_minute(today: date, minute_of_day: int) -> datetime:
 
 
 def _find_break_gap(
-    gs: Any,
     entries: list[dict[str, Any]],
     now_mins: int,
     cap: int | None = None,
 ) -> tuple[int, dict[str, Any], dict[str, Any]] | None:
     """Перемена между строками шаблона; если cap задан — не считать переменой окно перед уроком с номером > cap (нет в расписании)."""
-    app = _app()
     for i, e in enumerate(entries):
         if i + 1 >= len(entries):
             return None
-        end = gs.time_to_minutes(str(e.get("end") or "00:00"))
-        ns = gs.time_to_minutes(str(entries[i + 1].get("start") or "00:00"))
+        end = time_to_minutes(str(e.get("end") or "00:00"))
+        ns = time_to_minutes(str(entries[i + 1].get("start") or "00:00"))
         if end < now_mins < ns:
             if cap is not None:
-                nn = app.entry_academic_num(entries[i + 1])
+                nn = entry_academic_num(entries[i + 1])
                 if nn is not None and nn > cap:
                     continue
             return i, e, entries[i + 1]
@@ -365,12 +377,12 @@ def _orch_poll_music_advance(tracks: list[Path]) -> None:
         _break_global_cursor = (_break_global_cursor + 1) % len(tracks)
 
 
-def _allocate_break_tail(total_sec: float, gs: Any) -> tuple[float, float, float, float]:
+def _allocate_break_tail(total_sec: float) -> tuple[float, float, float, float]:
     """head_sec, fade_sec, silence_sec, start_bell_sec (сумма хвоста = fade+silence+start)."""
-    H = float(gs.BREAK_ORCH_HEAD_SEC)
-    Fd = float(gs.BREAK_ORCH_FADE_SEC)
-    Si = float(gs.BREAK_ORCH_SILENCE_SEC)
-    St = float(gs.BREAK_ORCH_START_BELL_SEC)
+    H = float(BREAK_ORCH_HEAD_SEC)
+    Fd = float(BREAK_ORCH_FADE_SEC)
+    Si = float(BREAK_ORCH_SILENCE_SEC)
+    St = float(BREAK_ORCH_START_BELL_SEC)
     ideal_tail = Fd + Si + St
     if total_sec <= 0:
         return 0.0, 0.0, 0.0, 0.0
@@ -393,7 +405,6 @@ def _allocate_break_tail(total_sec: float, gs: Any) -> tuple[float, float, float
 
 
 def _tick_break_orchestration(
-    gs: Any,
     screen: dict[str, Any],
     today: date,
     now: datetime,
@@ -409,10 +420,10 @@ def _tick_break_orchestration(
     entries = status.get("entries") or []
     now_mins = now.hour * 60 + now.minute
     try:
-        tw = int(audio.get("bell_trigger_sec_window", gs.DEFAULT_BELL_TRIGGER_SEC_WINDOW))
+        tw = int(audio.get("bell_trigger_sec_window", DEFAULT_BELL_TRIGGER_SEC_WINDOW))
     except (TypeError, ValueError):
-        tw = gs.DEFAULT_BELL_TRIGGER_SEC_WINDOW
-    payload = gs.build_bell_audio_payload(screen, today, trigger_sec_window=tw)
+        tw = DEFAULT_BELL_TRIGGER_SEC_WINDOW
+    payload = build_bell_audio_payload(screen, today, trigger_sec_window=tw)
     rows = payload.get("entries") or []
     cap_raw = payload.get("max_lesson_index_cap")
     try:
@@ -420,7 +431,7 @@ def _tick_break_orchestration(
     except (TypeError, ValueError):
         gap_cap = None
 
-    gap = _find_break_gap(gs, entries, now_mins, gap_cap)
+    gap = _find_break_gap(entries, now_mins, gap_cap)
     force_skip_head = False
     gap_key: str
     B: datetime
@@ -431,7 +442,7 @@ def _tick_break_orchestration(
     start_row_for_orch_mark: dict[str, Any] | None = None
 
     if not gap and status.get("state") == "before" and entries:
-        pre_m = int(getattr(gs, "MORNING_PRE_FIRST_LESSON_MIN", 30))
+        pre_m = int(MORNING_PRE_FIRST_LESSON_MIN)
         raw_start = str(entries[0].get("start") or "08:00")
         try:
             hp, mp = raw_start.split(":")
@@ -455,9 +466,9 @@ def _tick_break_orchestration(
         if not gap:
             return
         gap_i, ended_entry, next_entry = gap
-        next_start_m = gs.time_to_minutes(str(next_entry.get("start") or "00:00"))
+        next_start_m = time_to_minutes(str(next_entry.get("start") or "00:00"))
         gap_key = f"{today_iso}_{gap_i}_{next_start_m}"
-        end_m = gs.time_to_minutes(str(ended_entry.get("end") or "00:00"))
+        end_m = time_to_minutes(str(ended_entry.get("end") or "00:00"))
         B = _dt_minute(today, end_m) + timedelta(minutes=1)
         T = _dt_minute(today, next_start_m)
         sound_end_url = rows[gap_i].get("sound_end") if gap_i < len(rows) else None
@@ -490,7 +501,7 @@ def _tick_break_orchestration(
     if total_sec < 30:
         return
 
-    head_s, fade_s, silence_s, start_s = _allocate_break_tail(total_sec, gs)
+    head_s, fade_s, silence_s, start_s = _allocate_break_tail(total_sec)
     tail = fade_s + silence_s + start_s
     if force_skip_head:
         head_s = 0.0
@@ -503,7 +514,7 @@ def _tick_break_orchestration(
     t_fade_end = t_fade_start + timedelta(seconds=fade_s)
     t_start_bell = T - timedelta(seconds=start_s)
 
-    tracks = _list_break_tracks(gs)
+    tracks = _list_break_tracks()
     _orch_poll_music_advance(tracks)
 
     alive, _ = _proc_alive()
@@ -526,7 +537,7 @@ def _tick_break_orchestration(
             and sound_end_url
             and not alive
         ):
-            p = gs.bell_audio_url_to_path(sound_end_url)
+            p = bell_audio_url_to_path(sound_end_url)
             if p and p.is_file():
                 rem = max(8.0, (head_end - now).total_seconds())
                 cap = min(70.0, rem, head_s + 10.0)
@@ -614,7 +625,7 @@ def _tick_break_orchestration(
 
     if t_start_bell <= now < T:
         if not _break_orch_state.get("did_start") and sound_start_url:
-            p = gs.bell_audio_url_to_path(sound_start_url)
+            p = bell_audio_url_to_path(sound_start_url)
             if p and p.is_file():
                 rem = max(5.0, (T - now).total_seconds())
                 cap = min(70.0, rem, start_s + 5.0)
@@ -685,10 +696,9 @@ def get_last_playback() -> dict[str, Any] | None:
 
 def get_break_music_playback_info() -> dict[str, Any]:
     """Снимок для админки: громкости, режим (оркестрация / простой плейлист), порядок треков и «следующий»."""
-    gs = _app()
-    cfg = gs.load_config()
-    audio = gs.sanitize_audio_stream(cfg.get("audio_stream"))
-    tracks = _list_break_tracks(gs)
+    cfg = load_config()
+    audio = sanitize_audio_stream(cfg.get("audio_stream"))
+    tracks = _list_break_tracks()
     names = [p.name for p in tracks]
     n = len(names)
 
@@ -804,9 +814,8 @@ def get_status() -> dict[str, Any]:
         "play_kind": _play_kind,
     }
     try:
-        gs = _app()
-        cfg = gs.load_config()
-        audio = gs.sanitize_audio_stream(cfg.get("audio_stream"))
+        cfg = load_config()
+        audio = sanitize_audio_stream(cfg.get("audio_stream"))
         out["pc_audio_enabled"] = bool(audio.get("enabled"))
         out["use_bell_schedule"] = bool(audio.get("use_bell_schedule"))
         out["use_bell_sound_files"] = bool(audio.get("use_bell_sound_files"))
@@ -888,15 +897,15 @@ def _pick_source_screen(cfg: dict[str, Any], audio: dict[str, Any]) -> dict[str,
     return screens[0]
 
 
-def _list_break_tracks(gs: Any) -> list[Path]:
-    d = gs.BREAK_MUSIC_DIR
+def _list_break_tracks() -> list[Path]:
+    d = BREAK_MUSIC_DIR
     exts = {".mp3", ".wav", ".ogg", ".flac", ".m4a", ".aac"}
     if not d.is_dir():
         return []
     return sorted(p for p in d.iterdir() if p.suffix.lower() in exts and p.is_file())
 
 
-def _ensure_break_queue(_gs: Any, tracks: list[Path], today_iso: str) -> None:
+def _ensure_break_queue(tracks: list[Path], today_iso: str) -> None:
     global _break_queue, _break_queue_day
     if _break_queue_day != today_iso:
         _break_queue = []
@@ -1091,9 +1100,8 @@ def play_file_async(
 
 def tick_once() -> None:
     global _logged_pc_audio_on
-    gs = _app()
-    cfg = gs.load_config()
-    audio = gs.sanitize_audio_stream(cfg.get("audio_stream"))
+    cfg = load_config()
+    audio = sanitize_audio_stream(cfg.get("audio_stream"))
     if not audio.get("enabled"):
         _logged_pc_audio_on = False
         return
@@ -1127,7 +1135,7 @@ def tick_once() -> None:
     except (TypeError, ValueError):
         vb_break = 40
 
-    status = gs.build_bell_status(screen, today)
+    status = build_bell_status(screen, today)
     orch = (
         bool(audio.get("break_music_on_breaks"))
         and bool(audio.get("use_bell_schedule"))
@@ -1136,15 +1144,15 @@ def tick_once() -> None:
 
     if audio.get("use_bell_schedule") and audio.get("use_bell_sound_files"):
         try:
-            tw = int(audio.get("bell_trigger_sec_window", gs.DEFAULT_BELL_TRIGGER_SEC_WINDOW))
+            tw = int(audio.get("bell_trigger_sec_window", DEFAULT_BELL_TRIGGER_SEC_WINDOW))
         except (TypeError, ValueError):
-            tw = gs.DEFAULT_BELL_TRIGGER_SEC_WINDOW
-        payload = gs.build_bell_audio_payload(screen, today, trigger_sec_window=tw)
+            tw = DEFAULT_BELL_TRIGGER_SEC_WINDOW
+        payload = build_bell_audio_payload(screen, today, trigger_sec_window=tw)
         sec_win = _payload_sec_window(payload, audio)
-        lead = int(gs.PRE_BELL_LEAD_MINUTES)
-        pre_fire = int(gs.PRE_BELL_FIRE_SEC_WINDOW)
-        pre_dur = float(gs.PRE_BELL_MAX_DURATION_SEC)
-        pre_fade = float(gs.PRE_BELL_AFADE_IN_SEC)
+        lead = int(PRE_BELL_LEAD_MINUTES)
+        pre_fire = int(PRE_BELL_FIRE_SEC_WINDOW)
+        pre_dur = float(PRE_BELL_MAX_DURATION_SEC)
+        pre_fade = float(PRE_BELL_AFADE_IN_SEC)
         if (
             payload.get("entries")
             and payload.get("day") == today_iso
@@ -1152,8 +1160,8 @@ def tick_once() -> None:
         ):
             for row in payload["entries"]:
                 idx = row.get("index")
-                st = gs.time_to_minutes(str(row.get("start") or "00:00"))
-                en = gs.time_to_minutes(str(row.get("end") or "00:00"))
+                st = time_to_minutes(str(row.get("start") or "00:00"))
+                en = time_to_minutes(str(row.get("end") or "00:00"))
                 base = f"{today_iso}_{idx}"
                 pre_st_min = st - lead
                 if pre_st_min >= 0 and now_mins == pre_st_min and secs < pre_fire and row.get("sound_start"):
@@ -1164,7 +1172,7 @@ def tick_once() -> None:
                         if br:
                             stop_playback_hard()
                             time_module.sleep(_AFTER_STOP_GRACE_SEC)
-                        p_pre = gs.bell_audio_url_to_path(row["sound_start"])
+                        p_pre = bell_audio_url_to_path(row["sound_start"])
                         if p_pre:
                             r_ok, r_err = play_file_async(
                                 p_pre,
@@ -1200,7 +1208,7 @@ def tick_once() -> None:
                         else:
                             k = f"{base}_s"
                             if _try_mark(k):
-                                p = gs.bell_audio_url_to_path(row["sound_start"])
+                                p = bell_audio_url_to_path(row["sound_start"])
                                 if p:
                                     stop_playback_hard()
                                     time_module.sleep(_AFTER_STOP_GRACE_SEC)
@@ -1233,7 +1241,7 @@ def tick_once() -> None:
                     else:
                         k = f"{base}_e"
                         if _try_mark(k):
-                            p = gs.bell_audio_url_to_path(row["sound_end"])
+                            p = bell_audio_url_to_path(row["sound_end"])
                             if p:
                                 stop_playback_hard()
                                 time_module.sleep(_AFTER_STOP_GRACE_SEC)
@@ -1255,7 +1263,7 @@ def tick_once() -> None:
     if orch:
         if status.get("state") in ("break", "before"):
             _tick_break_orchestration(
-                gs, screen, today, now, audio, status, today_iso, vbell, vb_break
+                screen, today, now, audio, status, today_iso, vbell, vb_break
             )
         else:
             _orch_lesson_cleanup()
@@ -1272,7 +1280,7 @@ def tick_once() -> None:
             stop_playback_hard()
         return
 
-    tracks = _list_break_tracks(gs)
+    tracks = _list_break_tracks()
     if not tracks:
         return
 
@@ -1280,7 +1288,7 @@ def tick_once() -> None:
     if alive:
         return
 
-    _ensure_break_queue(gs, tracks, today_iso)
+    _ensure_break_queue(tracks, today_iso)
     if not _break_queue:
         return
     nxt = _break_queue.pop(0)
@@ -1293,19 +1301,18 @@ def describe_pc_audio_preview(
     audio_stream_raw: dict[str, Any] | None,
 ) -> dict[str, Any]:
     """Предпросмотр: структурированные события для i18n на клиенте (ключи preview.pcAudio.*)."""
-    gs = _app()
-    audio = gs.sanitize_audio_stream(audio_stream_raw)
+    audio = sanitize_audio_stream(audio_stream_raw)
     today = date.today()
     now = datetime.now()
     today_iso = today.isoformat()
     events: list[dict[str, Any]] = []
-    tw = gs.audio_trigger_sec_window(audio)
+    tw = audio_trigger_sec_window(audio)
     try:
-        twp = int(audio.get("bell_trigger_sec_window", gs.DEFAULT_BELL_TRIGGER_SEC_WINDOW))
+        twp = int(audio.get("bell_trigger_sec_window", DEFAULT_BELL_TRIGGER_SEC_WINDOW))
     except (TypeError, ValueError):
-        twp = gs.DEFAULT_BELL_TRIGGER_SEC_WINDOW
-    payload = gs.build_bell_audio_payload(screen, today, trigger_sec_window=twp)
-    status = gs.build_bell_status(screen, today)
+        twp = DEFAULT_BELL_TRIGGER_SEC_WINDOW
+    payload = build_bell_audio_payload(screen, today, trigger_sec_window=twp)
+    status = build_bell_status(screen, today)
     st = get_status()
     now_m = now.hour * 60 + now.minute
     secs = now.second
@@ -1356,7 +1363,7 @@ def describe_pc_audio_preview(
     if orch:
         events.append({"key": "preview.pcAudio.orchIntro", "params": {}})
         if state == "before":
-            pm = int(getattr(gs, "MORNING_PRE_FIRST_LESSON_MIN", 30))
+            pm = int(MORNING_PRE_FIRST_LESSON_MIN)
             events.append({"key": "preview.pcAudio.orchMorning", "params": {"minutes": pm}})
         elif state != "break":
             events.append({"key": "preview.pcAudio.orchLesson", "params": {}})
@@ -1365,8 +1372,8 @@ def describe_pc_audio_preview(
     rows = payload.get("entries") or []
     for row in rows:
         idx = row.get("index")
-        st_m = gs.time_to_minutes(str(row.get("start") or "00:00"))
-        en_m = gs.time_to_minutes(str(row.get("end") or "00:00"))
+        st_m = time_to_minutes(str(row.get("start") or "00:00"))
+        en_m = time_to_minutes(str(row.get("end") or "00:00"))
         for lab_key, minute, url in (
             ("start", st_m, row.get("sound_start")),
             ("end", en_m, row.get("sound_end")),
@@ -1410,23 +1417,23 @@ def describe_pc_audio_preview(
             gap_cap: int | None = int(cap_raw) if cap_raw is not None else None
         except (TypeError, ValueError):
             gap_cap = None
-        gap = _find_break_gap(gs, entries, now_m, gap_cap)
+        gap = _find_break_gap(entries, now_m, gap_cap)
         if gap:
             _gap_i, ended_entry, next_entry = gap
-            next_start_m = gs.time_to_minutes(str(next_entry.get("start") or "00:00"))
-            end_m = gs.time_to_minutes(str(ended_entry.get("end") or "00:00"))
+            next_start_m = time_to_minutes(str(next_entry.get("start") or "00:00"))
+            end_m = time_to_minutes(str(ended_entry.get("end") or "00:00"))
             B = _dt_minute(today, end_m) + timedelta(minutes=1)
             T = _dt_minute(today, next_start_m)
             total_sec = (T - B).total_seconds()
             if total_sec >= 30:
-                head_s, fade_s, silence_s, start_s = _allocate_break_tail(total_sec, gs)
+                head_s, fade_s, silence_s, start_s = _allocate_break_tail(total_sec)
                 tail = fade_s + silence_s + start_s
                 head_s = min(head_s, max(10.0, total_sec - tail - 5))
                 head_end = B + timedelta(seconds=head_s)
                 music_hard_end = T - timedelta(seconds=tail)
                 t_fade_end = music_hard_end + timedelta(seconds=fade_s)
                 t_start_bell = T - timedelta(seconds=start_s)
-                tracks = _list_break_tracks(gs)
+                tracks = _list_break_tracks()
                 n = len(tracks)
                 ct = _break_global_cursor % n if n else 0
                 cur = tracks[ct].name if n else "—"
@@ -1493,8 +1500,8 @@ def describe_pc_audio_preview(
     elif not orch and audio.get("use_bell_schedule") and audio.get("use_bell_sound_files"):
         for row in rows:
             idx = row.get("index")
-            st_m = gs.time_to_minutes(str(row.get("start") or "00:00"))
-            en_m = gs.time_to_minutes(str(row.get("end") or "00:00"))
+            st_m = time_to_minutes(str(row.get("start") or "00:00"))
+            en_m = time_to_minutes(str(row.get("end") or "00:00"))
             for lab_key, minute, url in (
                 ("start", st_m, row.get("sound_start")),
                 ("end", en_m, row.get("sound_end")),

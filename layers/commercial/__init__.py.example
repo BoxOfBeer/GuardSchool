@@ -1,0 +1,39 @@
+"""Commercial layer (private) — скопируйте в __init__.py на сервере."""
+from __future__ import annotations
+
+from typing import Any
+
+from guardschool.capabilities import (
+    CAP_LICENSE_CHECK,
+    CAP_PAYMENT,
+    CAP_PRODUCTION_PORTAL,
+    CAP_REGISTRATION,
+    CAP_TARIFF_LIMITS,
+    CAP_TENANT_PROVISIONING,
+    CapabilityInfo,
+    CapabilityStatus,
+)
+
+
+def register_capabilities(registry: dict[str, CapabilityInfo]) -> None:
+    for cap_id in (
+        CAP_LICENSE_CHECK,
+        CAP_REGISTRATION,
+        CAP_PAYMENT,
+        CAP_TENANT_PROVISIONING,
+        CAP_TARIFF_LIMITS,
+        CAP_PRODUCTION_PORTAL,
+    ):
+        registry[cap_id] = CapabilityInfo(
+            status=CapabilityStatus.available,
+            message="Функция доступна (Commercial слой).",
+            module_hint="commercial",
+        )
+
+
+def register_routes(app: Any) -> None:
+    from guardschool.commercial_routes import mount_commercial_routes
+    from guardschool.layer_loader import mark_commercial_routes_mounted
+
+    mount_commercial_routes(app)
+    mark_commercial_routes_mounted()

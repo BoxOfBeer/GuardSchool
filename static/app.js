@@ -1,5 +1,11 @@
 /* Загружается как модульный dependency до остальных импортов — window.GuardSchoolScreen всегда к моменту init. */
+import "./widgets/plugins-manifest.js";
+import "./widgets/runtime.js";
+import "./widgets/carousel-runtime.js";
 import "./screen_widgets.js?v=1.02.041";
+import { TV_WIDGET_PLUGIN_SCRIPTS } from "./widgets/plugins-manifest.js";
+
+await Promise.all(TV_WIDGET_PLUGIN_SCRIPTS.map((f) => import(`./widgets/${f}`)));
 import {
   setPreviewDeps,
   fetchPreviewPayloadOnce,
@@ -62,62 +68,18 @@ import { api, downloadFile } from "./admin/api-client.js";
 import { populateAdminTimezoneSelect } from "./admin/timezone.js";
 import { escapeHtml, escapeHtmlAttr } from "./admin/escape-html.js";
 import { MAX_WIDGET_IMAGE_UPLOAD_BYTES } from "./admin/upload-limits.js";
-
-const WIDGET_TYPE_KEYS = new Set([
-  "date",
-  "time",
-  "text",
-  "bell_status",
-  "bell_countdown",
-  "schedule",
-  "carousel",
-  "holidays",
-  "announcements",
-  "school_news",
-  "rss_news",
-  "marquee",
-  "emergency",
-  "image",
-  "checkin_submit",
-  "checkin_monitor",
-]);
-
-/** Порядок чекбоксов «показывать в списке виджетов» в настройках программы. */
-const PALETTE_TYPES_ORDER = [
-  "date",
-  "time",
-  "text",
-  "bell_status",
-  "bell_countdown",
-  "schedule",
-  "carousel",
-  "holidays",
-  "announcements",
-  "school_news",
-  "rss_news",
-  "marquee",
-  "emergency",
-  "image",
-  "checkin_submit",
-  "checkin_monitor",
-];
-
-/** Как SINGLETON_WIDGET_IDS на сервере — один экземпляр типа с фиксированным id. */
-const WIDGET_SINGLETON_IDS = {
-  date: "date",
-  time: "time",
-  text: "text",
-  bell_status: "bell_status",
-  bell_countdown: "bell_countdown",
-  schedule: "schedule",
-  holidays: "holidays",
-  announcements: "announcements",
-  school_news: "school_news",
-  rss_news: "rss_news",
-  marquee: "marquee",
-  emergency: "emergency",
-  image: "image",
-};
+import {
+  applyWidgetRegistry,
+  getPaletteTypesOrder,
+  getSingletonIds,
+  getWidgetTypeKeys,
+  isWidgetAvailableInPalette,
+} from "./admin/widget-registry.js";
+import {
+  applyCapabilityGates,
+  renderCapabilitiesOverview,
+  renderWidgetRegistryIssues,
+} from "./admin/capabilities-ui.js";
 
 function ensureAdminPaletteHidden() {
   if (!state.config) return;
@@ -136,12 +98,12 @@ function isWidgetTypeHiddenInAdminPalette(wtype) {
 function setWidgetTypeHiddenInPalette(wtype, hidden) {
   ensureAdminPaletteHidden();
   const typ = String(wtype || "");
-  if (!WIDGET_TYPE_KEYS.has(typ)) return;
+  if (!getWidgetTypeKeys().has(typ)) return;
   let arr = [...state.config.admin_palette_hidden_types];
   const idx = arr.indexOf(typ);
   if (hidden && idx < 0) arr.push(typ);
   if (!hidden && idx >= 0) arr.splice(idx, 1);
-  arr = arr.filter((x) => WIDGET_TYPE_KEYS.has(x));
+  arr = arr.filter((x) => getWidgetTypeKeys().has(x));
   state.config.admin_palette_hidden_types = arr;
   ensurePaletteWidgetInstancesOnSelectedScreen();
   renderWidgets();
@@ -223,7 +185,15 @@ function renderProgramPaletteCheckboxes() {
   const wrap = elements.programSettingsPaletteWrap;
   if (!wrap || !state.config) return;
   ensureAdminPaletteHidden();
-  wrap.innerHTML = PALETTE_TYPES_ORDER.filter((typ) => WIDGET_TYPE_KEYS.has(typ))
+  const customHint =
+    state.meta?.deployment_mode === "local"
+      ? `<p class="hint program-settings-custom-widgets-hint">Сторонние виджеты не входят в официальный набор GuardSchool. Они могут быть полезны, но администрация проекта не гарантирует их работу, безопасность и совместимость с будущими версиями. Каталог: <code>custom_widgets/</code> или <code>GUARDSCHOOL_CUSTOM_WIDGETS_DIR</code>.</p>`
+      : "";
+  const caps = state.meta?.capabilities || {};
+  wrap.innerHTML =
+    customHint +
+    getPaletteTypesOrder()
+      .filter((typ) => getWidgetTypeKeys().has(typ) && isWidgetAvailableInPalette(typ, caps))
     .map((typ) => {
       const id = `palette-show-${typ}`;
       const checked = !isWidgetTypeHiddenInAdminPalette(typ);
@@ -363,7 +333,7 @@ async function refreshTvAccessUi() {
       elements.tvPinBypassChk.removeAttribute("data-loading");
     }
     if (elements.tvCodeOut) {
-      const head = tslug ? `Организация (тенант): ${tslug}\n\n` : "";
+      const head = tslug ? `${tf("admin.tv.tenantHead", { slug: tslug })}\n\n` : "";
       const envHint = state.tvPinBypassEnv
         ? "\n\nНа сервере задан GUARDSCHOOL_TV_PAIR_BYPASS_PIN — обход PIN включён в окружении; чекбокс ниже заблокирован.\n"
         : "";
@@ -371,10 +341,10 @@ async function refreshTvAccessUi() {
         head +
         envHint +
         (code
-          ? `КОД ШКОЛЫ:\n${code}\n\nСсылки ниже готовы. «Сгенерировать код» отменяет старые ссылки и QR.`
+          ? tf("admin.tv.connectCodeActive", { code })
           : configured
-            ? "Код подключения уже сгенерирован, но не может быть показан. Нажмите «Сгенерировать код», чтобы установить новый код."
-            : "Код подключения ещё не создан. Нажмите «Сгенерировать код», затем задайте PIN.");
+            ? t("admin.tv.connectCodeHidden")
+            : t("admin.tv.connectCodeMissing"));
     }
   } catch (e) {
     if (elements.tvCodeOut) elements.tvCodeOut.textContent = `Ошибка: ${e.message || String(e)}`;
@@ -436,6 +406,19 @@ function hydrateProgramSettingsPanelIfOpen() {
   setProgramSettingsTab(getStoredProgramSettingsTab());
   syncProgramSettingsFieldsFromState();
   renderProgramPaletteCheckboxes();
+  if (state.meta?.deployment_mode !== "saas") {
+    applyCapabilityGates(state.meta?.capabilities, {
+      cloudBaseUrl: elements.cloudBaseUrl,
+      cloudSyncInterval: elements.cloudSyncInterval,
+      cloudSyncEnabled: elements.cloudSyncEnabled,
+      cloudSyncToken: elements.cloudSyncToken,
+      syncNowBtn: elements.syncNowBtn,
+      screenFallbackBase: elements.screenFallbackBase,
+      screenFallbackEnabled: elements.screenFallbackEnabled,
+    });
+  }
+  renderCapabilitiesOverview(state.meta?.capabilities, elements.capabilitiesOverview);
+  renderWidgetRegistryIssues(state.meta?.widget_registry, elements.widgetRegistryIssues);
   refreshSyncStatusLine().catch(() => {});
   refreshTvAccessUi().catch(() => {});
   try {
@@ -510,12 +493,12 @@ function bindProgramSettingsModalOnce() {
       const ip = String(r.initial_pin || "").trim();
       _tvLastCode = code;
       if (elements.tvCodeOut) {
-        const pinLine = ip ? `\n\nPIN ТВ (показан один раз):\n${ip}\n` : "";
+        const pinLine = ip ? `\n\n${tf("admin.tv.pinOnce", { pin: ip })}\n` : "";
         const hint = r.pin_hint ? `\n${String(r.pin_hint)}` : "";
         const ts = String(r.tenant_slug || "").trim();
-        const head = ts ? `Организация (тенант): ${ts}\n\n` : "";
+        const head = ts ? `${tf("admin.tv.tenantHead", { slug: ts })}\n\n` : "";
         elements.tvCodeOut.textContent =
-          `${head}КОД ШКОЛЫ:\n${code}\n\nСохраните код и обновите QR/ссылки. Старый код перестаёт работать.${pinLine}${hint}`;
+          `${head}${tf("admin.tv.connectCodeRotated", { code })}${pinLine}${hint}`;
       }
       renderTvLinks(code);
     } catch (e) {
@@ -685,7 +668,7 @@ function createDefaultScreen(index) {
       {
         id: "bell_status",
         type: "bell_status",
-        title: "Звонки",
+        title: "Сигналы",
         enabled: true,
         x: 24, y: 10, w: 8, h: 3,
         settings: { fontSize: 18, titleFontSize: 18, color: "#ffffff", background: "rgba(15,23,42,0.55)", bold: false },
@@ -850,8 +833,10 @@ function ensurePaletteWidgetInstancesOnSelectedScreen() {
   const sc = selectedScreen();
   if (!sc || !state.config) return;
   if (!Array.isArray(sc.widgets)) sc.widgets = [];
-  for (const typ of PALETTE_TYPES_ORDER) {
-    if (!WIDGET_TYPE_KEYS.has(typ)) continue;
+  const caps = state.meta?.capabilities || {};
+  for (const typ of getPaletteTypesOrder()) {
+    if (!getWidgetTypeKeys().has(typ)) continue;
+    if (!isWidgetAvailableInPalette(typ, caps)) continue;
     if (isWidgetTypeHiddenInAdminPalette(typ)) continue;
     const has = (sc.widgets || []).some((w) => w && String(w.type) === typ);
     if (has) continue;
@@ -866,8 +851,9 @@ function createWidgetStubForPaletteType(typ) {
   const sc = selectedScreen();
   if (!sc || !typ) return null;
   const typeKey = String(typ);
-  if (WIDGET_SINGLETON_IDS[typeKey]) {
-    const expectId = WIDGET_SINGLETON_IDS[typeKey];
+  const singletonIds = getSingletonIds();
+  if (singletonIds[typeKey]) {
+    const expectId = singletonIds[typeKey];
     if (screenHasSingletonId(sc, expectId)) {
       return null;
     }
@@ -2006,6 +1992,32 @@ function getSchoolNewsBodyHtmlForPreview() {
   return getSchoolNewsRichEditorHtml() || String(elements.schoolNewsContent?.value || "").trim();
 }
 
+function getSchoolNewsLayoutFromForm() {
+  return {
+    image_width_percent: elements.schoolNewsImageWidth?.value,
+    image_max_height_px: elements.schoolNewsImageMaxHeight?.value,
+    single_image_text_wrap: elements.schoolNewsImageWrap?.checked,
+  };
+}
+
+function setSchoolNewsLayoutForm(row) {
+  const w = row?.image_width_percent ?? row?.imageWidthPercent ?? 32;
+  const h = row?.image_max_height_px ?? row?.imageMaxHeightPx ?? 200;
+  const wrap = row?.single_image_text_wrap ?? row?.singleImageTextWrap;
+  if (elements.schoolNewsImageWidth) elements.schoolNewsImageWidth.value = String(w);
+  if (elements.schoolNewsImageMaxHeight) elements.schoolNewsImageMaxHeight.value = String(h);
+  if (elements.schoolNewsImageWrap) elements.schoolNewsImageWrap.checked = wrap !== false;
+}
+
+function schoolNewsPreviewImageLayout() {
+  const H = window.GuardSchoolWidgets && window.GuardSchoolWidgets.helpers;
+  const settings = getSchoolNewsLayoutFromForm();
+  if (H && typeof H.schoolNewsImageLayoutSettings === "function") {
+    return H.schoolNewsImageLayoutSettings(settings);
+  }
+  return { widthPct: 32, maxHeightPx: 140, wrapSingle: true };
+}
+
 function refreshSchoolNewsHybridPreview() {
   const box = elements.schoolNewsHybridPreview;
   if (!box) return;
@@ -2015,19 +2027,30 @@ function refreshSchoolNewsHybridPreview() {
   const urls = getSchoolNewsGalleryUrls().filter(Boolean);
   const bodyRaw = getSchoolNewsBodyHtmlForPreview();
   const bodySafe = schoolNewsDisplayAdminPreview(bodyRaw);
-  let mediaImgs = "";
-  if (cover) {
-    mediaImgs += `<img class="sn-hp-side-img" src="${escapeHtmlAttr(cover)}" alt="">`;
-  }
-  for (let hi = 0; hi < urls.length; hi++) {
-    mediaImgs += `<img class="sn-hp-side-img" src="${escapeHtmlAttr(urls[hi])}" alt="">`;
+  const mediaUrls = [];
+  if (cover) mediaUrls.push(cover);
+  for (let hi = 0; hi < urls.length; hi++) mediaUrls.push(urls[hi]);
+  const imgLayout = schoolNewsPreviewImageLayout();
+  const useWrap = imgLayout.wrapSingle && mediaUrls.length === 1;
+  const sideImgStyle = `max-height:${imgLayout.maxHeightPx}px;`;
+  let mediaBlock = "";
+  if (mediaUrls.length) {
+    if (useWrap) {
+      mediaBlock = `<img class="sn-hp-float-img" style="width:${imgLayout.widthPct}%;max-height:${imgLayout.maxHeightPx}px;" src="${escapeHtmlAttr(mediaUrls[0])}" alt="">`;
+    } else {
+      const imgs = mediaUrls
+        .map((u) => `<img class="sn-hp-side-img" style="${sideImgStyle}" src="${escapeHtmlAttr(u)}" alt="">`)
+        .join("");
+      mediaBlock = `<div class="sn-hp-media" style="width:${imgLayout.widthPct}%;max-width:none;">${imgs}</div>`;
+    }
   }
   const bodyBlock = bodySafe
     ? `<div class="sn-hp-body">${bodySafe}</div>`
     : `<div class="sn-hp-body hint" style="opacity:.75">Текст новости (пусто)</div>`;
-  const row = mediaImgs
-    ? `<div class="sn-hp-row"><div class="sn-hp-media">${mediaImgs}</div>${bodyBlock}</div>`
-    : `<div class="sn-hp-row sn-hp-row--nomedia">${bodyBlock}</div>`;
+  let rowClass = "sn-hp-row";
+  if (!mediaBlock) rowClass += " sn-hp-row--nomedia";
+  else if (useWrap) rowClass += " sn-hp-row--wrap";
+  const row = `<div class="${rowClass}">${mediaBlock}${bodyBlock}</div>`;
   box.innerHTML = `<div class="sn-hp-title">${title}</div><div class="sn-hp-meta">${dt || "—"}</div>${row}`;
 }
 
@@ -2128,6 +2151,15 @@ function bindSchoolNewsGalleryAndPreviewOnce() {
   if (elements.schoolNewsDate) {
     elements.schoolNewsDate.addEventListener("input", () => scheduleSchoolNewsHybridPreview());
   }
+  if (elements.schoolNewsImageWidth) {
+    elements.schoolNewsImageWidth.addEventListener("input", () => scheduleSchoolNewsHybridPreview());
+  }
+  if (elements.schoolNewsImageMaxHeight) {
+    elements.schoolNewsImageMaxHeight.addEventListener("input", () => scheduleSchoolNewsHybridPreview());
+  }
+  if (elements.schoolNewsImageWrap) {
+    elements.schoolNewsImageWrap.addEventListener("change", () => scheduleSchoolNewsHybridPreview());
+  }
 }
 
 function resetSchoolNewsForm() {
@@ -2136,6 +2168,7 @@ function resetSchoolNewsForm() {
   if (elements.schoolNewsDate) elements.schoolNewsDate.value = new Date().toISOString().slice(0, 10);
   if (elements.schoolNewsCover) elements.schoolNewsCover.value = "";
   if (elements.schoolNewsActive) elements.schoolNewsActive.checked = true;
+  setSchoolNewsLayoutForm({});
   setSchoolNewsGalleryUrls([]);
   setSchoolNewsEditorContent("");
   state.editingSchoolNewsId = "";
@@ -2742,6 +2775,9 @@ function bindForm() {
         cover_image: String(elements.schoolNewsCover?.value || "").trim(),
         gallery_images: getSchoolNewsGalleryUrls().filter(Boolean),
         is_active: Boolean(elements.schoolNewsActive?.checked),
+        image_width_percent: Number(elements.schoolNewsImageWidth?.value || 32),
+        image_max_height_px: Number(elements.schoolNewsImageMaxHeight?.value || 200),
+        single_image_text_wrap: Boolean(elements.schoolNewsImageWrap?.checked),
         content: getSchoolNewsEditorContent(),
       };
       if (!payload.title || !payload.content) {
@@ -2778,6 +2814,7 @@ function bindForm() {
         elements.schoolNewsActive.checked = row.is_active !== false;
         const gal = Array.isArray(row.gallery_images) ? row.gallery_images : [];
         setSchoolNewsGalleryUrls(gal);
+        setSchoolNewsLayoutForm(row);
         setSchoolNewsEditorContent(String(row.content || ""));
         scheduleSchoolNewsHybridPreview();
         return;
@@ -2868,6 +2905,7 @@ async function init() {
     api("/api/admin/bell-sounds").catch(() => ({ files: [] })),
   ]);
   state.meta = config?._meta || state.meta;
+  if (state.meta?.widget_registry) applyWidgetRegistry(state.meta.widget_registry);
   if (config && typeof config === "object") delete config._meta;
   state.config = config;
   ensureEmergencyConfig();
@@ -2888,6 +2926,22 @@ async function init() {
     hide(elements.cloudSyncToken);
     if (elements.syncStatusLine) elements.syncStatusLine.hidden = true;
     if (elements.syncNowBtn) elements.syncNowBtn.hidden = true;
+  } else {
+    applyCapabilityGates(state.meta?.capabilities, {
+      cloudBaseUrl: elements.cloudBaseUrl,
+      cloudSyncInterval: elements.cloudSyncInterval,
+      cloudSyncEnabled: elements.cloudSyncEnabled,
+      cloudSyncToken: elements.cloudSyncToken,
+      syncNowBtn: elements.syncNowBtn,
+      screenFallbackBase: elements.screenFallbackBase,
+      screenFallbackEnabled: elements.screenFallbackEnabled,
+    });
+  }
+  renderCapabilitiesOverview(state.meta?.capabilities, elements.capabilitiesOverview);
+  renderWidgetRegistryIssues(state.meta?.widget_registry, elements.widgetRegistryIssues);
+  const mig = state.meta?.widget_registry?.migration_warnings;
+  if (Array.isArray(mig) && mig.length) {
+    console.warn("[widget_registry]", mig.join("; "));
   }
   ensureAdminPaletteHidden();
   ensureAudioStreamConfig();

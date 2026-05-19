@@ -99,6 +99,12 @@ export async function fetchPreviewPayloadOnce() {
       display: res.display || null,
       displayScreen: res.screen && typeof res.screen === "object" ? res.screen : null,
     };
+    try {
+      const g = window.GuardSchoolScreen;
+      if (g && g.setWidgetTypesAvailable && Array.isArray(res.widget_types_available)) {
+        g.setWidgetTypesAvailable(res.widget_types_available);
+      }
+    } catch (_) {}
     state.previewCacheScreenId = screen.id;
     if (state.activeSection === "preview") {
       renderPreview();

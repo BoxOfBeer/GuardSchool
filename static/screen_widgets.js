@@ -1,22 +1,9 @@
 (function (global) {
-  const carouselState = new Map();
   const marqueeState = new Map();
   // announcementsState: widgetId -> { contentKey, order, pos, lastIdx }
   const announcementsState = new Map();
   // schoolNewsState: widgetId -> { contentKey, order, pos, lastIdx, currentIdx }
   const schoolNewsState = new Map();
-  const RANDOM_CAROUSEL_ANIMATIONS = [
-    "slide",
-    "slideUp",
-    "slideDown",
-    "slideFromLeft",
-    "fade",
-    "zoom",
-    "blurSoft",
-    "flipLight",
-    "rotateIn",
-  ];
-
   /** Совпадает с :root --schedule-fg / --schedule-surface / --muted в styles-tv.css и styles.css (инлайн без var() для ТВ). */
   const SCHEDULE_THEME = Object.freeze({
     fg: "#0f172a",
@@ -24,22 +11,19 @@
     sectionTitle: "#cbd5e1",
   });
 
+  function carouselApi() {
+    return global.GuardSchoolWidgets && global.GuardSchoolWidgets.carousel;
+  }
+
   function clearCarouselTimeouts() {
-    for (const st of carouselState.values()) {
-      if (st.timerId) clearTimeout(st.timerId);
-      if (st.animTimeout) clearTimeout(st.animTimeout);
-      st.timerId = null;
-      st.animTimeout = null;
-    }
+    const c = carouselApi();
+    if (c && c.clearTimeouts) c.clearTimeouts();
   }
 
   /** Удалить состояние каруселей, которых уже нет в конфиге экрана. */
   function pruneStaleCarouselState(screen) {
-    const widgets = (screen && screen.widgets) || [];
-    const allowed = new Set(widgets.filter((w) => w.type === "carousel").map((w) => w.id));
-    for (const id of [...carouselState.keys()]) {
-      if (!allowed.has(id)) carouselState.delete(id);
-    }
+    const c = carouselApi();
+    if (c && c.prune) c.prune(screen);
   }
 
   function pruneStaleMarqueeState(screen) {
@@ -81,55 +65,62 @@
     return String(uiLocale || "ru").toLowerCase() === "en" ? "en-GB" : "ru-RU";
   }
 
-  /** Подписи виджетов и служебные строки на ТВ — по display.ui_locale (без отдельного JSON). */
-  const TV_UI = {
+  /** Подписи на ТВ: static/tv-locales.js (GuardSchoolTvLocales), иначе встроенный fallback. */
+  const TV_UI_FALLBACK = {
     ru: {
       noData: "Нет данных",
-      lessonColumn: "Урок",
-      bells: "Звонки",
-      countdown: "До звонка",
+      lessonColumn: "Слот",
+      bells: "Сигналы",
+      countdown: "До сигнала",
       events: "События",
       announcements: "Объявления",
       schoolNews: "Новости",
       rssNews: "RSS-лента",
       noAnnouncements: "Нет объявлений",
       noSchoolNews: "Нет новостей",
-      qr: "QR на новость",
+      qr: "QR на материал",
       noRssNews: "Нет новостей",
       scheduleDefault: "Расписание",
-      nextSchoolDay: "Следующий учебный день:",
+      nextSchoolDay: "Следующий рабочий день:",
       carouselBlank: "Пауза (фон)",
       imageEmpty: "Нет изображения (добавьте файл или URL)",
       imageAlt: "изображение",
       carouselNoSlides: "Слайды не выбраны",
       emergencyTimeLeft: "Осталось времени:",
+      widgetMissing: "Виджет {{type}} отсутствует.",
+      widgetError: "Ошибка виджета {{type}}.",
     },
     en: {
       noData: "No data",
-      lessonColumn: "Lesson",
-      bells: "Bells",
-      countdown: "Countdown",
+      lessonColumn: "Slot",
+      bells: "Signals",
+      countdown: "Until signal",
       events: "Events",
       announcements: "Announcements",
-      schoolNews: "School news",
+      schoolNews: "News",
       rssNews: "RSS feed",
       noAnnouncements: "No announcements",
       noSchoolNews: "No news",
       qr: "QR to article",
       noRssNews: "No news",
       scheduleDefault: "Schedule",
-      nextSchoolDay: "Next school day:",
+      nextSchoolDay: "Next schedule day:",
       carouselBlank: "Pause (background)",
       imageEmpty: "No image (add a file or URL)",
       imageAlt: "image",
       carouselNoSlides: "No slides selected",
       emergencyTimeLeft: "Time left:",
+      widgetMissing: "Widget {{type}} is missing.",
+      widgetError: "Widget {{type}} error.",
     },
   };
 
   function tvUiStrings() {
     const ui = String(getDisplayFromPayload().ui_locale || "ru").toLowerCase();
-    return TV_UI[ui === "en" ? "en" : "ru"];
+    const lang = ui === "en" ? "en" : "ru";
+    const ext = typeof globalThis !== "undefined" && globalThis.GuardSchoolTvLocales;
+    if (ext && ext[lang]) return ext[lang];
+    return TV_UI_FALLBACK[lang];
   }
 
   function adjustedDateFromDisplay() {
@@ -269,6 +260,56 @@
     const n = Number(s.fontSize);
     const hasFs = Number.isFinite(n) && n >= 10 && n <= 48;
     return hasFs ? "" : " gs-checkin--font-fluid";
+  }
+
+  function renderCheckinSubmitWidget(widget) {
+    const ws = widget.settings || {};
+    const title = escapeHtml(String(ws.labels && ws.labels.module_title ? ws.labels.module_title : "Оперативная отметка"));
+    const saveLbl = escapeHtml(String(ws.labels && ws.labels.save ? ws.labels.save : "Сохранить"));
+    const fluid = checkinWidgetRootFluidClass(ws);
+    const rootStyle = checkinWidgetRootStyle(ws);
+    return `<div class="gs-checkin-submit${fluid}" data-gs-checkin-role="submit" style="${rootStyle}">
+        <div class="gs-checkin-submit-title">${title}</div>
+        <label style="display:flex;flex-direction:column;gap:4px;"><span data-lbl="device">${escapeHtml(String(ws.labels && ws.labels.device_name ? ws.labels.device_name : "Имя"))}</span>
+          <input type="text" class="gs-checkin-device standard-input" maxlength="200" style="width:100%;box-sizing:border-box;" /></label>
+        <label style="display:flex;flex-direction:column;gap:4px;"><span data-lbl="place">${escapeHtml(String(ws.labels && ws.labels.place ? ws.labels.place : "Место"))}</span>
+          <select class="gs-checkin-place standard-input" style="width:100%;"></select></label>
+        <div class="gs-checkin-levels-wrap"><span data-lbl="state">${escapeHtml(String(ws.labels && ws.labels.state ? ws.labels.state : "Состояние"))}</span>
+          <div class="gs-checkin-levels"></div></div>
+        <label style="display:flex;flex-direction:column;gap:4px;"><span data-lbl="comment">${escapeHtml(String(ws.labels && ws.labels.comment ? ws.labels.comment : "Комментарий"))}</span>
+          <textarea class="gs-checkin-comment standard-input" rows="2" maxlength="4000" style="width:100%;resize:vertical;box-sizing:border-box;"></textarea></label>
+        <div class="gs-checkin-actions" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:4px;">
+          <button type="button" class="gs-checkin-send primary-btn">${escapeHtml(String(ws.labels && ws.labels.submit ? ws.labels.submit : "Отправить"))}</button>
+          <button type="button" class="gs-checkin-save secondary-btn compact-btn">${saveLbl}</button>
+        </div>
+        <div class="gs-checkin-recent"></div>
+        <div class="gs-checkin-status hint" style="min-height:1.2em;"></div>
+      </div>`;
+  }
+
+  function renderCheckinMonitorWidget(widget) {
+    const ws = widget.settings || {};
+    const pt = escapeHtml(String(ws.panel_title || "Сводка мест"));
+    const fluid = checkinWidgetRootFluidClass(ws);
+    const rootStyle = checkinWidgetRootStyle(ws);
+    return `<div class="gs-checkin-monitor${fluid}" data-gs-checkin-role="monitor" style="${rootStyle}">
+        <div class="gs-checkin-toolbar">
+          <strong class="gs-checkin-panel-heading">${pt}</strong>
+          <div class="gs-checkin-toolbar-actions">
+            <label class="gs-checkin-period-label"><span>Период</span>
+              <select class="gs-checkin-period standard-input">
+                <option value="day">День</option>
+                <option value="week">Неделя</option>
+                <option value="month">Месяц</option>
+              </select>
+            </label>
+            <button type="button" class="gs-checkin-confirm-all secondary-btn compact-btn">Подтвердить всех</button>
+            <button type="button" class="gs-checkin-export secondary-btn compact-btn">CSV</button>
+          </div>
+        </div>
+        <div class="gs-checkin-monitor-summary"></div>
+        <div class="gs-checkin-monitor-journal"></div>
+      </div>`;
   }
 
   /** Как на сервере: первая буква предмета — заглавная (в т.ч. после BOM/пробелов); дублируем здесь, чтобы ТВ не зависел от перезапуска сервера и кэша. */
@@ -695,6 +736,19 @@
   `;
   }
 
+  function schoolNewsImageLayoutSettings(source) {
+    const s = source || {};
+    let widthPct = Number(s.image_width_percent != null ? s.image_width_percent : s.imageWidthPercent);
+    if (!Number.isFinite(widthPct)) widthPct = 32;
+    widthPct = Math.max(15, Math.min(55, Math.round(widthPct)));
+    let maxHeightPx = Number(s.image_max_height_px != null ? s.image_max_height_px : s.imageMaxHeightPx);
+    if (!Number.isFinite(maxHeightPx)) maxHeightPx = 200;
+    maxHeightPx = Math.max(80, Math.min(400, Math.round(maxHeightPx)));
+    const wrapRaw = s.single_image_text_wrap != null ? s.single_image_text_wrap : s.singleImageTextWrap;
+    const wrapSingle = wrapRaw !== false;
+    return { widthPct, maxHeightPx, wrapSingle };
+  }
+
   function buildSchoolNews(widget, schoolNews = [], screen = null, ctx = null) {
     const L = tvUiStrings();
     const settings = widget.settings || {};
@@ -724,19 +778,32 @@
     const mediaUrls = [];
     if (cover) mediaUrls.push(cover);
     for (let gi = 0; gi < galleryList.length; gi++) mediaUrls.push(galleryList[gi]);
-    const mediaCol = mediaUrls.length
-      ? `<div class="gs-school-news-media">${mediaUrls
+    const imgLayout = schoolNewsImageLayoutSettings(item);
+    const useWrap = imgLayout.wrapSingle && mediaUrls.length === 1;
+    const sideImgStyle = `max-height:${imgLayout.maxHeightPx}px;`;
+    let mediaBlock = "";
+    if (mediaUrls.length) {
+      if (useWrap) {
+        const src = schoolNewsImageSrcWithV(mediaUrls[0], item);
+        if (src) {
+          mediaBlock = `<img class="gs-school-news-float-img" style="width:${imgLayout.widthPct}%;max-height:${imgLayout.maxHeightPx}px;" src="${escapeHtmlAttr(src)}" alt="">`;
+        }
+      } else {
+        mediaBlock = `<div class="gs-school-news-media" style="width:${imgLayout.widthPct}%;max-width:none;">${mediaUrls
           .map((raw) => {
             const src = schoolNewsImageSrcWithV(raw, item);
             return src
-              ? `<img class="gs-school-news-side-img" src="${escapeHtmlAttr(src)}" alt="">`
+              ? `<img class="gs-school-news-side-img" style="${sideImgStyle}" src="${escapeHtmlAttr(src)}" alt="">`
               : "";
           })
-          .join("")}</div>`
-      : "";
+          .join("")}</div>`;
+      }
+    }
     const created = String(item.created_at || "").trim();
     const createdLabel = created ? formatDateLabel(created) : "";
-    const rowClass = mediaCol ? "gs-school-news-row" : "gs-school-news-row gs-school-news-row--nomedia";
+    let rowClass = "gs-school-news-row";
+    if (!mediaBlock) rowClass += " gs-school-news-row--nomedia";
+    else if (useWrap) rowClass += " gs-school-news-row--wrap";
     const bodyWeight = settings.bold ? "font-weight:600;" : "";
     return `<article class="gs-school-news-card" style="background:${settings.background};color:${settings.color};font-family:${emojiFont};">
       <div class="gs-school-news-head">
@@ -744,7 +811,7 @@
         <div class="gs-school-news-date">${createdLabel}</div>
       </div>
       <div class="${rowClass}">
-        ${mediaCol}
+        ${mediaBlock}
         <div class="gs-school-news-body" style="font-size:${bodyFs}px;${bodyWeight}">${bodyHtml || summaryFallback || escapeHtml(L.noSchoolNews)}</div>
       </div>
       <div class="gs-school-news-foot">${rows.length > 1 ? `${Math.min(rows.length, (st && st.pos ? st.pos : 1))}/${rows.length}` : ""}</div>
@@ -822,224 +889,60 @@
           const L = tvUiStrings();
           return { id: "__blank__", type: "blank", title: L.carouselBlank, enabled: true, settings: {} };
         }
-        return byId.get(id);
+        const child = byId.get(id);
+        if (!child) return null;
+        if (registryKnownTypes && !registryKnown(child.type)) return null;
+        return child;
       })
       .filter(Boolean);
   }
 
-  function carouselSlideDurationMs(widget, childWidget) {
-    const map = widget.settings && widget.settings.childSlideSec;
-    const cid = childWidget ? String(childWidget.id) : "";
-    if (map && cid && map[cid] != null) {
-      const sec = Number(map[cid]);
-      if (Number.isFinite(sec) && sec > 0) return Math.max(3000, sec * 1000);
+  /** null = все типы из JS-рендера допустимы (до первого poll). */
+  let registryKnownTypes = null;
+
+  function setWidgetTypesAvailable(types) {
+    if (Array.isArray(types)) {
+      registryKnownTypes = new Set(types.map((t) => String(t)));
+    } else {
+      registryKnownTypes = null;
     }
-    const legacy = Number(widget.settings && widget.settings.intervalSec);
-    if (Number.isFinite(legacy) && legacy > 0) return Math.max(3000, legacy * 1000);
-    return Math.max(3000, 180 * 1000);
   }
 
-  function renderWidgetHtml(widget, schedule, screen, holidays = [], announcements = [], marquee = [], schoolNews = [], rssNews = [], ctx = null) {
+  function registryKnown(widgetType) {
+    const t = String(widgetType || "");
+    if (!registryKnownTypes) return true;
+    return registryKnownTypes.has(t);
+  }
+
+  function renderWidgetMissingPlaceholder(widget) {
+    const typ = escapeHtml(String((widget && widget.type) || "?"));
+    const L = tvUiStrings();
+    const msg = L.widgetMissing || `Виджет ${typ} отсутствует.`;
+    return `<div class="widget-missing widget-meta">${msg}</div>`;
+  }
+
+  function renderWidgetErrorPlaceholder(widget, err) {
+    const typ = escapeHtml(String((widget && widget.type) || "?"));
+    const detail = err && err.message ? escapeHtml(String(err.message)) : "";
+    const L = tvUiStrings();
+    const msg = L.widgetError || `Ошибка виджета ${typ}.`;
+    return `<div class="widget-error widget-meta">${msg}${detail ? `<div class="widget-error-detail">${detail}</div>` : ""}</div>`;
+  }
+
+  function widgetEffectiveType(widget) {
+    const rk = widget && widget.render_key != null ? String(widget.render_key).trim() : "";
+    if (rk) return rk;
+    return String((widget && widget.type) || "");
+  }
+
+  function renderWidgetHtmlImpl(widget, schedule, screen, holidays = [], announcements = [], marquee = [], schoolNews = [], rssNews = [], ctx = null) {
     const L = tvUiStrings();
     const weight = widget.settings.bold ? "font-weight:700;" : "";
-    if (widget.type === "emergency") {
-      const s = widget.settings || {};
-      const bg = String(s.background || "#b91c1c").trim();
-      const raw = String(s.text || "");
-      const htmlBody = raw
-        .split("\n")
-        .map((line) => escapeHtml(line))
-        .join("<br>") || "&nbsp;";
-      const fs = Math.max(10, Math.min(200, Number(s.fontSize) || 42));
-      const color = String(s.color || "#ffffff").trim();
-      const imgUrl = String(s.imageUrl || "").trim();
-      const cap = String(s.imageCaption || "").trim();
-      const capHtml = cap
-        ? `<div class="emergency-overlay-caption" style="font-size:${Math.max(10, Math.round(fs * 0.35))}px;opacity:0.95;margin-top:12px;">${escapeHtml(cap)}</div>`
-        : "";
-      const imgBlock =
-        imgUrl && /^\/uploads\//.test(imgUrl)
-          ? `<div class="emergency-overlay-image-wrap"><img class="emergency-overlay-image" src="${escapeHtmlAttr(imgUrl)}" alt="" /></div>`
-          : "";
-      const timerRaw = Number(s.timerRemainingSec != null ? s.timerRemainingSec : (s.timer_seconds != null ? s.timer_seconds : s.timerSeconds));
-      const timerSec = Number.isFinite(timerRaw) ? Math.max(0, Math.round(timerRaw)) : 0;
-      const timerLabel = timerSec > 0 || s.timerShowZero === true
-        ? `<div class="emergency-overlay-timer-wrap"><div class="emergency-overlay-timer-title">${escapeHtml(L.emergencyTimeLeft || "Осталось времени:")}</div><div class="emergency-overlay-timer" data-emergency-countdown="1" data-seconds-left="${timerSec}">${escapeHtml(formatEmergencyCountdown(timerSec))}</div></div>`
-        : "";
-      return `<div class="emergency-overlay-inner" style="background:${bg};color:${color};font-size:${fs}px;${weight}"><div class="emergency-overlay-stack"><div class="emergency-overlay-text">${htmlBody}</div>${timerLabel}${imgBlock}${capHtml}</div></div>`;
-    }
-    if (widget.type === "image") {
-      const s = widget.settings || {};
-      const rawList = Array.isArray(s.images) ? s.images : [];
-      const legacy = String(s.imageUrl || "").trim();
-      const slides = (rawList.length
-        ? rawList
-        : legacy
-          ? [{ name: "", url: legacy }]
-          : []
-      )
-        .map((it) => ({
-          name: String(it && it.name != null ? it.name : "").trim(),
-          url: String(it && it.url != null ? it.url : "").trim(),
-        }))
-        .filter((it) => it.url);
-      const opacityPct = Math.max(0, Math.min(100, Number(s.opacity != null ? s.opacity : 85)));
-      const op = opacityPct / 100;
-      const fit = s.objectFit === "cover" ? "cover" : "contain";
-      if (!slides.length) {
-        return `<div class="image-widget-empty widget-meta">${L.imageEmpty}</div>`;
-      }
-      const rotateSec = Math.max(0, Number(s.imagesRotateSec) || 0);
-      let idx = 0;
-      if (slides.length > 1 && rotateSec >= 1) {
-        const slot = Math.floor(Date.now() / 1000 / rotateSec);
-        idx = slot % slides.length;
-      }
-      const pick = slides[idx];
-      const url = pick.url;
-      const label = escapeHtmlAttr(pick.name || L.imageAlt);
-      return `<div class="image-widget-root" style="opacity:${op};width:100%;height:100%;display:flex;align-items:center;justify-content:center;overflow:hidden;">
-    <img class="image-widget-img" src="${escapeHtmlAttr(url)}" alt="${label}" style="object-fit:${fit};max-width:100%;max-height:100%;width:100%;height:100%;pointer-events:none;" />
-  </div>`;
-    }
-    if (widget.type === "date") {
-      return `<div class="widget-center-text" style="font-size:${widget.settings.fontSize}px;color:${widget.settings.color};${weight}">${formatWidgetDateLine()}</div>`;
-    }
-    if (widget.type === "time") {
-      return `<div class="gs-screen-clock widget-center-text" style="font-size:${widget.settings.fontSize}px;color:${widget.settings.color};${weight}"></div>`;
-    }
-    if (widget.type === "text") {
-      return `<div class="widget-center-text" style="font-size:${widget.settings.fontSize}px;color:${widget.settings.color};${weight}">${widget.settings.text}</div>`;
-    }
-    if (widget.type === "blank") {
-      return `<div class="widget-center-text"></div>`;
-    }
-    if (widget.type === "bell_status") {
-      return buildBellStatus(schedule.bell_status, widget.settings);
-    }
-    if (widget.type === "bell_countdown") {
-      return buildBellCountdown(schedule.bell_status, widget.settings);
-    }
-    if (widget.type === "schedule") {
-      const ws = widget.settings || {};
-      const title = schedule.bell_status?.schedule_title || L.scheduleDefault;
-      const nextDayTitle = `${L.nextSchoolDay} ${formatDateLabel(schedule.next_school_day)}`;
-      // «done» = день по звонкам закончен — тогда таблицу «сегодня» не показываем (остаётся «завтра»).
-      // Если слотов звонков нет, сервер раньше оставлял state «done» по умолчанию — таблица пропадала зря; учитываем entries.
-      const bellEntries = schedule.bell_status && Array.isArray(schedule.bell_status.entries)
-        ? schedule.bell_status.entries
-        : [];
-      const hideTodayAsSchoolDayOver =
-        schedule.bell_status?.state === "done" && bellEntries.length > 0;
-      const hasTodayRows = Array.isArray(schedule.today_rows) && schedule.today_rows.length > 0;
-      const hasTomorrowRows = Array.isArray(schedule.tomorrow_rows) && schedule.tomorrow_rows.length > 0;
-      const todayBlock = hideTodayAsSchoolDayOver || !hasTodayRows
-        ? ""
-        : buildScheduleTable(schedule.today_rows, title, ws);
-      const showTomorrowBlock = ws.showTomorrow !== false
-        && schedule.tomorrow_schedule_visible !== false;
-      const tomorrowBlock = showTomorrowBlock && hasTomorrowRows
-        ? buildScheduleTable(schedule.tomorrow_rows, nextDayTitle, ws)
-        : "";
-      return `<div class="schedule-widget-content">${todayBlock}${tomorrowBlock}</div>`;
-    }
-    if (widget.type === "holidays") {
-      return buildUpcomingHolidays(widget.settings, holidays);
-    }
-    if (widget.type === "announcements") {
-      return buildAnnouncements(widget.settings, announcements, widget.id, ctx);
-    }
-    if (widget.type === "marquee") {
-      return buildMarquee(widget, marquee);
-    }
-    if (widget.type === "school_news") {
-      return buildSchoolNews(widget, schoolNews, screen, ctx);
-    }
-    if (widget.type === "rss_news") {
-      return buildRssNews(widget, rssNews);
-    }
-    if (widget.type === "checkin_submit") {
-      const ws = widget.settings || {};
-      const title = escapeHtml(String(ws.labels && ws.labels.module_title ? ws.labels.module_title : "Оперативная отметка"));
-      const saveLbl = escapeHtml(String(ws.labels && ws.labels.save ? ws.labels.save : "Сохранить"));
-      const fluid = checkinWidgetRootFluidClass(ws);
-      const rootStyle = checkinWidgetRootStyle(ws);
-      return `<div class="gs-checkin-submit${fluid}" data-gs-checkin-role="submit" style="${rootStyle}">
-        <div class="gs-checkin-submit-title">${title}</div>
-        <label style="display:flex;flex-direction:column;gap:4px;"><span data-lbl="device">${escapeHtml(String(ws.labels && ws.labels.device_name ? ws.labels.device_name : "Имя"))}</span>
-          <input type="text" class="gs-checkin-device standard-input" maxlength="200" style="width:100%;box-sizing:border-box;" /></label>
-        <label style="display:flex;flex-direction:column;gap:4px;"><span data-lbl="place">${escapeHtml(String(ws.labels && ws.labels.place ? ws.labels.place : "Место"))}</span>
-          <select class="gs-checkin-place standard-input" style="width:100%;"></select></label>
-        <div class="gs-checkin-levels-wrap"><span data-lbl="state">${escapeHtml(String(ws.labels && ws.labels.state ? ws.labels.state : "Состояние"))}</span>
-          <div class="gs-checkin-levels"></div></div>
-        <label style="display:flex;flex-direction:column;gap:4px;"><span data-lbl="comment">${escapeHtml(String(ws.labels && ws.labels.comment ? ws.labels.comment : "Комментарий"))}</span>
-          <textarea class="gs-checkin-comment standard-input" rows="2" maxlength="4000" style="width:100%;resize:vertical;box-sizing:border-box;"></textarea></label>
-        <div class="gs-checkin-actions" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:4px;">
-          <button type="button" class="gs-checkin-send primary-btn">${escapeHtml(String(ws.labels && ws.labels.submit ? ws.labels.submit : "Отправить"))}</button>
-          <button type="button" class="gs-checkin-save secondary-btn compact-btn">${saveLbl}</button>
-        </div>
-        <div class="gs-checkin-recent"></div>
-        <div class="gs-checkin-status hint" style="min-height:1.2em;"></div>
-      </div>`;
-    }
-    if (widget.type === "checkin_monitor") {
-      const ws = widget.settings || {};
-      const pt = escapeHtml(String(ws.panel_title || "Сводка мест"));
-      const fluid = checkinWidgetRootFluidClass(ws);
-      const rootStyle = checkinWidgetRootStyle(ws);
-      return `<div class="gs-checkin-monitor${fluid}" data-gs-checkin-role="monitor" style="${rootStyle}">
-        <div class="gs-checkin-toolbar">
-          <strong class="gs-checkin-panel-heading">${pt}</strong>
-          <div class="gs-checkin-toolbar-actions">
-            <label class="gs-checkin-period-label"><span>Период</span>
-              <select class="gs-checkin-period standard-input">
-                <option value="day">День</option>
-                <option value="week">Неделя</option>
-                <option value="month">Месяц</option>
-              </select>
-            </label>
-            <button type="button" class="gs-checkin-confirm-all secondary-btn compact-btn">Подтвердить всех</button>
-            <button type="button" class="gs-checkin-export secondary-btn compact-btn">CSV</button>
-          </div>
-        </div>
-        <div class="gs-checkin-monitor-summary"></div>
-        <div class="gs-checkin-monitor-journal"></div>
-      </div>`;
-    }
-    return "";
-  }
-
-  function startCarousel(block, widget, childWidgets, schedule, screen, holidays, announcements, marquee, schoolNews, rssNews) {
-    if (!childWidgets.length) {
-      block.innerHTML = `<div class="widget-meta">${tvUiStrings().carouselNoSlides}</div>`;
-      return;
-    }
-    const startDelayMs = Math.max(0, Number(widget.settings.startDelaySec || 0) * 1000);
-    const now = Date.now();
-    const firstDur = carouselSlideDurationMs(widget, childWidgets[0]);
-    const st = carouselState.get(widget.id) || {
-      initializedAt: now,
-      index: 0,
-      nextSwitchAt: now + startDelayMs + firstDur,
-      timerId: null,
-      animTimeout: null,
-    };
-    st.index = st.index % childWidgets.length;
-    if (!st.initializedAt) st.initializedAt = now;
-    if (st.timerId) window.clearTimeout(st.timerId);
-    if (st.animTimeout) window.clearTimeout(st.animTimeout);
-    st.animTimeout = null;
-    while (now >= st.nextSwitchAt && childWidgets.length) {
-      const slideEnd = st.nextSwitchAt;
-      st.index = (st.index + 1) % childWidgets.length;
-      st.nextSwitchAt = slideEnd + carouselSlideDurationMs(widget, childWidgets[st.index]);
-    }
-    const slides = childWidgets.map((childWidget, index) => {
-      const slide = document.createElement("div");
-      slide.className = `carousel-slide ${index === st.index ? "active" : ""}`;
-      if (childWidget.type === "text") slide.style.background = childWidget.settings.background;
-      slide.innerHTML = renderWidgetHtml(
-        childWidget,
+    const wtype = widgetEffectiveType(widget);
+    const W = global.GuardSchoolWidgets;
+    if (W && typeof W.render === "function") {
+      const pluginHtml = W.render(wtype, {
+        widget,
         schedule,
         screen,
         holidays,
@@ -1047,72 +950,30 @@
         marquee,
         schoolNews,
         rssNews,
-        { mode: index === st.index ? "carousel_show" : "carousel_init" }
-      );
-      block.appendChild(slide);
-      return slide;
+        ctx,
+        weight,
+        L,
+        wtype,
+      });
+      if (pluginHtml !== undefined) return pluginHtml;
+    }
+    return "";
+  }
+
+  function startCarousel(block, widget, childWidgets, schedule, screen, holidays, announcements, marquee, schoolNews, rssNews) {
+    const c = carouselApi();
+    if (!c || !c.start) {
+      if (!childWidgets.length) {
+        block.innerHTML = `<div class="widget-meta">${tvUiStrings().carouselNoSlides}</div>`;
+      }
+      return;
+    }
+    c.start(block, widget, childWidgets, schedule, screen, holidays, announcements, marquee, schoolNews, rssNews, {
+      renderWidgetHtml,
+      widgetEffectiveType,
+      tvUiStrings,
+      getDisplayFromPayload,
     });
-    const latestData = () => {
-      try {
-        const p = global && global.__lastScreenPayload;
-        if (p && p.screen) {
-          return {
-            screen: p.screen,
-            schedule: p.schedule,
-            holidays: p.holidays || [],
-            announcements: p.announcements || [],
-            marquee: p.marquee || [],
-            schoolNews: p.school_news || [],
-            rssNews: p.rss_news || [],
-            rss_news: p.rss_news || [],
-            display: p.display || {},
-          };
-        }
-      } catch (_) {}
-      return { screen, schedule, holidays, announcements, marquee, schoolNews, rssNews, display: getDisplayFromPayload() };
-    };
-    const advance = () => {
-      const current = slides[st.index];
-      st.index = (st.index + 1) % slides.length;
-      const nextWidget = childWidgets[st.index];
-      const waitMs = carouselSlideDurationMs(widget, nextWidget);
-      st.nextSwitchAt = Date.now() + waitMs;
-      const next = slides[st.index];
-      // Обновляем HTML именно при показе: так «Объявления» могут менять блок на каждый показ в карусели.
-      try {
-        const d = latestData();
-        next.innerHTML = renderWidgetHtml(
-          nextWidget,
-          d.schedule,
-          d.screen,
-          d.holidays,
-          d.announcements,
-          d.marquee,
-          d.schoolNews,
-          d.rssNews,
-          { mode: "carousel_show" }
-        );
-      } catch (_) {}
-      const animation = widget.settings.animation === "random"
-        ? RANDOM_CAROUSEL_ANIMATIONS[Math.floor(Math.random() * RANDOM_CAROUSEL_ANIMATIONS.length)]
-        : (widget.settings.animation || "slide");
-      current.classList.remove("active");
-      current.classList.add(`exit-${animation}`);
-      next.classList.add(`enter-${animation}`);
-      next.offsetWidth;
-      next.classList.add("active");
-      next.classList.remove(`enter-${animation}`);
-      if (st.animTimeout) window.clearTimeout(st.animTimeout);
-      st.animTimeout = window.setTimeout(() => {
-        try {
-          current.classList.remove(`exit-${animation}`);
-        } catch (_) {}
-        st.animTimeout = null;
-      }, 700);
-      st.timerId = window.setTimeout(advance, waitMs);
-    };
-    st.timerId = window.setTimeout(advance, Math.max(0, st.nextSwitchAt - now));
-    carouselState.set(widget.id, st);
   }
 
   function updateAllClocks(root) {
@@ -1927,10 +1788,66 @@
     });
   }
 
+  function renderWidgetHtml(widget, schedule, screen, holidays, announcements, marquee, schoolNews, rssNews, ctx) {
+    try {
+      if (!registryKnown(widget && widget.type)) {
+        return renderWidgetMissingPlaceholder(widget);
+      }
+      const html = renderWidgetHtmlImpl(
+        widget,
+        schedule,
+        screen,
+        holidays,
+        announcements,
+        marquee,
+        schoolNews,
+        rssNews,
+        ctx
+      );
+      if (!html || !String(html).trim()) {
+        return renderWidgetMissingPlaceholder(widget);
+      }
+      return html;
+    } catch (e) {
+      try {
+        console.error("[widget]", widget && widget.type, widget && widget.id, e);
+      } catch (_) {}
+      return renderWidgetErrorPlaceholder(widget, e);
+    }
+  }
+
+  if (global.GuardSchoolWidgets) {
+    global.GuardSchoolWidgets.helpers = {
+      formatWidgetDateLine,
+      formatClockTimeString,
+      formatEmergencyCountdown,
+      escapeHtml,
+      escapeHtmlAttr,
+      tvUiStrings,
+      getDisplayFromPayload,
+      adjustedDateFromDisplay,
+      localeTagFromUi,
+      capitalizeFirst,
+      buildBellStatus,
+      buildBellCountdown,
+      buildUpcomingHolidays,
+      formatDateLabel,
+      buildScheduleTable,
+      buildAnnouncements,
+      buildMarquee,
+      schoolNewsImageLayoutSettings,
+      buildSchoolNews,
+      buildRssNews,
+      renderCheckinSubmitWidget,
+      renderCheckinMonitorWidget,
+    };
+  }
+
   global.GuardSchoolScreen = {
     clearAllTimers,
     pruneStaleCarouselState,
     pruneStaleWidgetState,
+    setWidgetTypesAvailable,
     renderWidgetHtml,
     updateAllEmergencyCountdowns,
     widgetIdsHiddenByCarousel,

@@ -1,38 +1,16 @@
-"""Создание первого администратора из env для SaaS (демо без ручного /setup)."""
+"""SaaS bootstrap admin: фасад."""
 from __future__ import annotations
 
-import logging
-import os
-import secrets
+from typing import Any
 
-from .gs_auth import hash_password, load_auth, password_is_valid
-from .gs_ensure_dirs import ensure_dirs
-from .gs_jsonio import write_json
-from .gs_paths import AUTH_PATH
-from .gs_saas_limits import saas_mode
+from ._private_facade import facade_dir, facade_getattr
 
-_LOG = logging.getLogger(__name__)
+_NAME = "gs_saas_bootstrap"
 
 
-def ensure_saas_bootstrap_admin() -> None:
-    """Если GUARDSCHOOL_SAAS_MODE и задан GUARDSCHOOL_ADMIN_PASSWORD — создать auth.json при пустой БД."""
-    if not saas_mode():
-        return
-    if (os.environ.get("GUARDSCHOOL_SKIP_SAAS_BOOTSTRAP") or "").strip().lower() in ("1", "true", "yes"):
-        return
-    pwd = (os.environ.get("GUARDSCHOOL_ADMIN_PASSWORD") or "").strip()
-    if not pwd:
-        return
-    if load_auth():
-        return
-    if not password_is_valid(pwd):
-        _LOG.warning("GUARDSCHOOL_ADMIN_PASSWORD задан, но не проходит проверку сложности — пропуск bootstrap.")
-        return
-    ensure_dirs()
-    user = (os.environ.get("GUARDSCHOOL_ADMIN_USERNAME") or "admin").strip() or "admin"
-    salt = secrets.token_hex(16)
-    write_json(
-        AUTH_PATH,
-        {"username": user, "salt": salt, "password_hash": hash_password(pwd, salt)},
-    )
-    _LOG.info("SaaS: создан администратор из env (логин: %s).", user)
+def __getattr__(name: str) -> Any:
+    return facade_getattr(_NAME, name)
+
+
+def __dir__() -> list[str]:
+    return facade_dir(_NAME)

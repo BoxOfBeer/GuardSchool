@@ -52,12 +52,27 @@ Open:
 
 | Path | Role |
 |------|------|
-| **`guardschool/`** | Python package: FastAPI app (`app.py`), shared modules (`gs_*.py`), PC audio workers (`local_audio_worker.py`, `bell_rupor_worker.py`). |
-| **`app.py`** (repo root) | Thin shim: `from guardschool.app import app` — keeps **`uvicorn app:app`** and tools unchanged. |
+| **`guardschool/`** | Python package: [`gs_app_factory.py`](guardschool/gs_app_factory.py) (`create_app()`), [`routes_*.py`](guardschool/routes_admin.py), domain modules (`gs_*.py`), PC audio (`local_audio_worker.py`, `bell_rupor_worker.py`). Entry: [`guardschool/app.py`](guardschool/app.py) (~12 lines). |
+| **`app.py`** (repo root) | Thin shim: `from guardschool.app import app` — **`uvicorn app:app`**. |
 | **`static/`** | Admin and TV front-end (ES modules under `static/admin/`, `screen_widgets.js`, locales). |
 | **`data/`** | Runtime data (created on first run): `config.json`, schedules, bells, uploads — **back this up**. |
 | **`change_log_seed.json`** | Default **release notes** merged into `data/change_log.json` when the admin “Changes” log is seeded. |
 | **`requirements.txt`**, **`run_server.py`** | Dependencies and optional launcher. |
+| **`widgets/`** | Official widget plugins (Python manifests; TV render in `screen_widgets.js`). |
+| **`docs/`** | [architecture](docs/architecture.md), [capabilities](docs/capabilities.md), [widgets](docs/widgets.md), [private modules](docs/private_modules.md), [roadmap](docs/roadmap.md). |
+| **`tools/`** | [verify_open_core.py](tools/verify_open_core.py), [build_open_core_tree.py](tools/build_open_core_tree.py) — см. [tools/README.md](tools/README.md). |
+
+## Community / Core vs Hybrid / SaaS
+
+| Edition | Deployment | SaaS layer | Commercial layer |
+|---------|------------|------------|-------------------|
+| **Community / Core** | `GUARDSCHOOL_DEPLOYMENT_MODE=local` | Not required; capabilities `missing` | Not required |
+| **Hybrid** | `hybrid` | Optional sync (`cloud_sync`) if modules or layer present | Optional |
+| **Full / SaaS** | `saas` + PostgreSQL | Expected (embedded or `GUARDSCHOOL_LAYER_PATH`) | License/registration via layer or embedded |
+
+Closed layers are installed manually on the server under `GUARDSCHOOL_LAYER_PATH` (not in the public git tree). Optional private Python modules: `GUARDSCHOOL_PRIVATE_PYTHONPATH` + package `guardschool_private` — see [private modules](docs/private_modules.md). Core stays usable offline: schedules, bells, screens, official widgets.
+
+See also: [known limitations](docs/known_limitations.md), [roadmap](docs/roadmap.md).
 
 ## Localization & time
 
@@ -65,6 +80,14 @@ Open:
 - Timezone and offset: **Language, time & timezone** inside **Settings**.  
   “Today” for schedules and bells is computed **in the selected timezone**, not silently tied to the server OS clock without configuration.
 - Import / Excel / ZIP validation messages from the API follow the selected UI language (the admin page sends `X-UI-Locale: en` or `ru`).
+- Locale files: `static/locales/ru.json` and `en.json` must have **identical keys**. Check with:
+
+```bash
+python tools/check_locales.py
+python tools/check_locales.py --warn-terms   # optional legacy-term scan
+```
+
+- Neutral UI wording (slot / signal / group instead of lesson / bell / class): `python tools/neutralize_terminology.py` (values only; internal API ids unchanged).
 
 ## Import / export
 
@@ -176,7 +199,7 @@ uvicorn app:app --host 0.0.0.0 --port 8000 --reload
 - Сессия админки: флаг **`Secure`** у cookie включается при HTTPS или заголовке **`X-Forwarded-Proto: https`** у прокси.
 - **Один процесс** uvicorn, если используете звук на ПК через `local_audio_worker` — у нескольких воркеров общее состояние не разделяется.
 - Скрипты админки: **`i18n.js`**, затем **`app.js` (module)**; в начале **`app.js`** — **`import "./screen_widgets.js"`** и модули из **`static/admin/`** (в т.ч. **`preview.js`**, **`audio-stream.js`**, **`data-import.js`**, **`bells.js`**); порядок гарантирован для превью и локализации.
-- Бэкенд — пакет **`guardschool/`** (`gs_*.py`, воркеры звука); в корне лежит только тонкий **`app.py`** для **`uvicorn app:app`**. **`data/`** и **`static/`** — в корне репозитория; **`change_log_seed.json`** — сид для журнала. На фронте — **`static/admin/escape-html.js`** и прочее в `static/admin/`.
+- Бэкенд — пакет **`guardschool/`**: роутеры `routes_*.py`, домен `gs_*.py`, сборка в **`gs_app_factory.create_app()`**; корневой **`app.py`** — shim для **`uvicorn app:app`**. Схема модулей — [docs/architecture.md](docs/architecture.md).
 
 ### Сборка exe
 

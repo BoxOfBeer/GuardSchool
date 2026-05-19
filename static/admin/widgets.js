@@ -6,28 +6,17 @@ import { t, tf } from "./i18n-helpers.js";
 import { api } from "./api-client.js";
 import { escapeHtml, escapeHtmlAttr } from "./escape-html.js";
 import { MAX_WIDGET_IMAGE_UPLOAD_BYTES } from "./upload-limits.js";
+import { getWidgetTypeKeys, widgetManifest, widgetStatus, widgetStatusMessage } from "./widget-registry.js";
+import { applyWidgetSettingsSchemaHints } from "./widget-settings-schema.js";
+import {
+  SCHEMA_SIMPLE_WIDGET_TYPES,
+  bindSchemaValidation,
+  renderSchemaSettingsFields,
+  schemaExcludeKeysForType,
+} from "./widget-settings-form.js";
 
 /** Как на сервере gs_checkin._PLACE_ID_RE — только допустимые id мест. */
 const CHECKIN_PLACE_ID_RE = /^[a-zA-Z0-9_-]{1,64}$/;
-
-const WIDGET_TYPE_KEYS = new Set([
-  "date",
-  "time",
-  "text",
-  "bell_status",
-  "bell_countdown",
-  "schedule",
-  "carousel",
-  "holidays",
-  "announcements",
-  "school_news",
-  "rss_news",
-  "marquee",
-  "emergency",
-  "image",
-  "checkin_submit",
-  "checkin_monitor",
-]);
 
 let deps = {
   selectedScreen: () => null,
@@ -57,10 +46,12 @@ export function widgetDisplayTitle(widget) {
     if (m) return tf("carousel.nameN", { n: Number(m[1]) });
     return t("widget.type.carousel");
   }
-  if (typ && WIDGET_TYPE_KEYS.has(typ)) {
+  if (typ && getWidgetTypeKeys().has(typ)) {
     const tr = t(`widget.type.${typ}`);
     if (tr !== `widget.type.${typ}`) return tr;
   }
+  const m = widgetManifest(typ);
+  if (m && m.title) return String(m.title);
   return String(widget.title || typ || "");
 }
 
@@ -123,8 +114,14 @@ function settingInputs(widget, index) {
   const parts = [];
   parts.push(widgetToggle(t("w.enabled"), widget.enabled, `widget:${index}:enabled`));
   parts.push(widgetToggle(t("w.backdrop"), widget.settings.backdrop !== false, `widget:${index}:settings.backdrop`));
-  parts.push(widgetToggle("Только в меню", widget.menu_only === true, `widget:${index}:menu_only`));
-  const textStyleWidgets = ["date", "time", "text", "bell_status", "holidays", "announcements", "marquee", "emergency"];
+  parts.push(widgetToggle(t("w.menuOnly"), widget.menu_only === true, `widget:${index}:menu_only`));
+
+  if (SCHEMA_SIMPLE_WIDGET_TYPES.has(widget.type)) {
+    parts.push(renderSchemaSettingsFields(widget, index));
+    return parts.join("");
+  }
+
+  const textStyleWidgets = ["text", "bell_status", "holidays", "announcements", "marquee", "emergency"];
   const newsLikeWidgets = ["school_news", "rss_news"];
   if (textStyleWidgets.includes(widget.type)) {
     parts.push(widgetInput(t("w.fontSize"), widget.settings.fontSize, `widget:${index}:settings.fontSize`, "number", "standard-input"));
@@ -234,12 +231,12 @@ function settingInputs(widget, index) {
     parts.push(widgetInput(t("w.highlight"), widget.settings.highlightColor, `widget:${index}:settings.highlightColor`, "color", "standard-input"));
     parts.push(widgetInput(t("w.sampleDiff"), widget.settings.sampleDiffColor, `widget:${index}:settings.sampleDiffColor`, "color", "standard-input"));
     parts.push(widgetInput(t("w.headerColor"), widget.settings.headerColor, `widget:${index}:settings.headerColor`, "color", "standard-input"));
-    parts.push(widgetInput("Фон таблицы", widget.settings.tableBgColor, `widget:${index}:settings.tableBgColor`, "color", "standard-input"));
-    parts.push(widgetInput("Текст таблицы", widget.settings.tableTextColor, `widget:${index}:settings.tableTextColor`, "color", "standard-input"));
-    parts.push(widgetInput("Прошедшие (фон)", widget.settings.pastBgColor, `widget:${index}:settings.pastBgColor`, "color", "standard-input"));
-    parts.push(widgetInput("Прошедшие (текст)", widget.settings.pastTextColor, `widget:${index}:settings.pastTextColor`, "color", "standard-input"));
-    parts.push(widgetInput("Текущий (фон)", widget.settings.currentBgColor, `widget:${index}:settings.currentBgColor`, "color", "standard-input"));
-    parts.push(widgetInput("Граница", widget.settings.borderColor, `widget:${index}:settings.borderColor`, "color", "standard-input"));
+    parts.push(widgetInput(t("w.tableBg"), widget.settings.tableBgColor, `widget:${index}:settings.tableBgColor`, "color", "standard-input"));
+    parts.push(widgetInput(t("w.tableText"), widget.settings.tableTextColor, `widget:${index}:settings.tableTextColor`, "color", "standard-input"));
+    parts.push(widgetInput(t("w.pastBg"), widget.settings.pastBgColor, `widget:${index}:settings.pastBgColor`, "color", "standard-input"));
+    parts.push(widgetInput(t("w.pastText"), widget.settings.pastTextColor, `widget:${index}:settings.pastTextColor`, "color", "standard-input"));
+    parts.push(widgetInput(t("w.currentBg"), widget.settings.currentBgColor, `widget:${index}:settings.currentBgColor`, "color", "standard-input"));
+    parts.push(widgetInput(t("w.borderColor"), widget.settings.borderColor, `widget:${index}:settings.borderColor`, "color", "standard-input"));
     parts.push(`<div class="hint">Палитра расписания: header=${escapeHtml(String(widget.settings.headerColor || ""))}, bg=${escapeHtml(String(widget.settings.tableBgColor || ""))}, text=${escapeHtml(String(widget.settings.tableTextColor || ""))}, past=${escapeHtml(String(widget.settings.pastBgColor || ""))}, current=${escapeHtml(String(widget.settings.currentBgColor || ""))}, override=${escapeHtml(String(widget.settings.highlightColor || ""))}</div>`);
     parts.push(widgetToggle("Dev-режим (лог на ТВ)", widget.settings.devMode, `widget:${index}:settings.devMode`));
     parts.push(widgetToggle(t("w.bold"), widget.settings.bold, `widget:${index}:settings.bold`));
@@ -285,7 +282,7 @@ function settingInputs(widget, index) {
     parts.push(widgetToggle(t("w.randomOrder"), widget.settings.randomize !== false, `widget:${index}:settings.randomize`));
   }
   if (widget.type === "school_news" || widget.type === "rss_news") {
-    parts.push(widgetInput("Интервал автопереключения, сек", widget.settings.rotateSec, `widget:${index}:settings.rotateSec`, "number", "standard-input"));
+    parts.push(widgetInput(t("w.rotateSec"), widget.settings.rotateSec, `widget:${index}:settings.rotateSec`, "number", "standard-input"));
   }
   if (widget.type === "marquee") {
     parts.push(widgetTextarea(t("w.linesManual"), widget.settings.items, `widget:${index}:settings.items`, "wide-input"));
@@ -394,7 +391,7 @@ function settingInputs(widget, index) {
     parts.push(`<div class="settings-row">
       <label class="compact-field">
         <span>${escapeHtml(t("w.pwaTitle"))}</span>
-        <input type="text" class="standard-input wide-input" data-key="widget:${index}:settings.pwa_title" value="${pwaTitle}" placeholder="Например: Школа, Личка…" maxlength="64">
+        <input type="text" class="standard-input wide-input" data-key="widget:${index}:settings.pwa_title" value="${pwaTitle}" placeholder="${escapeHtmlAttr(t("w.pwaTitlePh"))}" maxlength="64">
       </label>
       <div class="hint">${escapeHtml(t("w.pwaTitleHint"))}</div>
     </div>`);
@@ -411,6 +408,11 @@ function settingInputs(widget, index) {
       <div class="hint">${escapeHtml(t("w.pwaIconHint"))}</div>
     </div>`);
   }
+  parts.push(
+    renderSchemaSettingsFields(widget, index, {
+      exclude: schemaExcludeKeysForType(widget.type),
+    }),
+  );
   return parts.join("");
 }
 
@@ -859,6 +861,8 @@ export function syncWidgetModal() {
   titleEl.textContent = `${widgetDisplayTitle(widget)} · ${widget.type}`;
   body.innerHTML = widgetEditorInnerHtml(widget, index);
   bindWidgetEditorEvents(body, index);
+  applyWidgetSettingsSchemaHints(body, widget.type);
+  bindSchemaValidation(body, widget.type);
   modal.hidden = false;
   modal.setAttribute("aria-hidden", "false");
 }
@@ -904,6 +908,16 @@ export function renderWidgets() {
       const h = Number(widget.h);
       const wh = `${Number.isFinite(w) ? w : "?"}×${Number.isFinite(h) ? h : "?"}`;
       const cfgTitle = escapeHtmlAttr(t("widget.configure"));
+      const st = widgetStatus(widget.type);
+      const m = widgetManifest(widget.type);
+      const perms =
+        m && Array.isArray(m.permissions) && m.permissions.length && m.official === false
+          ? `<div class="hint widget-item-perms">Права (заявлено): ${escapeHtml(m.permissions.join(", "))}</div>`
+          : "";
+      const warn =
+        st === "missing" || st === "error"
+          ? `<div class="widget-item-warning hint">${escapeHtml(widgetStatusMessage(widget.type) || `Виджет ${widget.type} недоступен.`)}</div>`
+          : "";
       div.innerHTML = `
       <div class="widget-title-row">
         <h3>${escapeHtmlAttr(widgetDisplayTitle(widget))}</h3>
@@ -913,6 +927,7 @@ export function renderWidgets() {
           </button>
         </div>
       </div>
+      ${warn}${perms}
       <div class="widget-item-meta"><span class="widget-item-type">${escapeHtmlAttr(String(widget.type))}</span> · ${tf("widget.gridMeta", { wh: escapeHtmlAttr(wh) })}</div>
     `;
       elements.widgetList.appendChild(div);

@@ -111,7 +111,7 @@
               </div>
             </div>
           </div>
-          <p class="hint tv-not-stream-hint" data-i18n="screen.tvHint">Звонки на колонки/линию — «Звук ПК», не в карточке этого экрана.</p>
+          <p class="hint tv-not-stream-hint" data-i18n="screen.tvHint">Сигналы на колонки/линию — «Звук ПК», не в карточке этого экрана.</p>
         </div>
 
         <div class="card editor-card-screen-bg" data-section="screen">
@@ -176,7 +176,7 @@
 
         <div class="card span-2 schedule-lessons-card" data-section="lessons">
           <div class="card-header schedule-card-header">
-            <h2 data-i18n="schedule.lessonsTitle">Уроки и Excel</h2>
+            <h2 data-i18n="schedule.lessonsTitle">Расписание и Excel</h2>
           </div>
 
           <section class="admin-subpanel schedule-subpanel-stats" aria-labelledby="schedule-stats-title">
@@ -187,10 +187,10 @@
           <details class="hint-details schedule-help-details">
             <summary data-i18n="schedule.helpSummary">Кратко: колонки и приоритет</summary>
             <ul class="schedule-help-list hint">
-              <li data-i18n="schedule.helpLi1">По датам: колонки «Дата», «Класс», уроки по номерам.</li>
-              <li data-i18n="schedule.helpLi2">По неделе: «День недели», «Класс», уроки.</li>
+              <li data-i18n="schedule.helpLi1">По датам: колонки «Дата», «Группа», слоты по номерам.</li>
+              <li data-i18n="schedule.helpLi2">По неделе: «День недели», «Группа», слоты.</li>
               <li data-i18n="schedule.helpLi3">Образец: отличия от полного расписания подсвечиваются на ТВ.</li>
-              <li data-i18n="schedule.helpLi4">Приоритет на уроке: ручная замена → образец → датированное или полное.</li>
+              <li data-i18n="schedule.helpLi4">Приоритет в слоте: ручная замена → образец → датированное или полное.</li>
             </ul>
           </details>
 
@@ -200,13 +200,13 @@
             <div class="lesson-uploads-grid">
               <div class="lesson-import-slot">
                 <div class="lesson-import-kind" data-i18n="schedule.fileDated">Расписание по датам</div>
-                <p class="lesson-import-slot-hint hint" data-i18n="schedule.hintDated">Колонки: дата, класс, уроки.</p>
+                <p class="lesson-import-slot-hint hint" data-i18n="schedule.hintDated">Колонки: дата, группа, слоты.</p>
                 <label class="lesson-import-file-wrap"><input id="schedule-input-dated" class="lesson-import-file" type="file" accept=".xlsx,.xlsm,.xltx,.xltm"></label>
                 <button type="button" class="secondary-btn compact-btn lesson-sample-btn" data-import-excel-sample="dated" data-i18n="schedule.downloadSample">Скачать образец</button>
               </div>
               <div class="lesson-import-slot">
                 <div class="lesson-import-kind" data-i18n="schedule.fileFull">Полное (неделя)</div>
-                <p class="lesson-import-slot-hint hint" data-i18n="schedule.hintFull">Колонки: день недели, класс, уроки.</p>
+                <p class="lesson-import-slot-hint hint" data-i18n="schedule.hintFull">Колонки: день недели, группа, слоты.</p>
                 <label class="lesson-import-file-wrap"><input id="full-schedule-input" class="lesson-import-file" type="file" accept=".xlsx,.xlsm,.xltx,.xltm"></label>
                 <button type="button" class="secondary-btn compact-btn lesson-sample-btn" data-import-excel-sample="full" data-i18n="schedule.downloadSample">Скачать образец</button>
               </div>
@@ -251,14 +251,14 @@
 
           <section class="admin-subpanel schedule-subpanel-overrides" aria-labelledby="schedule-override-title">
             <h3 id="schedule-override-title" class="admin-subpanel-title" data-i18n="schedule.overridesTitle">Ручные замены</h3>
-            <p class="hint admin-subpanel-lead" data-i18n="schedule.overridesLead">Замена на конкретную дату для класса и номера урока.</p>
+            <p class="hint admin-subpanel-lead" data-i18n="schedule.overridesLead">Замена на конкретную дату для группы и номера слота.</p>
             <p class="hint schedule-overrides-prune-hint" data-i18n="schedule.overridesPruneHint">Замены с прошедшей датой удаляются автоматически (по календарю организации).</p>
             <div class="override-form-grid">
               <label class="override-field"><span class="override-field-label" data-i18n="schedule.date">Дата</span><input id="override-date" class="standard-input" type="date"></label>
               <label class="override-field"><span class="override-field-label" data-i18n="schedule.class">Класс</span><input id="override-class" class="standard-input" type="text" data-i18n-placeholder="schedule.phClass" placeholder="Напр. 7А"></label>
-              <label class="override-field"><span class="override-field-label" data-i18n="schedule.lesson">Урок</span><input id="override-lesson" class="standard-input" type="number" min="1" max="12" data-i18n-placeholder="schedule.phLesson" placeholder="1–12"></label>
+              <label class="override-field"><span class="override-field-label" data-i18n="schedule.lesson">Слот</span><input id="override-lesson" class="standard-input" type="number" min="1" max="12" data-i18n-placeholder="schedule.phLesson" placeholder="1–12"></label>
               <label class="override-field"><span class="override-field-label">Цвет</span><input id="override-color" class="override-color" type="color" value="#bbf7d0" title="Цвет замены"></label>
-              <label class="override-field override-field-wide"><span class="override-field-label" data-i18n="schedule.subject">Предмет</span><input id="override-subject" class="standard-input" type="text" data-i18n-placeholder="schedule.phSubject" placeholder="Название урока"></label>
+              <label class="override-field override-field-wide"><span class="override-field-label" data-i18n="schedule.subject">Предмет</span><input id="override-subject" class="standard-input" type="text" data-i18n-placeholder="schedule.phSubject" placeholder="Название записи"></label>
               <div class="override-form-actions">
                 <button id="add-override-btn" type="button" class="primary-btn" data-i18n="schedule.addOverride">Добавить замену</button>
               </div>
@@ -269,7 +269,7 @@
 
         <div class="card span-2 bell-schedule-card" data-section="bells">
           <div class="card-header">
-            <h2 data-i18n="bells.title">Звонки</h2>
+            <h2 data-i18n="bells.title">Сигналы</h2>
           </div>
 
           <h3 class="bell-editor-static-title" data-i18n="bells.editorSummary">Редактор шаблона и интервалов</h3>
@@ -289,31 +289,31 @@
               <label class="bell-template-field"><span data-i18n="bells.templateName">Название шаблона</span>
                 <input id="bell-template-name" class="standard-input" type="text" data-i18n-placeholder="bells.templateNamePh" placeholder="Обычное">
               </label>
-              <label class="bell-template-field"><span data-i18n="bells.lastLesson">Последний урок дня (1–24)</span>
+              <label class="bell-template-field"><span data-i18n="bells.lastLesson">Последний слот дня (1–24)</span>
                 <input id="bell-last-lesson" class="standard-input" type="number" min="1" max="24" data-i18n-placeholder="bells.lastLessonPh" placeholder="пусто = все строки">
               </label>
               <label class="bell-template-field"><span data-i18n="bells.dateOverride">Разовое расписание на дату</span>
                 <input id="bell-date-override" class="standard-input" type="date">
               </label>
             </div>
-            <p class="hint admin-subpanel-foot" data-i18n="bells.templateFoot">Если указать последний урок (например 5), звонки начала/конца для больших номеров в шаблоне не звучат — чтобы после 5-го не было «начала 6-го».</p>
+            <p class="hint admin-subpanel-foot" data-i18n="bells.templateFoot">Если указать последний слот (например 5), сигналы начала/конца для больших номеров в шаблоне не звучат — чтобы после 5-го не было «начала 6-го».</p>
           </section>
 
-          <p class="hint bell-rows-hint" data-i18n="bells.rowsHint">В поле «Урок»: только цифры (1–8…) — связь с колонками Excel; текст без одних цифр — внеурочный интервал (пятиминутка, линейка…). На экране без цифр в фразе минуты подставляются автоматически.</p>
+          <p class="hint bell-rows-hint" data-i18n="bells.rowsHint">В поле «Слот»: только цифры (1–8…) — связь с колонками Excel; текст без одних цифр — внеурочный интервал (пятиминутка, линейка…). На экране без цифр в фразе минуты подставляются автоматически.</p>
 
           <div id="bell-rows" class="bell-rows"></div>
           <div class="bell-actions">
             <button id="add-bell-template-btn" type="button" class="secondary-btn" data-i18n="bells.addTemplate">+ шаблон</button>
             <button id="add-bell-row-btn" type="button" class="secondary-btn" data-i18n="bells.addRow">+ интервал</button>
             <button id="delete-bell-template-btn" type="button" class="secondary-btn" data-i18n="bells.deleteTemplate">Удалить шаблон</button>
-            <button id="save-bell-template-btn" type="button" class="primary-btn" data-i18n="bells.save">Сохранить звонки</button>
+            <button id="save-bell-template-btn" type="button" class="primary-btn" data-i18n="bells.save">Сохранить сигналы</button>
           </div>
           <div id="bell-template-list" class="override-list bell-template-strip"></div>
         </div>
 
         <div class="card span-2" data-section="preview">
           <h2 data-i18n="preview.title">Предпросмотр шаблона</h2>
-          <p class="hint" data-i18n="preview.hint1">Те же данные, что на ТВ: расписание, звонки, праздники (сервер считает по полям текущего экрана, даже до «Сохранить»).</p>
+          <p class="hint" data-i18n="preview.hint1">Те же данные, что на ТВ: расписание, сигналы, праздники (сервер считает по полям текущего экрана, даже до «Сохранить»).</p>
           <p class="hint" data-i18n="preview.hint2">Блоки можно перетаскивать мышкой. `Shift` + перетаскивание изменяет размер.</p>
           <p class="hint" data-i18n="preview.hint3">Сетка экрана: `32x26`.</p>
           <div id="preview-sound-diag" class="preview-sound-diag" hidden></div>
@@ -373,6 +373,12 @@
                   </label>
                 </section>
 
+                <section class="program-settings-block" aria-labelledby="ps-capabilities-head">
+                  <h4 id="ps-capabilities-head" class="settings-popover-subhead">Функции сборки</h4>
+                  <p class="hint">Статус модулей open-core (SaaS/Commercial слои ставятся на сервер вручную).</p>
+                  <div id="capabilities-overview" class="capabilities-overview"></div>
+                </section>
+
                 <section class="program-settings-block" aria-labelledby="ps-sync-ui-head">
                   <h4 id="ps-sync-ui-head" class="settings-popover-subhead" data-i18n="programSettings.syncUiTitle">Синхронизация и интерфейс</h4>
                   <p class="hint" id="sync-status-line">Синхронизация: —</p>
@@ -388,6 +394,7 @@
                 <section class="program-settings-block program-settings-block--full" aria-labelledby="ps-palette-head">
                   <h4 id="ps-palette-head" class="settings-popover-subhead program-settings-palette-head" data-i18n="programSettings.paletteTitle">Виджеты в списке под «Виджеты»</h4>
                   <p class="hint program-settings-palette-hint" data-i18n="programSettings.paletteHint">Галочка только для списка карточек «Виджеты»; ТВ и предпросмотр не меняются.</p>
+                  <div id="widget-registry-issues" class="widget-registry-issues" hidden></div>
                   <div id="program-settings-palette-checkboxes" class="program-settings-palette-grid program-settings-palette-grid--compact"></div>
                 </section>
               </div>
@@ -415,6 +422,22 @@
                     <span class="override-field-label">Галерея (до 4 фото)</span>
                     <p class="hint" style="margin:2px 0 8px">Дополнительные изображения с фиксированным порядком (как на экране). Текст и вложения по-прежнему в редакторе ниже.</p>
                     <div id="school-news-gallery" class="school-news-gallery" aria-label="Галерея новости"></div>
+                  </div>
+                  <div class="override-field override-field-wide school-news-layout-section">
+                    <span class="override-field-label" data-i18n="programSettings.schoolNewsLayoutTitle">Оформление фото на экране</span>
+                    <div class="inline-grid school-news-layout-grid">
+                      <label class="override-field"><span class="override-field-label" data-i18n="programSettings.schoolNewsImageWidth">Ширина фото, %</span>
+                        <input id="school-news-image-width" class="standard-input" type="number" min="15" max="55" step="1" value="32">
+                      </label>
+                      <label class="override-field"><span class="override-field-label" data-i18n="programSettings.schoolNewsImageMaxHeight">Макс. высота, px</span>
+                        <input id="school-news-image-max-height" class="standard-input" type="number" min="80" max="400" step="1" value="200">
+                      </label>
+                      <label class="override-field toggle-label school-news-layout-wrap">
+                        <input id="school-news-image-wrap" type="checkbox" checked>
+                        <span data-i18n="programSettings.schoolNewsImageWrap">Обтекание текстом (одно фото)</span>
+                      </label>
+                    </div>
+                    <p class="hint" data-i18n="programSettings.schoolNewsLayoutHint">При одном изображении текст обтекает фото слева; при нескольких — столбик слева. Настройки сохраняются вместе с новостью.</p>
                   </div>
                   <label class="override-field toggle-label"><input id="school-news-active" type="checkbox" checked><span>Активна</span></label>
                 </section>
@@ -561,7 +584,7 @@
               <h3 id="audio-stream-intro-heading" class="audio-stream-intro-heading" data-i18n="audio.introBlockTitle">Как устроен звук</h3>
               <div class="audio-stream-lede">
                 <p class="hint hint-tight" data-i18n-html="audio.hint1">На <strong>ТВ</strong> — звук из <strong>браузера</strong>. На <strong>ПК</strong> — <code>ffmpeg</code> (wasapi) или <code>ffplay</code> из той же папки. Сохраните конфиг после правок.</p>
-                <p class="hint hint-tight" data-i18n-html="audio.hint2"><strong>Конец урока</strong> — время «конец» в строке расписания и звук конца (или дефолт шаблона).</p>
+                <p class="hint hint-tight" data-i18n-html="audio.hint2"><strong>Конец слота</strong> — время «конец» в строке расписания и звук конца (или дефолт шаблона).</p>
               </div>
             </section>
 
@@ -595,9 +618,9 @@
                     <h4 class="audio-stream-group-title" data-i18n="audio.groupPc">ПК и ffmpeg</h4>
                     <div class="audio-stream-col-stack">
                       <label class="toggle-label">
-                        <input id="audio-stream-enabled" type="checkbox"> <span data-i18n="audio.enable">Включить автоматические звонки и (опционально) музыку на переменах</span>
+                        <input id="audio-stream-enabled" type="checkbox"> <span data-i18n="audio.enable">Включить автоматические сигналы и (опционально) музыку на переменах</span>
                       </label>
-                      <p class="hint audio-stream-hint-inline" data-i18n-html="audio.hint3"><strong>Без галочки</strong> фоновые звонки на ПК не идут.</p>
+                      <p class="hint audio-stream-hint-inline" data-i18n-html="audio.hint3"><strong>Без галочки</strong> фоновые сигналы на ПК не идут.</p>
                       <div class="audio-stream-field-ffmpeg">
                         <span class="audio-stream-field-label" data-i18n="audio.ffmpeg">Путь к ffmpeg.exe (необязательно)</span>
                         <div class="audio-stream-ffmpeg-row">
@@ -610,15 +633,15 @@
                     </div>
                   </div>
                   <div class="audio-stream-control-section">
-                    <h4 class="audio-stream-group-title" data-i18n="audio.groupBells">Звонки по расписанию</h4>
+                    <h4 class="audio-stream-group-title" data-i18n="audio.groupBells">Сигналы по расписанию</h4>
                     <div class="audio-stream-col-stack">
                       <label class="toggle-label">
-                        <input id="audio-stream-use-bell-schedule" type="checkbox"> <span data-i18n="audio.useSchedule">Опираться на расписание звонков выбранного экрана</span>
+                        <input id="audio-stream-use-bell-schedule" type="checkbox"> <span data-i18n="audio.useSchedule">Опираться на расписание сигналов выбранного экрана</span>
                       </label>
                       <label class="toggle-label">
-                        <input id="audio-stream-use-bell-files" type="checkbox"> <span data-i18n="audio.useBellFiles">Использовать файлы звонков из админки (начало/конец урока)</span>
+                        <input id="audio-stream-use-bell-files" type="checkbox"> <span data-i18n="audio.useBellFiles">Использовать файлы сигналов из админки (начало/конец слота)</span>
                       </label>
-                      <label><span data-i18n="audio.bellVol">Громкость звонков по расписанию, %</span>
+                      <label><span data-i18n="audio.bellVol">Громкость сигналов по расписанию, %</span>
                         <input id="audio-stream-volume" class="standard-input" type="number" min="0" max="100" placeholder="80">
                       </label>
                       <div class="audio-stream-field-stack">
@@ -628,7 +651,7 @@
                         <p class="hint audio-stream-hint-inline" data-i18n="audio.sourceEmpty">Пустой пункт — первый экран в списке.</p>
                       </div>
                       <div class="audio-stream-field-stack">
-                        <label><span data-i18n="audio.bellWindow">Окно срабатывания звонка (сек, 5–55)</span>
+                        <label><span data-i18n="audio.bellWindow">Окно срабатывания сигнала (сек, 5–55)</span>
                           <input id="audio-stream-bell-window" class="standard-input" type="number" min="5" max="55" placeholder="25">
                         </label>
                       </div>
@@ -651,9 +674,9 @@
                   <div id="break-music-player-list" class="break-music-player-list"></div>
                 </div>
                 <div class="audio-stream-status-hints">
-                  <p class="hint audio-stream-hint-inline" data-i18n="audio.hintVol">Громкость музыки перемен — ползунок в плеере слева; громкость звонков — поле выше в центральной колонке.</p>
+                  <p class="hint audio-stream-hint-inline" data-i18n="audio.hintVol">Громкость музыки на перемене — ползунок в плеере (колонка слева); громкость сигналов — поле % в центральной колонке.</p>
                   <p class="hint audio-stream-hint-inline" data-i18n-html="audio.bellWindowHint">Как <code>bell_audio.trigger_sec_window</code> для ТВ. Быстрый тест звука — раздел «Звук ПК» в боковом меню.</p>
-                  <p class="hint pc-player-hint hint-tight" data-i18n-html="audio.playerHint">Только файлы из <code>data/break_music</code> — предпрослушивание фона перемен. Звонки по расписанию настраиваются в «Уроки и звонки» и играют автоматически на ПК.</p>
+                  <p class="hint pc-player-hint hint-tight" data-i18n-html="audio.playerHint">Только файлы из data/break_music — предпрослушивание фона перемен. Сигналы по расписанию настраиваются в «Расписание и сигналы» и играют автоматически на ПК.</p>
                 </div>
               </section>
             </div>
