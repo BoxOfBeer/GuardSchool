@@ -141,12 +141,6 @@ def default_bell_schedules() -> dict[str, Any]:
     }
 
 
-
-
-def load_overrides() -> list[dict[str, Any]]:
-    return read_json(OVERRIDES_PATH, [])
-
-
 def schedule_date_iso(raw: Any) -> str:
     """Поле date в schedule.json / override → YYYY-MM-DD для сравнения (Excel dd.mm.yyyy, datetime-строки)."""
     if raw is None:
