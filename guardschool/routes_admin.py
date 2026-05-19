@@ -187,7 +187,7 @@ async def get_admin_config(request: Request) -> Response:
         "deployment_mode": deployment_mode(),
         "app_version": APP_VERSION,
         "demo_session": is_demo_session_for_admin_ui(request),
-        "demo_exit_url": _demo_exit_redirect_url,
+        "demo_exit_url": _demo_exit_redirect_url(),
         "capabilities": get_capabilities_public(),
         "widget_registry": widget_registry_public(),
     }
