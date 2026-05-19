@@ -28,6 +28,7 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Stre
 from . import bell_rupor_worker
 from .app_try_demo import demo_exit_redirect_url as _demo_exit_redirect_url
 from .capabilities import CAP_CLOUD_SYNC, get_capabilities_public
+from .license_capability_provider import resolve_effective_plan_id
 from .gs_admin_http import admin_msg, admin_ui_lang
 from .gs_admin_upload import (
     read_upload_capped as _read_upload_capped,
@@ -189,6 +190,7 @@ async def get_admin_config(request: Request) -> Response:
         "demo_session": is_demo_session_for_admin_ui(request),
         "demo_exit_url": _demo_exit_redirect_url(),
         "capabilities": get_capabilities_public(),
+        "effective_plan_id": resolve_effective_plan_id(),
         "widget_registry": widget_registry_public(),
     }
     return JSONResponse(cfg, headers={"Cache-Control": "no-store"})

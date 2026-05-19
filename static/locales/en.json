@@ -569,6 +569,8 @@
   "cap.gateUnavailable": "Unavailable ({{status}})",
   "cap.sectionUnavailable": "Feature unavailable in this build.",
   "cap.noData": "No capability data. Refresh the page.",
+  "cap.effectivePlan": "Current plan (plan_id): {{plan}}. Full school plan is paid (local + SaaS); saas_only is cloud-hosted with the same SaaS bundle.",
+  "cap.effectivePlanUnknown": "Plan not resolved (missing school cookie or tenants.plan_id). Sign in again or select the organization.",
   "cap.layerHint": "layer: {{hint}}",
   "cap.widgetIssuesTitle": "Widget load issues:",
   "cap.widgetStatusError": "error",

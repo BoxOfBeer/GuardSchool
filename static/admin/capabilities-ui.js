@@ -250,7 +250,7 @@ export function applyCapabilityGates(capabilities, elements = {}) {
 
  */
 
-export function renderCapabilitiesOverview(capabilities, container) {
+export function renderCapabilitiesOverview(capabilities, container, meta) {
 
   if (!container) return;
 
@@ -261,6 +261,12 @@ export function renderCapabilitiesOverview(capabilities, container) {
     return;
 
   }
+
+  const planRaw = meta && meta.effective_plan_id != null ? String(meta.effective_plan_id) : "";
+
+  const planLine = planRaw
+    ? `<p class="hint cap-effective-plan">${escapeHtml(tf("cap.effectivePlan", { plan: planRaw }))}</p>`
+    : `<p class="hint cap-effective-plan">${escapeHtml(t("cap.effectivePlanUnknown"))}</p>`;
 
   const ids = [
 
@@ -294,7 +300,7 @@ export function renderCapabilitiesOverview(capabilities, container) {
 
   });
 
-  container.innerHTML = `<table class="cap-overview-table"><tbody>${rows.join("")}</tbody></table>`;
+  container.innerHTML = `${planLine}<table class="cap-overview-table"><tbody>${rows.join("")}</tbody></table>`;
 
 }
 

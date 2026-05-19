@@ -569,6 +569,8 @@
   "cap.gateUnavailable": "Недоступно ({{status}})",
   "cap.sectionUnavailable": "Функция недоступна в текущей сборке.",
   "cap.noData": "Нет данных о возможностях. Обновите страницу.",
+  "cap.effectivePlan": "Текущий тариф (plan_id): {{plan}}. Полный школьный тариф — paid (локаль + SaaS); saas_only — облачная школа с тем же SaaS-набором.",
+  "cap.effectivePlanUnknown": "Тариф не определён (нет cookie школы или plan_id в tenants). Войдите снова или выберите организацию.",
   "cap.layerHint": "слой: {{hint}}",
   "cap.widgetIssuesTitle": "Проблемы загрузки виджетов:",
   "cap.widgetStatusError": "ошибка",

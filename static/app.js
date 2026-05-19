@@ -417,7 +417,7 @@ function hydrateProgramSettingsPanelIfOpen() {
       screenFallbackEnabled: elements.screenFallbackEnabled,
     });
   }
-  renderCapabilitiesOverview(state.meta?.capabilities, elements.capabilitiesOverview);
+  renderCapabilitiesOverview(state.meta?.capabilities, elements.capabilitiesOverview, state.meta);
   renderWidgetRegistryIssues(state.meta?.widget_registry, elements.widgetRegistryIssues);
   refreshSyncStatusLine().catch(() => {});
   refreshTvAccessUi().catch(() => {});
@@ -2937,7 +2937,7 @@ async function init() {
       screenFallbackEnabled: elements.screenFallbackEnabled,
     });
   }
-  renderCapabilitiesOverview(state.meta?.capabilities, elements.capabilitiesOverview);
+  renderCapabilitiesOverview(state.meta?.capabilities, elements.capabilitiesOverview, state.meta);
   renderWidgetRegistryIssues(state.meta?.widget_registry, elements.widgetRegistryIssues);
   const mig = state.meta?.widget_registry?.migration_warnings;
   if (Array.isArray(mig) && mig.length) {

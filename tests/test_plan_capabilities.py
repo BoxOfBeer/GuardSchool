@@ -70,7 +70,7 @@ class PlanCapabilityTests(unittest.TestCase):
         caps = get_capabilities()
         self.assertEqual(caps[CAP_CLOUD_SYNC].status, CapabilityStatus.locked)
 
-    def test_paid_db_alias_matches_starter(self) -> None:
+    def test_paid_db_unlocks_full_saas_bundle(self) -> None:
         os.environ.pop("GUARDSCHOOL_TENANT_PLAN_ID", None)
         set_tenant_slug("school-a")
         with (
@@ -80,7 +80,8 @@ class PlanCapabilityTests(unittest.TestCase):
             self._require_license_available()
             caps = get_capabilities()
         self.assertEqual(caps[CAP_CLOUD_SYNC].status, CapabilityStatus.available)
-        self.assertEqual(caps[CAP_PUSH_NOTIFICATIONS].status, CapabilityStatus.locked)
+        self.assertEqual(caps[CAP_PUSH_NOTIFICATIONS].status, CapabilityStatus.available)
+        self.assertTrue(has_capability(CAP_PUSH_NOTIFICATIONS))
 
     def test_tenant_db_overrides_env(self) -> None:
         os.environ["GUARDSCHOOL_TENANT_PLAN_ID"] = "free"
@@ -96,8 +97,9 @@ class PlanCapabilityTests(unittest.TestCase):
     def test_normalize_plan_aliases(self) -> None:
         from guardschool.license_capability_provider import normalize_plan_id
 
-        self.assertEqual(normalize_plan_id("paid"), "starter")
-        self.assertEqual(normalize_plan_id("saas_only"), "enterprise")
+        self.assertEqual(normalize_plan_id("paid"), "paid")
+        self.assertEqual(normalize_plan_id("saas_only"), "saas_only")
+        self.assertEqual(normalize_plan_id("full"), "paid")
 
 
 if __name__ == "__main__":

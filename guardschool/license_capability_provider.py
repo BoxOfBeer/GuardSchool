@@ -19,22 +19,26 @@ from .capabilities import (
     CapabilityStatus,
 )
 
+# Полный SaaS-набор для школы (без платформенных registration / tenant_provisioning).
+_FULL_SCHOOL_PLAN_CAPS = frozenset(
+    {
+        CAP_CLOUD_SYNC,
+        CAP_CLOUD_STATUS,
+        CAP_PUSH_NOTIFICATIONS,
+        CAP_MOBILE_EXTERNAL,
+        CAP_REMOTE_TV_PAIRING,
+        CAP_PAYMENT,
+        CAP_PRODUCTION_PORTAL,
+        CAP_TARIFF_LIMITS,
+    }
+)
+
 # plan_id → capabilities, которые остаются available (остальные SaaS/commercial → locked)
+# public.plans: free | paid (локаль + SaaS) | saas_only (только облачная школа)
 _PLAN_ALLOWED: dict[str, frozenset[str]] = {
     "free": frozenset(),
-    # id из public.plans (ensure_public_schema)
-    "paid": frozenset({CAP_CLOUD_SYNC}),
-    "saas_only": frozenset(
-        {
-            CAP_CLOUD_SYNC,
-            CAP_PUSH_NOTIFICATIONS,
-            CAP_MOBILE_EXTERNAL,
-            CAP_REMOTE_TV_PAIRING,
-            CAP_PAYMENT,
-            CAP_PRODUCTION_PORTAL,
-            CAP_TARIFF_LIMITS,
-        }
-    ),
+    "paid": _FULL_SCHOOL_PLAN_CAPS,
+    "saas_only": _FULL_SCHOOL_PLAN_CAPS,
     "starter": frozenset({CAP_CLOUD_SYNC}),
     "pro": frozenset(
         {
@@ -44,22 +48,11 @@ _PLAN_ALLOWED: dict[str, frozenset[str]] = {
             CAP_REMOTE_TV_PAIRING,
         }
     ),
-    "enterprise": frozenset(
-        {
-            CAP_CLOUD_SYNC,
-            CAP_PUSH_NOTIFICATIONS,
-            CAP_MOBILE_EXTERNAL,
-            CAP_REMOTE_TV_PAIRING,
-            CAP_PAYMENT,
-            CAP_PRODUCTION_PORTAL,
-            CAP_TARIFF_LIMITS,
-        }
-    ),
+    "enterprise": _FULL_SCHOOL_PLAN_CAPS,
 }
 
 _PLAN_ALIASES: dict[str, str] = {
-    "paid": "starter",
-    "saas_only": "enterprise",
+    "full": "paid",
 }
 
 _COMMERCIAL_GATED = frozenset(
@@ -77,7 +70,8 @@ _COMMERCIAL_GATED = frozenset(
     }
 )
 
-_PLAN_LOCK_MESSAGE = "Модуль установлен, но недоступен в текущей редакции."
+def _plan_lock_message(plan_norm: str) -> str:
+    return f"Модуль установлен, но недоступен в тарифе «{plan_norm}» (полный школьный — paid)."
 
 
 def normalize_plan_id(plan: str | None) -> str | None:
@@ -130,7 +124,7 @@ def apply_plan_capability_limits(registry: dict[str, CapabilityInfo], plan: str 
         if cap_id not in allowed:
             registry[cap_id] = CapabilityInfo(
                 status=CapabilityStatus.locked,
-                message=_PLAN_LOCK_MESSAGE,
+                message=_plan_lock_message(plan_norm),
                 module_hint=f"plan:{plan_norm}",
             )
 
