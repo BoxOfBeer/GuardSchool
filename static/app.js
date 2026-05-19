@@ -3,8 +3,8 @@ import "./widgets/plugins-manifest.js";
 import "./widgets/runtime.js";
 import "./widgets/carousel-runtime.js";
 import "./screen_widgets.js?v=1.02.041";
-import { TV_WIDGET_PLUGIN_SCRIPTS } from "./widgets/plugins-manifest.js";
 
+const TV_WIDGET_PLUGIN_SCRIPTS = window.GUARD_SCHOOL_TV_WIDGET_PLUGINS || [];
 await Promise.all(TV_WIDGET_PLUGIN_SCRIPTS.map((f) => import(`./widgets/${f}`)));
 import {
   setPreviewDeps,

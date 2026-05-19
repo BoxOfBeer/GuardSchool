@@ -56,11 +56,11 @@ class PlanCapabilityTests(unittest.TestCase):
             "hybrid tree needs saas_db.py for license_check",
         )
 
-    def test_starter_env_locks_push(self) -> None:
+    def test_starter_env_same_as_free(self) -> None:
         os.environ["GUARDSCHOOL_TENANT_PLAN_ID"] = "starter"
         self._require_license_available()
         caps = get_capabilities()
-        self.assertEqual(caps[CAP_CLOUD_SYNC].status, CapabilityStatus.available)
+        self.assertEqual(caps[CAP_CLOUD_SYNC].status, CapabilityStatus.locked)
         self.assertEqual(caps[CAP_PUSH_NOTIFICATIONS].status, CapabilityStatus.locked)
         self.assertFalse(has_capability(CAP_PUSH_NOTIFICATIONS))
 
@@ -100,6 +100,7 @@ class PlanCapabilityTests(unittest.TestCase):
         self.assertEqual(normalize_plan_id("paid"), "paid")
         self.assertEqual(normalize_plan_id("saas_only"), "saas_only")
         self.assertEqual(normalize_plan_id("full"), "paid")
+        self.assertEqual(normalize_plan_id("starter"), "free")
 
 
 if __name__ == "__main__":

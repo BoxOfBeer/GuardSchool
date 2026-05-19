@@ -18,7 +18,7 @@
 ## Лицензии
 
 - `plan_id` тенанта (`public.tenants`) и env `GUARDSCHOOL_TENANT_PLAN_ID` ограничивают SaaS caps (`locked`) через `license_capability_provider.py` при каждом `get_capabilities()`.
-- Планы в БД по умолчанию: `free`, `paid` (локаль + SaaS), `saas_only` (облачная школа); оба платных дают полный SaaS-набор caps. Дополнительные id: `starter`, `pro`, `enterprise`. Алиас `full`→`paid`.
+- Планы в БД по умолчанию: `free`, `paid` (локаль + SaaS), `saas_only` (облачная школа); оба платных дают полный SaaS-набор caps. Дополнительные id: `pro`, `enterprise`. Алиасы: `starter`→`free`, `full`→`paid`.
 - SaaS-функция и лицензия разделены: модуль может быть установлен, но `locked` по тарифу.
 
 ## TV API

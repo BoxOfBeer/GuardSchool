@@ -914,10 +914,19 @@
     return registryKnownTypes.has(t);
   }
 
+  function tvSubst(template, vars) {
+    let s = String(template || "");
+    const v = vars || {};
+    for (const key of Object.keys(v)) {
+      s = s.split(`{{${key}}}`).join(String(v[key]));
+    }
+    return s;
+  }
+
   function renderWidgetMissingPlaceholder(widget) {
     const typ = escapeHtml(String((widget && widget.type) || "?"));
     const L = tvUiStrings();
-    const msg = L.widgetMissing || `Виджет ${typ} отсутствует.`;
+    const msg = tvSubst(L.widgetMissing || "Виджет {{type}} отсутствует.", { type: typ });
     return `<div class="widget-missing widget-meta">${msg}</div>`;
   }
 
@@ -925,7 +934,7 @@
     const typ = escapeHtml(String((widget && widget.type) || "?"));
     const detail = err && err.message ? escapeHtml(String(err.message)) : "";
     const L = tvUiStrings();
-    const msg = L.widgetError || `Ошибка виджета ${typ}.`;
+    const msg = tvSubst(L.widgetError || "Ошибка виджета {{type}}.", { type: typ });
     return `<div class="widget-error widget-meta">${msg}${detail ? `<div class="widget-error-detail">${detail}</div>` : ""}</div>`;
   }
 

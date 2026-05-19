@@ -54,5 +54,5 @@ GuardSchool использует единый реестр **capabilities** — 
 Ограничение по тарифу: `license_capability_provider.py` при `get_capabilities()`:
 
 - источник plan: `tenants.plan_id` для текущего `tenant_slug` (SaaS БД), иначе env `GUARDSCHOOL_TENANT_PLAN_ID`;
-- id: `free`, `paid`, `saas_only`, `starter`, `pro`, `enterprise` (`paid` и `saas_only` — полный SaaS-набор для школы; `full`→`paid`);
+- id: `free`, `paid`, `saas_only`, `starter`, `pro`, `enterprise` (`paid` и `saas_only` — полный SaaS-набор; `starter`→`free`; `full`→`paid`);
 - часть SaaS/commercial caps → `locked`, если не входят в тариф.

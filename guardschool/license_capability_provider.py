@@ -39,7 +39,6 @@ _PLAN_ALLOWED: dict[str, frozenset[str]] = {
     "free": frozenset(),
     "paid": _FULL_SCHOOL_PLAN_CAPS,
     "saas_only": _FULL_SCHOOL_PLAN_CAPS,
-    "starter": frozenset({CAP_CLOUD_SYNC}),
     "pro": frozenset(
         {
             CAP_CLOUD_SYNC,
@@ -53,6 +52,7 @@ _PLAN_ALLOWED: dict[str, frozenset[str]] = {
 
 _PLAN_ALIASES: dict[str, str] = {
     "full": "paid",
+    "starter": "free",
 }
 
 _COMMERCIAL_GATED = frozenset(
