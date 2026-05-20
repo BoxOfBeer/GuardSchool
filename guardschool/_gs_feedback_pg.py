@@ -120,6 +120,15 @@ def list_feedback_messages(limit: int = 300, include_hidden: bool = False) -> li
     ]
 
 
+def count_unread_feedback_messages() -> int:
+    ensure_feedback_tables()
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) AS n FROM feedback_messages WHERE is_read=0 AND is_hidden=0",
+        ).fetchone()
+    return int(row["n"] if row else 0)
+
+
 def mark_feedback_read(message_id: int) -> None:
     with _connect() as conn:
         conn.execute("UPDATE feedback_messages SET is_read=1 WHERE id=?", (int(message_id),))

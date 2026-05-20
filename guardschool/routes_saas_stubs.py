@@ -25,6 +25,12 @@ def stub_admin_feedback_list(request: Request) -> None:
     require_capability(CAP_TENANT_FEEDBACK)
 
 
+@router.get("/api/admin/feedback/unread-count")
+def stub_admin_feedback_unread_count(request: Request) -> dict[str, int]:
+    require_capability(CAP_TENANT_FEEDBACK)
+    return {"count": 0}
+
+
 @router.post("/api/admin/feedback/{message_id}/read")
 def stub_admin_feedback_mark_read(message_id: int, request: Request) -> None:
     require_capability(CAP_TENANT_FEEDBACK)

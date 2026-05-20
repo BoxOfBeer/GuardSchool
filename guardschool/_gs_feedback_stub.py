@@ -24,6 +24,10 @@ def list_feedback_messages(limit: int = 300, include_hidden: bool = False) -> li
     return []
 
 
+def count_unread_feedback_messages() -> int:
+    return 0
+
+
 def mark_feedback_read(message_id: int) -> None:
     return
 

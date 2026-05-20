@@ -56,6 +56,13 @@ def list_feedback_messages(**kwargs: Any) -> list[dict[str, Any]]:
   return mod.list_feedback_messages(**kwargs)
 
 
+def count_unread_feedback_messages() -> int:
+  mod = feedback_module()
+  if mod is None:
+    return 0
+  return int(mod.count_unread_feedback_messages())
+
+
 def mark_feedback_read(message_id: int) -> None:
   mod = feedback_module()
   if mod is None:

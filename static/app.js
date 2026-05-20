@@ -2,7 +2,7 @@
 import "./widgets/plugins-manifest.js";
 import "./widgets/runtime.js";
 import "./widgets/carousel-runtime.js";
-import "./screen_widgets.js?v=1.02.041";
+import "./screen_widgets.js?v=1.02.044";
 
 const TV_WIDGET_PLUGIN_SCRIPTS = window.GUARD_SCHOOL_TV_WIDGET_PLUGINS || [];
 await Promise.all(TV_WIDGET_PLUGIN_SCRIPTS.map((f) => import(`./widgets/${f}`)));
@@ -28,7 +28,13 @@ import {
   bindPcPlayerOnce,
   bindSettingsSoundTestsOnce,
 } from "./admin/audio-stream.js";
-import { enterStatsPanel, leaveStatsPanel, refreshFeedbackAdminPanel, bindFeedbackAdminPanelOnce } from "./admin/stats.js";
+import {
+  enterStatsPanel,
+  leaveStatsPanel,
+  refreshFeedbackAdminPanel,
+  refreshFeedbackUnreadBadge,
+  bindFeedbackAdminPanelOnce,
+} from "./admin/stats.js";
 import {
   setDataImportDeps,
   uploadBackground,
@@ -80,6 +86,18 @@ import {
   renderCapabilitiesOverview,
   renderWidgetRegistryIssues,
 } from "./admin/capabilities-ui.js";
+
+let feedbackUnreadBadgeTimer = null;
+
+function scheduleFeedbackUnreadBadgeRefresh() {
+  const st = state.meta?.capabilities?.tenant_feedback?.status;
+  if (st && st !== "available") return;
+  refreshFeedbackUnreadBadge().catch(() => {});
+  if (feedbackUnreadBadgeTimer) window.clearInterval(feedbackUnreadBadgeTimer);
+  feedbackUnreadBadgeTimer = window.setInterval(() => {
+    refreshFeedbackUnreadBadge().catch(() => {});
+  }, 60000);
+}
 
 function ensureAdminPaletteHidden() {
   if (!state.config) return;
@@ -2975,6 +2993,7 @@ async function init() {
   bindSettingsSoundTestsOnce();
   bindWidgetModalOnce();
   bindProgramSettingsModalOnce();
+  scheduleFeedbackUnreadBadgeRefresh();
   await ensureSchoolNewsTinyMce();
   resetSchoolNewsForm();
   render();

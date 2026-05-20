@@ -10,6 +10,9 @@ import { t, tf } from "./i18n-helpers.js";
 
 /** Порядок для обзора в настройках. */
 
+/** Не показывать админу школы — только лицензиату / порталу провайдера. */
+const CAPABILITY_LICENSOR_ONLY = new Set(["registration", "tenant_provisioning"]);
+
 const CAPABILITY_OVERVIEW_ORDER = [
 
   "local_widgets",
@@ -30,11 +33,7 @@ const CAPABILITY_OVERVIEW_ORDER = [
 
   "license_check",
 
-  "registration",
-
   "payment",
-
-  "tenant_provisioning",
 
   "tariff_limits",
 
@@ -270,9 +269,11 @@ export function renderCapabilitiesOverview(capabilities, container, meta) {
 
   const ids = [
 
-    ...CAPABILITY_OVERVIEW_ORDER.filter((id) => id in capabilities),
+    ...CAPABILITY_OVERVIEW_ORDER.filter((id) => id in capabilities && !CAPABILITY_LICENSOR_ONLY.has(id)),
 
-    ...Object.keys(capabilities).filter((id) => !CAPABILITY_OVERVIEW_ORDER.includes(id)).sort(),
+    ...Object.keys(capabilities)
+      .filter((id) => !CAPABILITY_OVERVIEW_ORDER.includes(id) && !CAPABILITY_LICENSOR_ONLY.has(id))
+      .sort(),
 
   ];
 

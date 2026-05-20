@@ -203,9 +203,33 @@ export async function refreshFeedbackAdminPanel() {
   try {
     const feedback = await api("/api/admin/feedback");
     renderFeedback(feedback.items || [], feedbackRoot);
+    await refreshFeedbackUnreadBadge();
   } catch (e) {
     feedbackRoot.innerHTML = `<p class="hint">${escapeHtml(String(e.message || e))}</p>`;
   }
+}
+
+export async function refreshFeedbackUnreadBadge() {
+  const btn = document.querySelector('.admin-settings-submenu-item[data-ps-tab="feedback"]');
+  if (!btn) return;
+  let count = 0;
+  try {
+    const r = await api("/api/admin/feedback/unread-count");
+    count = Math.max(0, Number(r.count) || 0);
+  } catch (_) {
+    count = 0;
+  }
+  btn.querySelector(".admin-submenu-unread-badge")?.remove();
+  if (count <= 0) {
+    btn.classList.remove("admin-settings-submenu-item--has-unread");
+    return;
+  }
+  btn.classList.add("admin-settings-submenu-item--has-unread");
+  const badge = document.createElement("span");
+  badge.className = "admin-submenu-unread-badge";
+  badge.textContent = count > 99 ? "99+" : String(count);
+  badge.setAttribute("aria-label", String(count));
+  btn.appendChild(badge);
 }
 
 export function bindFeedbackAdminPanelOnce() {

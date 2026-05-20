@@ -1,5 +1,10 @@
 [
   {
+    "version": "1.02.044",
+    "timestamp": "2026-05-20T12:00:00",
+    "message": "Реорганизация кода (open-core, модули guardschool/*, виджеты plugins-manifest без export на ТВ). Админка: счётчик непрочитанной обратной связи на кнопке настроек; из обзора capabilities скрыты registration и tenant_provisioning для админа школы; тариф paid = полный SaaS-набор, starter = free."
+  },
+  {
     "version": "1.02.043",
     "timestamp": "2026-05-16T18:00:00",
     "message": "Экран (мобильная панель ⚙): блок «Версия» — номер сборки GuardSchool (с сервера или со страницы), ревизия данных с API; предупреждение, если сервер новее загруженной вкладки. Поднят APP_VERSION для cache-bust screen.js."

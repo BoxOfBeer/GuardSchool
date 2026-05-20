@@ -17,6 +17,7 @@ from .gs_tv_screen_api import (
 from .optional_imports import (
     block_feedback_hash,
     can_send_feedback,
+    count_unread_feedback_messages,
     create_feedback_message,
     hide_feedback,
     list_feedback_messages,
@@ -62,6 +63,13 @@ def admin_feedback_list(request: Request, include_hidden: bool = Query(False)) -
     require_capability(CAP_TENANT_FEEDBACK)
     require_auth(request)
     return {"items": list_feedback_messages(limit=500, include_hidden=bool(include_hidden))}
+
+
+@router.get("/api/admin/feedback/unread-count")
+def admin_feedback_unread_count(request: Request) -> dict[str, int]:
+    require_capability(CAP_TENANT_FEEDBACK)
+    require_auth(request)
+    return {"count": count_unread_feedback_messages()}
 
 
 @router.post("/api/admin/feedback/{message_id}/read")
