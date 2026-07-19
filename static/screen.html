@@ -85,12 +85,15 @@
         for (var wi = 0; wi < widgetScripts.length; wi++) {
           var sw = document.createElement("script");
           sw.src = widgetScripts[wi] + "?v=__GS_ASSETS_VER__&tvts=" + ts;
-          sw.defer = true;
+          // Динамические classic-script по умолчанию async: после разбиения ядра
+          // screen_widgets мог выполниться раньше tv-screen-shell. async=false
+          // сохраняет порядок вставки и не блокирует разбор уже готового body.
+          sw.async = false;
           document.body.appendChild(sw);
         }
         var s2 = document.createElement("script");
         s2.src = "/static/screen.js?v=__GS_ASSETS_VER__&tvts=" + ts;
-        s2.defer = true;
+        s2.async = false;
         document.body.appendChild(s2);
       } catch (_) {}
     })();

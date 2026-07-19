@@ -2214,7 +2214,9 @@ function render(screenPayload) {
     GRef.applyTvTextOutline(root, screen);
   }
 
-  GRef.updateAllClocks(root);
+  if (typeof GRef.updateAllClocks === "function") {
+    GRef.updateAllClocks(root);
+  }
   if (typeof GRef.bindCheckinWidgets === "function") {
     GRef.bindCheckinWidgets(root, screenPayload);
   }
@@ -2682,7 +2684,9 @@ const rootForClock = () => document.getElementById("screen-root");
 
 window.setInterval(() => {
   const g = window.GuardSchoolScreen;
-  if (g) g.updateAllClocks(rootForClock());
+  if (g && typeof g.updateAllClocks === "function") {
+    g.updateAllClocks(rootForClock());
+  }
 }, 1000);
 window.setInterval(() => {
   if (window.__lastScreenPayload) tickBellAudio(window.__lastScreenPayload);
