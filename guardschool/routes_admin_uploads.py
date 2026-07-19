@@ -36,6 +36,7 @@ from .gs_paths import (
     WIDGET_IMAGES_SUBDIR,
 )
 from .gs_saas_limits import max_schedule_xlsx_bytes, max_widget_image_upload_bytes, saas_mode
+from .tenant_ctx import map_data_path
 from .gs_screen_push import (
     maybe_push_screen_content_if_data_revision_changed as _maybe_push_screen_content_if_data_revision_changed,
 )
@@ -48,7 +49,7 @@ async def upload_background(request: Request, file: UploadFile = File(...)) -> d
     require_auth(request)
     _reject_if_saas_upload(request)
     suffix = Path(file.filename or "background").suffix or ".jpg"
-    target = UPLOADS_DIR / f"{secrets.token_hex(8)}{suffix}"
+    target = map_data_path(UPLOADS_DIR) / f"{secrets.token_hex(8)}{suffix}"
     target.write_bytes(await file.read())
     return {"path": f"/uploads/{target.name}"}
 
@@ -77,7 +78,7 @@ async def upload_holidays(request: Request, file: UploadFile = File(...)) -> dic
     _reject_if_saas_upload(request)
     lang = admin_ui_lang(request)
     suffix = Path(file.filename or "holidays.xlsx").suffix or ".xlsx"
-    temp = UPLOADS_DIR / f"holidays_import{suffix}"
+    temp = map_data_path(UPLOADS_DIR) / f"holidays_import{suffix}"
     temp.write_bytes(await file.read())
     parsed = parse_holidays_excel(temp, lang=lang)
     write_json(HOLIDAYS_PATH, parsed)
@@ -91,7 +92,7 @@ async def upload_announcements(request: Request, file: UploadFile = File(...)) -
     _reject_if_saas_upload(request)
     lang = admin_ui_lang(request)
     suffix = Path(file.filename or "announcements.xlsx").suffix or ".xlsx"
-    temp = UPLOADS_DIR / f"announcements_import{suffix}"
+    temp = map_data_path(UPLOADS_DIR) / f"announcements_import{suffix}"
     temp.write_bytes(await file.read())
     parsed = parse_announcements_excel(temp, lang=lang)
     write_json(ANNOUNCEMENTS_PATH, parsed)
@@ -105,7 +106,7 @@ async def upload_marquee(request: Request, file: UploadFile = File(...)) -> dict
     _reject_if_saas_upload(request)
     lang = admin_ui_lang(request)
     suffix = Path(file.filename or "marquee.xlsx").suffix or ".xlsx"
-    temp = UPLOADS_DIR / f"marquee_import{suffix}"
+    temp = map_data_path(UPLOADS_DIR) / f"marquee_import{suffix}"
     temp.write_bytes(await file.read())
     parsed = parse_marquee_excel(temp, lang=lang)
     write_json(MARQUEE_PATH, parsed)
@@ -118,7 +119,7 @@ async def upload_schedule(request: Request, file: UploadFile = File(...)) -> dic
     require_auth(request)
     lang = admin_ui_lang(request)
     suffix = Path(file.filename or "schedule.xlsx").suffix or ".xlsx"
-    temp = UPLOADS_DIR / f"schedule_import{suffix}"
+    temp = map_data_path(UPLOADS_DIR) / f"schedule_import{suffix}"
     raw = await _read_upload_capped(request, file, max_schedule_xlsx_bytes()) if saas_mode() else await file.read()
     temp.write_bytes(raw)
     parsed = parse_excel(temp, lang=lang)
@@ -134,7 +135,7 @@ async def upload_full_schedule(request: Request, file: UploadFile = File(...)) -
     require_auth(request)
     lang = admin_ui_lang(request)
     suffix = Path(file.filename or "full_schedule.xlsx").suffix or ".xlsx"
-    temp = UPLOADS_DIR / f"full_schedule_import{suffix}"
+    temp = map_data_path(UPLOADS_DIR) / f"full_schedule_import{suffix}"
     raw = await _read_upload_capped(request, file, max_schedule_xlsx_bytes()) if saas_mode() else await file.read()
     temp.write_bytes(raw)
     parsed = parse_weekly_schedule_excel(temp, lang=lang)
@@ -150,7 +151,7 @@ async def upload_schedule_sample(request: Request, file: UploadFile = File(...))
     require_auth(request)
     lang = admin_ui_lang(request)
     suffix = Path(file.filename or "schedule_sample.xlsx").suffix or ".xlsx"
-    temp = UPLOADS_DIR / f"schedule_sample_import{suffix}"
+    temp = map_data_path(UPLOADS_DIR) / f"schedule_sample_import{suffix}"
     raw = await _read_upload_capped(request, file, max_schedule_xlsx_bytes()) if saas_mode() else await file.read()
     temp.write_bytes(raw)
     parsed = parse_weekly_schedule_excel(temp, lang=lang)
@@ -173,7 +174,7 @@ async def upload_bell_sound(request: Request, file: UploadFile = File(...)) -> d
             detail=admin_msg(lang, "Допустимы: mp3, wav, ogg, m4a, aac.", "Allowed: mp3, wav, ogg, m4a, aac."),
         )
     name = f"{secrets.token_hex(6)}{suffix}"
-    target = BELL_SOUNDS_DIR / name
+    target = map_data_path(BELL_SOUNDS_DIR) / name
     target.write_bytes(await file.read())
     return {"filename": name, "url": f"/uploads/bells/{name}"}
 
@@ -190,7 +191,7 @@ async def upload_emergency_sound(request: Request, file: UploadFile = File(...))
             status_code=400,
             detail=admin_msg(lang, "Допустимы: mp3, wav, ogg, m4a, aac.", "Allowed: mp3, wav, ogg, m4a, aac."),
         )
-    sub = UPLOADS_DIR / "emergency_sounds"
+    sub = map_data_path(UPLOADS_DIR / "emergency_sounds")
     sub.mkdir(parents=True, exist_ok=True)
     name = f"{secrets.token_hex(6)}{suffix}"
     target = sub / name

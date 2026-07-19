@@ -150,6 +150,23 @@ def demo_v3_binding_from_token(token: str | None) -> tuple[str, str] | None:
     return parts[2].strip().lower(), parts[3].strip().lower()
 
 
+def demo_session_matches_current_tenant(request: Request) -> bool:
+    """Демо-cookie действительна только внутри подписанного isolated tenant."""
+    token = request.cookies.get(SESSION_COOKIE)
+    if not verify_demo_session_token(token):
+        return False
+    from .tenant_ctx import tenant_slug as current_tenant_slug
+
+    current = (current_tenant_slug() or "").strip().lower()
+    bound = demo_v3_binding_from_token(token)
+    if bound:
+        return bool(current) and current == bound[1]
+    # Совместимость со старыми токенами: только отдельный sandbox, не произвольная cookie.
+    from .app_try_demo import try_demo_sandbox_slug
+
+    return bool(current) and current == try_demo_sandbox_slug()
+
+
 def is_demo_session_for_admin_ui(request: Request) -> bool:
     """
     Плашка «Демо» только при действительной демо-сессии.
@@ -159,7 +176,7 @@ def is_demo_session_for_admin_ui(request: Request) -> bool:
     auth = load_auth()
     if auth and token and verify_session_token(token, auth):
         return False
-    return verify_demo_session_token(token)
+    return demo_session_matches_current_tenant(request)
 
 
 def verify_session_token(token: str | None, auth: dict[str, Any]) -> bool:
@@ -181,7 +198,7 @@ def verify_session_token(token: str | None, auth: dict[str, Any]) -> bool:
 def is_authenticated(request: Request) -> bool:
     token = request.cookies.get(SESSION_COOKIE)
     if verify_demo_session_token(token):
-        return True
+        return demo_session_matches_current_tenant(request)
     auth = load_auth()
     if not auth:
         return False
@@ -192,7 +209,16 @@ def require_auth(request: Request) -> None:
     loc = admin_ui_lang(request)
     token = request.cookies.get(SESSION_COOKIE)
     if verify_demo_session_token(token):
-        return
+        if demo_session_matches_current_tenant(request):
+            return
+        raise HTTPException(
+            status_code=403,
+            detail=admin_msg(
+                loc,
+                "Демо-сессия не соответствует изолированной песочнице.",
+                "Demo session does not match its isolated sandbox.",
+            ),
+        )
     if not load_auth():
         raise HTTPException(
             status_code=428,

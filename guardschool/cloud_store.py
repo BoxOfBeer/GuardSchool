@@ -26,6 +26,7 @@ from .gs_paths import (
     SCHEDULE_SAMPLE_PATH,
     DATA_DIR,
 )
+from .tenant_ctx import map_data_path
 
 _LOG = logging.getLogger(__name__)
 
@@ -91,7 +92,7 @@ def _ensure_table(conn) -> None:
 def _build_snapshot_dict() -> dict[str, Any]:
     out: dict[str, Any] = {}
     for name, path in _SNAPSHOT_KEYS:
-        if not path.exists():
+        if not map_data_path(path).exists():
             continue
         try:
             out[name] = read_json(path, None)
@@ -159,12 +160,14 @@ def hydrate_data_dir_from_database() -> bool:
         _LOG.warning("cloud_store hydrate failed: %s", e)
         return False
 
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    map_data_path(DATA_DIR).mkdir(parents=True, exist_ok=True)
     for name, path in _SNAPSHOT_KEYS:
         if name not in snap:
             continue
         try:
-            path.write_text(
+            mapped = map_data_path(path)
+            mapped.parent.mkdir(parents=True, exist_ok=True)
+            mapped.write_text(
                 json.dumps(snap[name], ensure_ascii=False, indent=2),
                 encoding="utf-8",
             )

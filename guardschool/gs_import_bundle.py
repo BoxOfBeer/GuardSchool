@@ -26,6 +26,7 @@ from .gs_paths import (
     UPLOADS_DIR,
 )
 from .gs_weekly_template import ensure_weekly_schedule_template_file
+from .tenant_ctx import map_data_path
 
 
 def export_weekly_schedule_bundle_bytes() -> bytes:
@@ -112,12 +113,14 @@ def export_bundle_bytes() -> bytes:
             BELL_SCHEDULES_PATH,
             CHANGE_LOG_PATH,
         ]:
-            if path.exists():
-                archive.writestr(path.name, path.read_bytes())
-        if UPLOADS_DIR.exists():
-            for file_path in UPLOADS_DIR.rglob("*"):
+            mapped = map_data_path(path)
+            if mapped.exists():
+                archive.writestr(path.name, mapped.read_bytes())
+        uploads = map_data_path(UPLOADS_DIR)
+        if uploads.exists():
+            for file_path in uploads.rglob("*"):
                 if file_path.is_file():
-                    archive.writestr(str(Path("uploads") / file_path.relative_to(UPLOADS_DIR)), file_path.read_bytes())
+                    archive.writestr(str(Path("uploads") / file_path.relative_to(uploads)), file_path.read_bytes())
     return buffer.getvalue()
 
 
@@ -172,18 +175,20 @@ def import_bundle_bytes(raw_bytes: bytes, *, lang: str = "ru") -> None:
                 ),
             )
 
-        clear_directory(UPLOADS_DIR)
+        uploads = map_data_path(UPLOADS_DIR)
+        data_dir = map_data_path(DATA_DIR)
+        clear_directory(uploads)
         ensure_dirs()
 
         for name in names:
             path = Path(name)
             payload = archive.read(name)
             if path.parts and path.parts[0] == "uploads":
-                target = UPLOADS_DIR / Path(*path.parts[1:])
+                target = uploads / Path(*path.parts[1:])
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(payload)
             else:
-                (DATA_DIR / path.name).write_bytes(payload)
+                (data_dir / path.name).write_bytes(payload)
 
     try:
         from .cloud_store import persist_snapshot_to_database

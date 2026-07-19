@@ -28,14 +28,28 @@ def demo_middleware_binding_slug(request: Request, host_slug: str | None) -> str
     if not verify_demo_session_token(tok):
         return None
     bound = demo_v3_binding_from_token(tok)
-    if not bound:
+    if bound:
+        tpl, iso = bound
+        host = request_host_for_routing(request)
+        # На обычной схеме демо открывается на <template>.guarddoc.ru.
+        # Для единого school.* host_slug отсутствует, но сам хост явно публичный.
+        if tpl != host_slug and not is_public_school_host(host):
+            return None
+        if not tenant_data_dir(iso).is_dir():
+            return None
+        return iso
+
+    # Старые токены без isolated_slug допускаются только к отдельному sandbox,
+    # никогда к slug из пользовательской cookie.
+    from .app_try_demo import try_demo_sandbox_slug
+
+    sandbox = try_demo_sandbox_slug()
+    host = request_host_for_routing(request)
+    if host_slug != sandbox and not is_public_school_host(host):
         return None
-    tpl, iso = bound
-    if not host_slug or tpl != host_slug:
+    if not tenant_data_dir(sandbox).is_dir():
         return None
-    if not tenant_data_dir(iso).is_dir():
-        return None
-    return iso
+    return sandbox
 
 async def tenant_middleware(request: Request, call_next):
     """
@@ -53,23 +67,8 @@ async def tenant_middleware(request: Request, call_next):
 
     if deployment_mode() == "saas":
         host = request_host_for_routing(request)
-        slug: str | None = None
-        # 1) Если cookie gs_saas_tenant уже есть — используем её для tenant routing,
-        # даже при доступе по IP/локальному хосту (на ТВ часто открывают прямой адрес).
-        cook_raw = request.cookies.get(SAAS_TENANT_COOKIE) or ""
-        cook = decode_saas_tenant_cookie_value(cook_raw)
-        if cook and 1 <= len(cook) <= 64 and cook not in ("www", "admin"):
-            slug = cook
-        # 2) Если cookie нет, на публичном school.* тоже смотрим cookie (исторически).
-        if not slug and is_public_school_host(host):
-            cook2_raw = request.cookies.get(SAAS_TENANT_COOKIE) or ""
-            cook2 = decode_saas_tenant_cookie_value(cook2_raw)
-            if cook2 and 1 <= len(cook2) <= 64 and cook2 not in ("www", "admin"):
-                slug = cook2
-        # 3) Резерв: tenant из поддомена *.guarddoc.ru (не основной сценарий: у вас только school.*).
-        # «school» не маппим в slug — общий вход; без cookie slug остаётся None (не подмешивать legacy tenants/school).
-        # Совпадение с GUARDSCHOOL_PUBLIC_SCHOOL_HOST тоже отключает вывод slug из Host.
-        if not slug and host.endswith(".guarddoc.ru"):
+        host_slug: str | None = None
+        if host.endswith(".guarddoc.ru"):
             left = host[: -len(".guarddoc.ru")]
             if (
                 left
@@ -77,11 +76,21 @@ async def tenant_middleware(request: Request, call_next):
                 and left != "school"
                 and not is_public_school_host(host)
             ):
-                slug = left
-        # portal: guarddoc.ru / www.guarddoc.ru -> slug остаётся None
-        bound = demo_middleware_binding_slug(request, slug)
-        if bound:
-            slug = bound
+                host_slug = left
+        slug: str | None = None
+        demo_token = request.cookies.get(SESSION_COOKIE) or ""
+        if verify_demo_session_token(demo_token):
+            # Для демо cookie выбора тенанта не является доверенным источником.
+            # Контекст берём только из подписанного demo token.
+            slug = demo_middleware_binding_slug(request, host_slug)
+        else:
+            # Обычная сессия: tenant из cookie, затем резерв из поддомена.
+            cook_raw = request.cookies.get(SAAS_TENANT_COOKIE) or ""
+            cook = decode_saas_tenant_cookie_value(cook_raw)
+            if cook and 1 <= len(cook) <= 64 and cook not in ("www", "admin"):
+                slug = cook
+            if not slug:
+                slug = host_slug
         set_tenant_slug(slug)
         if slug:
             try:

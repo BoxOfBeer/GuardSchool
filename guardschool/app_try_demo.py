@@ -27,7 +27,7 @@ from .gs_paths import (
     UPLOADS_DIR,
 )
 from .saas_db import ensure_tenant_schema, saas_db_enabled, schema_name_for_slug, utcnow
-from .tenant_ctx import set_tenant_slug, tenant_slug as current_tenant_slug
+from .tenant_ctx import map_data_path, set_tenant_slug, tenant_slug as current_tenant_slug
 
 
 def try_demo_redirect_host(slug: str) -> str:
@@ -52,8 +52,6 @@ def try_demo_sandbox_slug() -> str:
 
 
 def seed_try_demo_library_from_env() -> None:
-    from .tenant_ctx import map_data_path
-
     raw = (os.environ.get("GUARDSCHOOL_TRY_DEMO_LIBRARY_DIR") or "").strip()
     if not raw:
         return
@@ -84,7 +82,7 @@ def ensure_try_demo_sandbox_tenant_data() -> None:
             seed_try_demo_library_from_env()
         except Exception:
             pass
-        if not AUTH_PATH.exists() or not load_auth():
+        if not map_data_path(AUTH_PATH).exists() or not load_auth():
             salt = secrets.token_hex(16)
             pwd = (os.environ.get("GUARDSCHOOL_TRY_DEMO_ADMIN_PASSWORD") or "").strip()
             if not pwd or not password_is_valid(pwd):
@@ -110,7 +108,7 @@ def ensure_try_demo_sandbox_tenant_data() -> None:
             write_json(MARQUEE_PATH, [])
             write_json(OVERRIDES_PATH, [])
             write_json(BELL_SCHEDULES_PATH, {})
-        elif not CONFIG_PATH.exists():
+        elif not map_data_path(CONFIG_PATH).exists():
             write_json(CONFIG_PATH, {"ui_locale": "ru", "screens": []})
     finally:
         set_tenant_slug(prev)

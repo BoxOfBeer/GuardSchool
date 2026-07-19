@@ -27,6 +27,7 @@ from .gs_paths import (
     SCHEDULE_PATH,
     SCHEDULE_SAMPLE_PATH,
 )
+from .tenant_ctx import map_data_path
 
 _WEEKDAY_ALIASES: dict[str, int] = {
     "понедельник": 0,
@@ -450,7 +451,7 @@ def maybe_import_schedule_from_folder() -> None:
         return
     state = load_import_state()
     current = state.get("schedule")
-    if current == signature and SCHEDULE_PATH.exists():
+    if current == signature and map_data_path(SCHEDULE_PATH).exists():
         return
     parsed = parse_excel(AUTO_SCHEDULE_IMPORT_PATH)
     write_json(SCHEDULE_PATH, parsed)
@@ -464,7 +465,7 @@ def maybe_import_full_schedule_from_folder() -> None:
         return
     state = load_import_state()
     current = state.get("full_schedule")
-    if current == signature and FULL_SCHEDULE_PATH.exists():
+    if current == signature and map_data_path(FULL_SCHEDULE_PATH).exists():
         return
     parsed = parse_weekly_schedule_excel(AUTO_FULL_SCHEDULE_IMPORT_PATH)
     write_json(FULL_SCHEDULE_PATH, parsed)
@@ -478,7 +479,7 @@ def maybe_import_schedule_sample_from_folder() -> None:
         return
     state = load_import_state()
     current = state.get("schedule_sample")
-    if current == signature and SCHEDULE_SAMPLE_PATH.exists():
+    if current == signature and map_data_path(SCHEDULE_SAMPLE_PATH).exists():
         return
     parsed = parse_weekly_schedule_excel(AUTO_SCHEDULE_SAMPLE_IMPORT_PATH)
     write_json(SCHEDULE_SAMPLE_PATH, parsed)

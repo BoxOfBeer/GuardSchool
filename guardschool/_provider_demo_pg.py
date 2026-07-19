@@ -7,6 +7,7 @@ import re
 import secrets
 import shutil
 from datetime import timedelta
+from pathlib import Path
 from typing import Any
 
 from .gs_deploy import deployment_mode
@@ -80,9 +81,30 @@ def provision_demo_isolated_snapshot(template_slug: str, isolated_slug: str) -> 
         "yes",
         "on",
     )
-    kw: dict[str, Any] = {"symlinks": False}
-    if skip_uploads:
-        kw["ignore"] = lambda _src, names: [n for n in names if n == "uploads"]
+    private_runtime_names = {
+        "auth.json",
+        "checkin.sqlite3",
+        "checkin.sqlite3-shm",
+        "checkin.sqlite3-wal",
+        "feedback.sqlite3",
+        "feedback.sqlite3-shm",
+        "feedback.sqlite3-wal",
+        "push.sqlite3",
+        "push.sqlite3-shm",
+        "push.sqlite3-wal",
+        "screen_watch_stats.json",
+        "sync_state.json",
+    }
+
+    def ignore_private_runtime(copy_source: str, names: list[str]) -> list[str]:
+        if Path(copy_source).resolve() != src.resolve():
+            return []
+        ignored = [name for name in names if name in private_runtime_names]
+        if skip_uploads and "uploads" in names:
+            ignored.append("uploads")
+        return ignored
+
+    kw: dict[str, Any] = {"symlinks": False, "ignore": ignore_private_runtime}
     shutil.copytree(src, dst, **kw)
     ensure_tenant_schema(schema_name_for_slug(iso))
 

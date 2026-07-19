@@ -12,19 +12,24 @@ from typing import Any
 
 from .gs_jsonio import read_json, write_json
 from .gs_paths import SCREEN_WATCH_STATS_PATH
+from .tenant_ctx import tenant_slug
 
 _LOCK = threading.Lock()
-# (slug, client_id) -> ts, session_start (начало «сессии» после простоя), …
-_CLIENT_ROWS: dict[tuple[str, str], dict[str, Any]] = {}
+# (tenant, slug, client_id) -> ts, session_start (начало «сессии» после простоя), …
+_CLIENT_ROWS: dict[tuple[str, str, str], dict[str, Any]] = {}
 
 _CLIENT_ID_RE = re.compile(r"^[a-zA-Z0-9._-]{4,80}$")
 _PRUNE_SEC = 60.0
 
 # Персистентная статистика посещений (в data/): уникальные за день/месяц + счётчик подключений.
 _STATS_LOCK = threading.Lock()
-_STATS_CACHE: dict[str, Any] | None = None
-_STATS_DIRTY = False
-_STATS_LAST_FLUSH = 0.0
+_STATS_CACHE: dict[str, dict[str, Any]] = {}
+_STATS_DIRTY: set[str] = set()
+_STATS_LAST_FLUSH: dict[str, float] = {}
+
+
+def _tenant_key() -> str:
+    return (tenant_slug() or "local").strip().lower() or "local"
 
 
 def _device_kind(device: str) -> str:
@@ -56,9 +61,9 @@ def _month_iso(now: float) -> str:
 
 
 def _load_stats_locked() -> dict[str, Any]:
-    global _STATS_CACHE
-    if _STATS_CACHE is not None:
-        return _STATS_CACHE
+    key = _tenant_key()
+    if key in _STATS_CACHE:
+        return _STATS_CACHE[key]
     raw = read_json(SCREEN_WATCH_STATS_PATH, {})
     if not isinstance(raw, dict):
         raw = {}
@@ -67,22 +72,23 @@ def _load_stats_locked() -> dict[str, Any]:
     raw.setdefault("month_unique", {})
     raw.setdefault("today", "")
     raw.setdefault("today_unique", {})
-    _STATS_CACHE = raw
+    _STATS_CACHE[key] = raw
     return raw
 
 
 def _flush_stats_locked(force: bool = False) -> None:
-    global _STATS_DIRTY, _STATS_LAST_FLUSH
-    if not _STATS_DIRTY:
+    key = _tenant_key()
+    if key not in _STATS_DIRTY:
         return
     now = time.time()
-    if not force and now - _STATS_LAST_FLUSH < 2.0:
+    if not force and now - _STATS_LAST_FLUSH.get(key, 0.0) < 2.0:
         return
-    if _STATS_CACHE is None:
+    cache = _STATS_CACHE.get(key)
+    if cache is None:
         return
-    write_json(SCREEN_WATCH_STATS_PATH, _STATS_CACHE)
-    _STATS_DIRTY = False
-    _STATS_LAST_FLUSH = now
+    write_json(SCREEN_WATCH_STATS_PATH, cache)
+    _STATS_DIRTY.discard(key)
+    _STATS_LAST_FLUSH[key] = now
 
 
 def _stats_record_visit(now: float, client_id: str, device: str, is_new_connection: bool) -> None:
@@ -90,7 +96,7 @@ def _stats_record_visit(now: float, client_id: str, device: str, is_new_connecti
     Уникальные считаем по client_id (через хэш) и по текущим (today/month).
     total_connections: считаем "подключение" как появление нового клиента в active-таблице после простоя.
     """
-    global _STATS_DIRTY
+    key = _tenant_key()
     cid = _safe_client_id(client_id)
     if cid == "unknown":
         return
@@ -135,7 +141,7 @@ def _stats_record_visit(now: float, client_id: str, device: str, is_new_connecti
             mu[dk] = marr
         if kid not in marr:
             marr.append(kid)
-        _STATS_DIRTY = True
+        _STATS_DIRTY.add(key)
         _flush_stats_locked(force=False)
 
 
@@ -162,13 +168,13 @@ def stats_snapshot() -> dict[str, Any]:
 
 def reset_stats_counters() -> dict[str, Any]:
     """Очищаем счётчики посещений (по требованию администратора)."""
-    global _STATS_DIRTY
+    key = _tenant_key()
     with _STATS_LOCK:
         st = _load_stats_locked()
         st["total_connections"] = 0
         st["today_unique"] = {}
         st["month_unique"] = {}
-        _STATS_DIRTY = True
+        _STATS_DIRTY.add(key)
         _flush_stats_locked(force=True)
     return stats_snapshot()
 
@@ -221,7 +227,8 @@ def record_screen_poll(
     now = time.time()
     ip = _client_ip(request)
     name = _safe_screen_name(screen_name) or slug
-    key = (slug, cid)
+    tenant = _tenant_key()
+    key = (tenant, slug, cid)
     with _LOCK:
         prev = _CLIENT_ROWS.get(key)
         if prev:
@@ -262,7 +269,10 @@ def _connected_sec(now: float, row: dict[str, Any]) -> float:
 def _connection_log_rows(now: float) -> list[dict[str, Any]]:
     """Все недавние клиенты по всем экранам: сортировка по последнему опросу (ts убыв.)."""
     rows: list[dict[str, Any]] = []
-    for (slug, cid), r in _CLIENT_ROWS.items():
+    tenant = _tenant_key()
+    for (row_tenant, slug, cid), r in _CLIENT_ROWS.items():
+        if row_tenant != tenant:
+            continue
         ts = float(r.get("ts") or 0)
         if ts <= 0:
             continue
@@ -289,11 +299,14 @@ def _connection_log_rows(now: float) -> list[dict[str, Any]]:
 
 def screen_watch_snapshot(screens: list[dict[str, Any]]) -> dict[str, Any]:
     """Собрать статусы для конфигурации экранов (poll_interval_sec из каждого)."""
+    tenant = _tenant_key()
     now = time.time()
     with _LOCK:
         _prune_locked(now)
         by_slug: dict[str, list[tuple[str, dict[str, Any]]]] = {}
-        for (slug, cid), row in _CLIENT_ROWS.items():
+        for (row_tenant, slug, cid), row in _CLIENT_ROWS.items():
+            if row_tenant != tenant:
+                continue
             by_slug.setdefault(slug, []).append((cid, dict(row)))
 
     out_screens: list[dict[str, Any]] = []
