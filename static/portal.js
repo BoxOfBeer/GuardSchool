@@ -23,6 +23,53 @@ function navLinkAttrs(href, external) {
   return "";
 }
 
+const fallbackCms = {
+  meta: {
+    page_title: "GuardDoc — информационные экраны без лишнего оборудования",
+    description: "Локальная и облачная система для школьных экранов, телефонов и рабочих компьютеров.",
+  },
+  shell: {
+    nav_title: "GuardDoc",
+    nav_subtitle: "Информация там, где она нужна",
+    nav: [
+      { label: "Обзор", href: "#portal-main-top" },
+      { label: "Возможности", href: "#section-ecosystem" },
+      { label: "Продукты", href: "#section-apps" },
+      { label: "Попробовать", href: "#section-demo" },
+    ],
+  },
+  hero: {
+    brand: "Локально · SaaS · Гибрид",
+    title: "Живая информация на уже существующих экранах",
+    lead: "Телевизоры, телефоны и компьютеры получают актуальные данные из одной системы. Без флешек, закрытых аппаратных комплексов и лишнего оборудования.",
+    primary_action: { label: "Открыть GuardSchool", href: "https://school.guarddoc.ru/login", external: true },
+    secondary_actions: [
+      { label: "Попробовать демо", href: "/try-demo", role: "demo" },
+      { label: "Активировать лицензию", href: "/register", role: "register" },
+    ],
+  },
+  ecosystem: {
+    heading: "Одна платформа — разные сценарии",
+    paragraphs: [
+      "Система работает как конструктор информационных экранов: расписание занятий, приём посетителей, движение транспорта, дежурства или внутренние объявления.",
+      "Основной контур может полностью оставаться внутри организации. Облако используется отдельно или как резерв для срочных изменений.",
+    ],
+  },
+  applications: [
+    { id: "guardschool", name: "GuardSchool", tag: "Работает", tag_style: "live", summary: "Информационные экраны и расписание.", detail: "Телевизоры, мобильная версия, рабочие компьютеры и локальный сервер.", url: "https://school.guarddoc.ru/login", url_label: "Войти" },
+    { id: "guardnotes", name: "GuardNotes", tag: "Экосистема", tag_style: "platform", summary: "Связанные инструменты GuardDoc.", detail: "Небольшие прикладные системы с общей идеей: простота, автономность и контроль данных.", url: "", url_label: "" },
+  ],
+  demo: {
+    heading: "Посмотрите без установки",
+    intro: "Демо показывает рабочий интерфейс и основные сценарии системы.",
+    bullets: ["Настройка нескольких экранов", "Отдельная мобильная выдача", "Работа на обычном офисном компьютере"],
+    action: { label: "Открыть демо", href: "/try-demo" },
+  },
+  links_column: { heading: "", items: [] },
+  footer: { note: "GuardDoc — практичные информационные системы без лишней инфраструктуры." },
+  footer_legal: {},
+};
+
 function renderShellNav(shell) {
   const title = (shell && shell.nav_title) || "GuardDoc";
   const sub = (shell && shell.nav_subtitle) || "";
@@ -38,10 +85,17 @@ function renderShellNav(shell) {
     .join("");
   return `<aside class="portal-sidebar" aria-label="Навигация">
     <div class="portal-sidebar-brand">
-      <span class="portal-sidebar-title">${esc(title)}</span>
-      ${sub ? `<span class="portal-sidebar-sub">${esc(sub)}</span>` : ""}
+      <span class="portal-brand-mark" aria-hidden="true">G</span>
+      <span class="portal-brand-copy">
+        <span class="portal-sidebar-title">${esc(title)}</span>
+        ${sub ? `<span class="portal-sidebar-sub">${esc(sub)}</span>` : ""}
+      </span>
     </div>
     <nav class="portal-sidebar-nav" aria-label="Разделы">${links}</nav>
+    <div class="portal-sidebar-note">
+      <span class="portal-live-dot" aria-hidden="true"></span>
+      Локально или в облаке
+    </div>
   </aside>`;
 }
 
@@ -195,10 +249,25 @@ function render(cms) {
     ${renderShellNav(shell)}
     <div class="portal-main" id="portal-main-top">
       <header class="portal-eco-hero">
-        ${hero.brand ? `<p class="portal-eco-brand">${esc(hero.brand)}</p>` : ""}
-        <h1>${esc(hero.title || "")}</h1>
-        <p class="portal-eco-lead">${esc(hero.lead || "")}</p>
-        ${renderActions(hero.secondary_actions, hero.primary_action)}
+        <div class="portal-hero-copy">
+          ${hero.brand ? `<p class="portal-eco-brand">${esc(hero.brand)}</p>` : ""}
+          <h1>${esc(hero.title || "")}</h1>
+          <p class="portal-eco-lead">${esc(hero.lead || "")}</p>
+          ${renderActions(hero.secondary_actions, hero.primary_action)}
+          <div class="portal-value-row" aria-label="Преимущества">
+            <span>Без специального оборудования</span>
+            <span>Контроль данных у организации</span>
+            <span>Любой современный экран</span>
+          </div>
+        </div>
+        <div class="portal-hero-visual" aria-label="Схема работы GuardDoc">
+          <div class="portal-flow-source"><strong>GuardDoc</strong><span>единый источник</span></div>
+          <div class="portal-flow-line" aria-hidden="true"></div>
+          <div class="portal-flow-devices">
+            <span>TV</span><span>Телефон</span><span>ПК</span>
+          </div>
+          <p>Одно изменение появляется на всех выбранных экранах.</p>
+        </div>
       </header>
 
       ${extras}
@@ -231,7 +300,10 @@ async function main() {
   if (!root) return;
 
   try {
-    const r = await fetch("/api/portal/cms", { credentials: "same-origin" });
+    const ctrl = new AbortController();
+    const timer = window.setTimeout(() => ctrl.abort(), 6000);
+    const r = await fetch("/api/portal/cms", { credentials: "same-origin", signal: ctrl.signal });
+    window.clearTimeout(timer);
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const cms = await r.json();
 
@@ -244,10 +316,8 @@ async function main() {
     root.className = "";
     root.innerHTML = render(cms);
   } catch (e) {
-    root.className = "portal-eco-error";
-    root.innerHTML = `<p>Не удалось загрузить контент портала.</p><p style="font-size:13px;opacity:.85">${esc(
-      String(e.message || e),
-    )}</p>`;
+    root.className = "";
+    root.innerHTML = `<div class="portal-fallback-note">Показана резервная версия портала.</div>${render(fallbackCms)}`;
   }
 }
 

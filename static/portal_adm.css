@@ -1,0 +1,599 @@
+* {
+  box-sizing: border-box;
+}
+
+body.portal-skin {
+  min-width: 320px;
+}
+
+.adm-login-shell {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  padding: 24px;
+}
+
+.adm-login-card {
+  width: min(100%, 430px);
+  padding: 28px;
+  border: 1px solid rgba(148, 180, 225, 0.17);
+  border-radius: 20px;
+  background: rgba(5, 17, 34, 0.82);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.34);
+  backdrop-filter: blur(14px);
+}
+
+.adm-login-brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin-bottom: 24px;
+}
+
+.adm-login-card h1 {
+  margin: 0;
+  color: #fff;
+  font-size: 24px;
+  letter-spacing: -0.03em;
+}
+
+.adm-login-card > p {
+  margin: 7px 0 22px;
+  color: rgba(211, 225, 247, 0.62);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.adm-login-card .adm-field + .adm-field {
+  margin-top: 13px;
+}
+
+.adm-login-actions {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.adm-shell {
+  width: min(1480px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 22px 0 48px;
+}
+
+.adm-topbar {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 13px 15px;
+  border: 1px solid rgba(148, 180, 225, 0.17);
+  border-radius: 18px;
+  background: rgba(5, 17, 34, 0.82);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.24);
+  backdrop-filter: blur(14px);
+}
+
+.adm-brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 210px;
+}
+
+.adm-brand-mark {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: linear-gradient(145deg, #8dccff, #4d83f1);
+  color: #07162c;
+  font-weight: 900;
+  box-shadow: 0 8px 24px rgba(47, 111, 228, 0.32);
+}
+
+.adm-brand-copy strong,
+.adm-brand-copy span {
+  display: block;
+}
+
+.adm-brand-copy strong {
+  color: #fff;
+  font-size: 15px;
+}
+
+.adm-brand-copy span {
+  margin-top: 2px;
+  color: rgba(211, 225, 247, 0.6);
+  font-size: 11px;
+}
+
+.adm-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.adm-tab {
+  appearance: none;
+  border: 0;
+  border-radius: 9px;
+  padding: 9px 13px;
+  background: transparent;
+  color: rgba(225, 235, 250, 0.7);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.adm-tab:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.adm-tab.active {
+  color: #081a34;
+  background: #edf5ff;
+  box-shadow: 0 5px 16px rgba(0, 0, 0, 0.18);
+}
+
+.adm-top-actions,
+.adm-page-tools {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.adm-btn {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: auto;
+  min-height: 38px;
+  padding: 8px 13px;
+  border: 1px solid rgba(153, 184, 228, 0.2);
+  border-radius: 10px;
+  background: rgba(17, 42, 75, 0.82);
+  color: #eaf2ff !important;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 1.2;
+  text-decoration: none;
+  cursor: pointer;
+  transition: 0.15s ease;
+}
+
+.adm-btn:hover {
+  border-color: rgba(153, 195, 255, 0.42);
+  background: rgba(28, 60, 101, 0.95);
+}
+
+.adm-btn.primary {
+  border-color: #a8d3ff;
+  background: #edf6ff;
+  color: #081b36 !important;
+}
+
+.adm-btn.success {
+  border-color: rgba(74, 222, 128, 0.34);
+  color: #c7f9d9 !important;
+  background: rgba(22, 101, 52, 0.22);
+}
+
+.adm-btn.warning {
+  border-color: rgba(251, 191, 36, 0.34);
+  color: #fde9a9 !important;
+  background: rgba(146, 64, 14, 0.2);
+}
+
+.adm-btn.danger {
+  border-color: rgba(248, 113, 113, 0.42);
+  color: #ffd4d4 !important;
+  background: rgba(127, 29, 29, 0.24);
+}
+
+.adm-page-head {
+  display: flex;
+  align-items: flex-end;
+  gap: 24px;
+  margin: 30px 2px 18px;
+}
+
+.adm-page-head h1 {
+  margin: 0;
+  color: #f7fbff;
+  font-size: clamp(1.55rem, 2.5vw, 2.15rem);
+  letter-spacing: -0.035em;
+}
+
+.adm-page-head p {
+  margin: 7px 0 0;
+  color: rgba(210, 224, 246, 0.68);
+  font-size: 13px;
+}
+
+.adm-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.adm-stat {
+  padding: 14px 16px;
+  border: 1px solid rgba(148, 180, 225, 0.14);
+  border-radius: 14px;
+  background: rgba(7, 23, 46, 0.56);
+}
+
+.adm-stat span,
+.adm-stat strong {
+  display: block;
+}
+
+.adm-stat span {
+  color: rgba(204, 220, 244, 0.56);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.065em;
+}
+
+.adm-stat strong {
+  margin-top: 6px;
+  color: #fff;
+  font-size: 22px;
+}
+
+.adm-card {
+  border: 1px solid rgba(148, 180, 225, 0.16);
+  border-radius: 16px;
+  background: rgba(7, 23, 46, 0.64);
+  box-shadow: 0 18px 54px rgba(0, 0, 0, 0.18);
+}
+
+.adm-create {
+  padding: 18px;
+  margin-bottom: 14px;
+}
+
+.adm-create-head {
+  margin-bottom: 14px;
+}
+
+.adm-create-head h2,
+.adm-list-head h2 {
+  margin: 0;
+  color: #f4f8ff;
+  font-size: 15px;
+}
+
+.adm-create-head p,
+.adm-list-head span {
+  margin: 3px 0 0;
+  color: rgba(204, 220, 244, 0.56);
+  font-size: 11px;
+}
+
+.adm-create-grid {
+  display: grid;
+  grid-template-columns: 145px 165px 190px minmax(220px, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.adm-field label {
+  display: block;
+  margin: 0 0 6px;
+  color: rgba(223, 233, 249, 0.76);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.adm-field input,
+.adm-field select,
+.adm-field textarea,
+.portal-skin .portal-field {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 40px;
+  padding: 9px 11px;
+  border: 1px solid rgba(148, 180, 225, 0.22);
+  border-radius: 10px;
+  outline: none;
+  background: rgba(3, 14, 30, 0.78);
+  color: #f3f7ff;
+  font: inherit;
+  font-size: 13px;
+}
+
+.adm-field input::placeholder,
+.adm-field textarea::placeholder,
+.portal-skin .portal-field::placeholder {
+  color: rgba(188, 205, 231, 0.36);
+}
+
+.adm-field input:focus,
+.adm-field select:focus,
+.adm-field textarea:focus,
+.portal-skin .portal-field:focus {
+  border-color: #79b6ff;
+  box-shadow: 0 0 0 3px rgba(70, 138, 230, 0.14);
+}
+
+.adm-feedback {
+  display: none;
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border: 1px solid rgba(96, 165, 250, 0.26);
+  border-radius: 12px;
+  background: rgba(30, 64, 175, 0.13);
+  color: #e5efff;
+  white-space: pre-wrap;
+  font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.adm-feedback.visible {
+  display: block;
+}
+
+.adm-list-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 22px 2px 10px;
+}
+
+.adm-licenses {
+  display: grid;
+  gap: 9px;
+}
+
+.license-card {
+  display: grid;
+  grid-template-columns: minmax(250px, 1.2fr) minmax(115px, 0.45fr) minmax(230px, 0.8fr) minmax(300px, auto);
+  gap: 18px;
+  align-items: center;
+  padding: 15px 16px;
+  border: 1px solid rgba(148, 180, 225, 0.14);
+  border-radius: 14px;
+  background: rgba(7, 23, 46, 0.58);
+}
+
+.license-card:hover {
+  border-color: rgba(148, 190, 250, 0.28);
+  background: rgba(10, 30, 58, 0.72);
+}
+
+.license-title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 5px;
+}
+
+.license-title strong {
+  color: #fff;
+  font-size: 14px;
+}
+
+.license-sub,
+.license-dates,
+.license-notes {
+  color: rgba(205, 220, 243, 0.62);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.license-sub code {
+  background: transparent !important;
+  padding: 0 !important;
+  color: rgba(190, 212, 244, 0.7) !important;
+}
+
+.license-plan {
+  margin-bottom: 6px;
+  color: #e8f1ff;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.license-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 850;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.license-badge::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.license-badge.active {
+  color: #77e6a1;
+  background: rgba(34, 197, 94, 0.12);
+}
+
+.license-badge.disabled {
+  color: #f9d575;
+  background: rgba(234, 179, 8, 0.12);
+}
+
+.license-badge.revoked {
+  color: #ff9898;
+  background: rgba(239, 68, 68, 0.12);
+}
+
+.license-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.license-more {
+  position: relative;
+}
+
+.license-more summary {
+  list-style: none;
+}
+
+.license-more summary::-webkit-details-marker {
+  display: none;
+}
+
+.license-more-menu {
+  position: absolute;
+  z-index: 10;
+  right: 0;
+  top: calc(100% + 7px);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(125px, 1fr));
+  gap: 6px;
+  width: 320px;
+  padding: 8px;
+  border: 1px solid rgba(148, 180, 225, 0.22);
+  border-radius: 12px;
+  background: #0b203c;
+  box-shadow: 0 18px 45px rgba(0, 0, 0, 0.42);
+}
+
+.license-empty {
+  padding: 44px 18px;
+  border: 1px dashed rgba(148, 180, 225, 0.18);
+  border-radius: 14px;
+  text-align: center;
+  color: rgba(205, 220, 243, 0.62);
+}
+
+.adm-cms-card {
+  margin-top: 20px;
+  padding: 20px;
+}
+
+.adm-cms-card > h1 {
+  margin: 0 0 6px;
+  color: #fff;
+  font-size: 22px;
+}
+
+.adm-cms-card > p {
+  margin: 0 0 20px;
+  color: rgba(205, 220, 243, 0.68);
+  font-size: 12px;
+}
+
+/* Утилиты нужны редактору CMS. */
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: flex-end;
+  margin-top: 12px;
+}
+
+.toolbar.actions-row {
+  align-items: center;
+  gap: 8px;
+}
+
+.grow {
+  flex: 1 1 220px;
+}
+
+.toolbar.inputs-row .grow {
+  flex: 1 1 260px;
+}
+
+.toolbar.inputs-row .grow.compact {
+  flex: 0 1 220px;
+}
+
+@media (max-width: 1120px) {
+  .adm-create-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .adm-create-grid .adm-field.notes {
+    grid-column: 1 / -1;
+  }
+
+  .license-card {
+    grid-template-columns: minmax(230px, 1fr) minmax(110px, 0.45fr) minmax(210px, 0.8fr);
+  }
+
+  .license-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 720px) {
+  .adm-shell {
+    width: min(100% - 20px, 1480px);
+    padding-top: 10px;
+  }
+
+  .adm-topbar,
+  .adm-page-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .adm-brand {
+    min-width: 0;
+  }
+
+  .adm-tabs,
+  .adm-page-tools,
+  .adm-top-actions {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .adm-tab,
+  .adm-page-tools .adm-btn {
+    flex: 1 1 0;
+  }
+
+  .adm-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .adm-create-grid,
+  .license-card {
+    grid-template-columns: 1fr;
+  }
+
+  .adm-create-grid .adm-field.notes,
+  .license-actions {
+    grid-column: auto;
+  }
+
+  .license-actions {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  .license-more-menu {
+    right: auto;
+    left: 0;
+    width: min(320px, calc(100vw - 44px));
+  }
+}

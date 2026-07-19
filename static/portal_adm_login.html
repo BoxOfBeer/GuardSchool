@@ -5,49 +5,39 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>GuardDoc — ADM</title>
     <link rel="stylesheet" href="/static/styles.css?v=1.02.001" />
-    <link rel="stylesheet" href="/static/portal_skin.css?v=2" />
-    <style>
-      .wrap {
-        max-width: 420px;
-        margin: 0 auto;
-        padding: 28px 18px 60px;
-      }
-      .row {
-        display: grid;
-        gap: 8px;
-        margin-top: 14px;
-      }
-    </style>
+    <link rel="stylesheet" href="/static/portal_skin.css?v=4" />
+    <link rel="stylesheet" href="/static/portal_adm.css?v=1" />
   </head>
   <body class="portal-skin">
-    <div class="wrap">
-      <div class="portal-card">
-        <h2 style="margin: 0 0 8px; color: #fff">ADM — лицензии</h2>
-        <p class="portal-hint" style="margin-top: 0">
-          Служебный вход (не показывать на витрине). Логин и пароль задаются на сервере:
-          <code>GUARDSCHOOL_PORTAL_ADM_USERNAME</code>, <code>GUARDSCHOOL_PORTAL_ADM_PASSWORD</code>.
-        </p>
-        <div class="row">
-          <label class="portal-label" for="user">Логин</label>
-          <input id="user" class="portal-field" autocomplete="username" />
+    <main class="adm-login-shell">
+      <section class="adm-login-card">
+        <div class="adm-login-brand">
+          <span class="adm-brand-mark" aria-hidden="true">G</span>
+          <div class="adm-brand-copy"><strong>GuardDoc</strong><span>Панель управления</span></div>
         </div>
-        <div class="row">
-          <label class="portal-label" for="pass">Пароль</label>
-          <input id="pass" class="portal-field" type="password" autocomplete="current-password" />
+        <h1>Служебный вход</h1>
+        <p>Управление лицензиями и содержимым публичного портала.</p>
+        <div class="adm-field">
+          <label for="user">Логин</label>
+          <input id="user" autocomplete="username" autofocus />
         </div>
-        <div class="row" style="margin-top: 16px">
-          <button type="button" class="portal-btn primary" id="go">Войти</button>
-          <a class="portal-btn" href="/">На портал</a>
+        <div class="adm-field">
+          <label for="pass">Пароль</label>
+          <input id="pass" type="password" autocomplete="current-password" />
         </div>
-        <div class="portal-out" id="out" style="display: none; margin-top: 14px"></div>
-      </div>
-    </div>
+        <div class="adm-login-actions">
+          <button type="button" class="adm-btn primary" id="go">Войти</button>
+          <a class="adm-btn" href="/">На портал</a>
+        </div>
+        <div class="adm-feedback" id="out" style="margin-top: 14px"></div>
+      </section>
+    </main>
     <script type="module">
       const out = document.getElementById("out");
       document.getElementById("go").addEventListener("click", async () => {
         const username = String(document.getElementById("user").value || "").trim();
         const password = String(document.getElementById("pass").value || "");
-        out.style.display = "block";
+        out.classList.add("visible");
         // Показываем статус, чтобы не было ощущения "пустой плашки"
         out.textContent = "Входим…";
         try {

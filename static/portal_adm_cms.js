@@ -528,15 +528,15 @@ function switchTab(which) {
   if (which === "cms") {
     lic.hidden = true;
     cms.hidden = false;
-    bLic.classList.remove("primary");
-    bCms.classList.add("primary");
+    bLic.classList.remove("active");
+    bCms.classList.add("active");
     mountForm();
     if (!cmsLoaded) loadCms().catch((e) => console.error(e));
   } else {
     cms.hidden = true;
     lic.hidden = false;
-    bCms.classList.remove("primary");
-    bLic.classList.add("primary");
+    bCms.classList.remove("active");
+    bLic.classList.add("active");
   }
 }
 

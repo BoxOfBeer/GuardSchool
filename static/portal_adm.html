@@ -5,136 +5,93 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>GuardDoc — лицензии (ADM)</title>
     <link rel="stylesheet" href="/static/styles.css?v=1.02.001" />
-    <link rel="stylesheet" href="/static/portal_skin.css?v=2" />
-    <link rel="stylesheet" href="/static/portal_cms_admin.css?v=1" />
-    <style>
-      .wrap {
-        max-width: 100%;
-        margin: 0 auto;
-        padding: 16px 16px 32px;
-      }
-      .row {
-        display: grid;
-        gap: 8px;
-        margin-top: 12px;
-      }
-      .toolbar {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 10px;
-        align-items: flex-end;
-        margin-top: 12px;
-      }
-      .grow {
-        flex: 1 1 220px;
-      }
-      .toolbar.inputs-row .grow {
-        flex: 1 1 260px;
-      }
-      .toolbar.inputs-row .grow.compact {
-        flex: 0 1 220px;
-      }
-      .toolbar.actions-row {
-        align-items: center;
-        gap: 8px;
-      }
-      .table-actions {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 6px;
-      }
-      table {
-        width: 100%;
-        border-collapse: collapse;
-        margin-top: 14px;
-        font-size: 13px;
-      }
-      th,
-      td {
-        border-bottom: 1px solid rgba(255, 255, 255, 0.12);
-        padding: 8px 6px;
-        text-align: left;
-        vertical-align: top;
-      }
-      th {
-        color: rgba(244, 247, 255, 0.85);
-        font-weight: 700;
-      }
-    </style>
+    <link rel="stylesheet" href="/static/portal_skin.css?v=4" />
+    <link rel="stylesheet" href="/static/portal_cms_admin.css?v=2" />
+    <link rel="stylesheet" href="/static/portal_adm.css?v=1" />
   </head>
   <body class="portal-skin">
-    <div class="wrap">
-      <div class="toolbar actions-row" style="margin-bottom: 12px">
-        <button type="button" class="portal-btn primary" id="adm-tab-lic">Лицензии</button>
-        <button type="button" class="portal-btn" id="adm-tab-cms">Контент портала</button>
-        <div style="flex: 1 1 auto"></div>
-        <a class="portal-btn" href="/">На портал</a>
-      </div>
+    <div class="adm-shell">
+      <header class="adm-topbar">
+        <div class="adm-brand">
+          <span class="adm-brand-mark" aria-hidden="true">G</span>
+          <div class="adm-brand-copy">
+            <strong>GuardDoc</strong>
+            <span>Панель управления</span>
+          </div>
+        </div>
+        <nav class="adm-tabs" aria-label="Разделы админки">
+          <button type="button" class="adm-tab active" id="adm-tab-lic">Лицензии</button>
+          <button type="button" class="adm-tab" id="adm-tab-cms">Публичный портал</button>
+        </nav>
+        <div class="adm-top-actions">
+          <a class="adm-btn" href="/" target="_blank" rel="noopener">Открыть портал ↗</a>
+        </div>
+      </header>
 
       <div id="panel-lic">
-        <div class="portal-card">
-        <h2 style="margin: 0 0 8px; color: #fff">Лицензии (ADM)</h2>
-        <p class="portal-hint" style="margin-top: 0">
-          Сессия по cookie браузера. Выйти — кнопка ниже. API те же: <code>/api/provider/licenses</code> (допускается вход по cookie).
-        </p>
-        <div class="toolbar actions-row">
-          <button type="button" class="portal-btn" id="logout">Выйти</button>
-          <button type="button" class="portal-btn" id="reload">Обновить список</button>
-          <div style="flex: 1 1 auto"></div>
-          <div class="portal-out" id="out"></div>
+        <div class="adm-page-head">
+          <div>
+            <h1>Лицензии</h1>
+            <p>Выдача, сроки и состояние подключённых организаций.</p>
+          </div>
+          <div class="adm-page-tools">
+            <button type="button" class="adm-btn" id="reload">↻ Обновить</button>
+            <button type="button" class="adm-btn" id="logout">Выйти</button>
+          </div>
         </div>
 
-        <div class="toolbar inputs-row" style="margin-top: 12px">
-          <div class="grow compact">
-            <label class="portal-label" for="plan">План</label>
-            <select id="plan" class="portal-field">
-              <option value="free">free</option>
-              <option value="paid">paid</option>
-              <option value="saas_only">saas_only</option>
-            </select>
-          </div>
-          <div class="grow">
-            <label class="portal-label" for="years">Срок (лет), календарных от выдачи</label>
-            <input id="years" class="portal-field" inputmode="numeric" placeholder="например 1" />
-          </div>
-          <div class="grow">
-            <label class="portal-label" for="days">Срок (дней), пусто = без срока</label>
-            <input id="days" class="portal-field" inputmode="numeric" placeholder="если не заданы годы — 365" />
-          </div>
-          <div class="grow">
-            <label class="portal-label" for="notes">Заметка</label>
-            <input id="notes" class="portal-field" placeholder="школа / контакт" />
-          </div>
-          <button type="button" class="portal-btn primary" id="create">Создать лицензию</button>
+        <div class="adm-stats" aria-label="Сводка по лицензиям">
+          <div class="adm-stat"><span>Всего</span><strong id="stat-total">—</strong></div>
+          <div class="adm-stat"><span>Активны</span><strong id="stat-active">—</strong></div>
+          <div class="adm-stat"><span>Отключены</span><strong id="stat-disabled">—</strong></div>
+          <div class="adm-stat"><span>Истекают за 30 дней</span><strong id="stat-expiring">—</strong></div>
         </div>
 
-        <table>
-          <thead>
-            <tr>
-              <th>key_hash</th>
-              <th>tenant</th>
-              <th>plan</th>
-              <th>status</th>
-              <th>issued</th>
-              <th>expires</th>
-              <th>notes</th>
-              <th>действия</th>
-            </tr>
-          </thead>
-          <tbody id="rows"></tbody>
-        </table>
+        <section class="adm-card adm-create" aria-labelledby="create-title">
+          <div class="adm-create-head">
+            <h2 id="create-title">Новая лицензия</h2>
+            <p>Ключ будет показан один раз после создания.</p>
+          </div>
+          <div class="adm-create-grid">
+            <div class="adm-field">
+              <label for="plan">Тариф</label>
+              <select id="plan">
+                <option value="free">free</option>
+                <option value="paid">paid</option>
+                <option value="saas_only">saas_only</option>
+              </select>
+            </div>
+            <div class="adm-field">
+              <label for="years">Срок, лет</label>
+              <input id="years" inputmode="numeric" placeholder="например 1" />
+            </div>
+            <div class="adm-field">
+              <label for="days">Или срок, дней</label>
+              <input id="days" inputmode="numeric" placeholder="пусто — бессрочно" />
+            </div>
+            <div class="adm-field notes">
+              <label for="notes">Организация / контакт / заметка</label>
+              <input id="notes" placeholder="например: школа № 12, директор…" />
+            </div>
+            <button type="button" class="adm-btn primary" id="create">Создать лицензию</button>
+          </div>
+        </section>
+
+        <div class="adm-feedback" id="out" role="status" aria-live="polite"></div>
+
+        <div class="adm-list-head">
+          <h2>Выданные лицензии</h2>
+          <span id="list-caption">Загрузка…</span>
         </div>
+        <div class="adm-licenses" id="rows"></div>
       </div>
 
       <div id="panel-cms" hidden>
-        <div class="portal-card">
-          <h2 style="margin: 0 0 8px; color: #fff">Контент портала экосистемы</h2>
-          <p class="portal-hint" style="margin-top: 0">
-            Публичная витрина на главной (<code>/</code>) для домена портала. Данные в файле
-            <code>data/portal_cms.json</code> (глобально для процесса, не в каталоге тенанта).
-          </p>
+        <section class="adm-card adm-cms-card">
+          <h1>Публичный портал</h1>
+          <p>Тексты и ссылки главной страницы GuardDoc. Изменения публикуются после сохранения.</p>
           <div id="cms-mount"></div>
-        </div>
+        </section>
       </div>
     </div>
 
@@ -142,9 +99,12 @@
     <script type="module">
       const out = document.getElementById("out");
       const rows = document.getElementById("rows");
+      const listCaption = document.getElementById("list-caption");
 
       function show(msg) {
-        out.textContent = msg;
+        const text = String(msg || "").trim();
+        out.textContent = text;
+        out.classList.toggle("visible", Boolean(text));
       }
 
       async function api(path, opts = {}) {
@@ -169,6 +129,22 @@
 
       function renderList(data) {
         const items = data.licenses || [];
+        const now = Date.now();
+        const inThirtyDays = now + 30 * 86400000;
+        document.getElementById("stat-total").textContent = String(items.length);
+        document.getElementById("stat-active").textContent = String(items.filter((x) => x.status === "active").length);
+        document.getElementById("stat-disabled").textContent = String(items.filter((x) => x.status === "disabled").length);
+        document.getElementById("stat-expiring").textContent = String(
+          items.filter((x) => {
+            const t = x.expires_at ? Date.parse(x.expires_at) : NaN;
+            return Number.isFinite(t) && t >= now && t <= inThirtyDays;
+          }).length,
+        );
+        listCaption.textContent = `${items.length} ${items.length === 1 ? "запись" : "записей"}`;
+        if (!items.length) {
+          rows.innerHTML = '<div class="license-empty">Лицензий пока нет.</div>';
+          return;
+        }
         rows.innerHTML = items
           .map((x) => {
             const kh = String(x.key_hash || "");
@@ -183,47 +159,57 @@
             const iy = x.issued_year != null ? ` год выдачи: ${x.issued_year}` : "";
             const ey = x.expires_year != null ? ` год оконч.: ${x.expires_year}` : "";
             const licNo = x.license_no != null ? String(x.license_no) : "—";
-            const licKey = x.license_key ? String(x.license_key) : "";
             const khShort = `${kh.slice(0, 12)}…`;
-            const khTitle = `hash: ${kh}${licNo !== "—" ? ` | № ${licNo}` : ""}${licKey ? " | key сохранён" : ""}`;
-            return `<tr>
-              <td title="${esc(khTitle)}">
-                <div><strong>№ ${esc(licNo)}</strong></div>
-                <div><code>${esc(khShort)}</code></div>
-                ${licKey ? `<div><code>${esc(licKey)}</code></div>` : ""}
-              </td>
-              <td>${esc(x.tenant_slug || "—")}</td>
-              <td>${esc(x.plan_id)}</td>
-              <td>${esc(x.status)}</td>
-              <td title="${esc(x.issued_at || "")}${iy}">${esc(issuedShort)}</td>
-              <td title="${esc(x.expires_at || "")}${ey}">${esc(expShort)}</td>
-              <td>${esc(x.notes || "")}</td>
-              <td>
-                <div class="table-actions">
-                  <button type="button" class="portal-btn" data-act="info" data-kh="${esc(kh)}">инфо</button>
-                  <button type="button" class="portal-btn" data-act="disable" data-kh="${esc(kh)}">off</button>
-                  <button type="button" class="portal-btn" data-act="active" data-kh="${esc(kh)}">on</button>
-                  <button type="button" class="portal-btn" data-act="revoke" data-kh="${esc(kh)}">revoke</button>
-                  <button type="button" class="portal-btn" data-act="patch-notes" data-kh="${esc(kh)}">заметка</button>
-                  <button type="button" class="portal-btn" data-act="patch-days" data-kh="${esc(kh)}">дни</button>
-                  <button type="button" class="portal-btn" data-act="y-issue-1" data-kh="${esc(kh)}" title="Продлить на 1 календарный год от даты выдачи">+1г⊕выдача</button>
-                  <button type="button" class="portal-btn" data-act="y-now-1" data-kh="${esc(kh)}" title="Окончание через 1 календарный год от сегодня">+1г⊕сейчас</button>
-                  <button type="button" class="portal-btn" data-act="patch-years-issue" data-kh="${esc(kh)}">лет⊕выдача</button>
-                  <button type="button" class="portal-btn" data-act="patch-plan" data-kh="${esc(kh)}">план</button>
-                  <button type="button" class="portal-btn" data-act="delete" data-kh="${esc(kh)}">удалить</button>
-                  <button type="button" class="portal-btn danger" data-act="purge" data-kh="${esc(kh)}" title="Лицензия + школа в БД + схема PostgreSQL + каталог tenants">полн. удаление</button>
+            const khTitle = `hash: ${kh}${licNo !== "—" ? ` | № ${licNo}` : ""}`;
+            const state = ["active", "disabled", "revoked"].includes(x.status) ? x.status : "disabled";
+            const stateText = state === "active" ? "активна" : state === "revoked" ? "отозвана" : "отключена";
+            return `<article class="license-card">
+              <div title="${esc(khTitle)}">
+                <div class="license-title">
+                  <strong>Лицензия № ${esc(licNo)}</strong>
+                  <span class="license-badge ${state}">${stateText}</span>
                 </div>
-              </td>
-            </tr>`;
+                <div class="license-sub">Тенант: ${esc(x.tenant_slug || "не привязан")} · <code>${esc(khShort)}</code></div>
+                <div class="license-notes">${esc(x.notes || "Без заметки")}</div>
+              </div>
+              <div>
+                <div class="license-plan">${esc(x.plan_id || "—")}</div>
+                <div class="license-sub">тариф</div>
+              </div>
+              <div class="license-dates">
+                <div title="${esc(x.issued_at || "")}${iy}">Выдана: ${esc(issuedShort)}</div>
+                <div title="${esc(x.expires_at || "")}${ey}">До: ${esc(expShort)}</div>
+              </div>
+              <div class="license-actions">
+                <button type="button" class="adm-btn" data-act="info" data-kh="${esc(kh)}">Подробнее</button>
+                ${state === "active"
+                  ? `<button type="button" class="adm-btn warning" data-act="disable" data-kh="${esc(kh)}">Отключить</button>`
+                  : `<button type="button" class="adm-btn success" data-act="active" data-kh="${esc(kh)}">Включить</button>`}
+                <button type="button" class="adm-btn" data-act="y-now-1" data-kh="${esc(kh)}" title="Продлить на год от сегодняшней даты">+1 год</button>
+                <details class="license-more">
+                  <summary class="adm-btn">Ещё ···</summary>
+                  <div class="license-more-menu">
+                    <button type="button" class="adm-btn" data-act="patch-notes" data-kh="${esc(kh)}">Изменить заметку</button>
+                    <button type="button" class="adm-btn" data-act="patch-days" data-kh="${esc(kh)}">Срок в днях</button>
+                    <button type="button" class="adm-btn" data-act="y-issue-1" data-kh="${esc(kh)}">+1 год от выдачи</button>
+                    <button type="button" class="adm-btn" data-act="patch-years-issue" data-kh="${esc(kh)}">Лет от выдачи</button>
+                    <button type="button" class="adm-btn" data-act="patch-plan" data-kh="${esc(kh)}">Изменить тариф</button>
+                    <button type="button" class="adm-btn warning" data-act="revoke" data-kh="${esc(kh)}">Отозвать</button>
+                    <button type="button" class="adm-btn danger" data-act="delete" data-kh="${esc(kh)}">Удалить ключ</button>
+                    <button type="button" class="adm-btn danger" data-act="purge" data-kh="${esc(kh)}" title="Лицензия, тенант, схема PostgreSQL и каталог">Полное удаление</button>
+                  </div>
+                </details>
+              </div>
+            </article>`;
           })
           .join("");
       }
 
       async function reload() {
-        show("Загрузка…");
+        listCaption.textContent = "Загрузка…";
         const data = await api("/api/provider/licenses");
         renderList(data);
-        show(`Записей: ${(data.licenses || []).length}`);
+        show("");
       }
 
       document.getElementById("reload").addEventListener("click", () => reload().catch((e) => show(String(e.message || e))));
@@ -248,8 +234,8 @@
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(body),
           });
-          show(`Создан ключ (сохраните!):\n\n${r.license_key}\n\n${JSON.stringify(r, null, 2)}`);
           await reload();
+          show(`Создан ключ — сохраните его сейчас:\n\n${r.license_key}`);
         } catch (e) {
           show(String(e.message || e));
         }

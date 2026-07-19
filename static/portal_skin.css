@@ -4,13 +4,14 @@ body.portal-skin {
   min-height: 100vh;
   margin: 0;
   color: #f4f7ff !important;
-  background-color: #050d18 !important;
-  /* Один непрерывный фон без «полосы» от обрезанного radial + второго слоя */
-  background-image: radial-gradient(ellipse 140% 95% at 50% -35%, rgba(32, 72, 130, 0.55), transparent 58%),
-    linear-gradient(165deg, #0c2344 0%, #07172e 42%, #050d18 100%) !important;
-  background-repeat: no-repeat, no-repeat !important;
-  background-size: 100% 100%, 100% 100% !important;
-  background-attachment: scroll, scroll !important;
+  background-color: #040b15 !important;
+  background-image:
+    radial-gradient(ellipse 90% 65% at 62% -12%, rgba(46, 93, 166, 0.38), transparent 62%),
+    radial-gradient(ellipse 60% 55% at -5% 65%, rgba(25, 67, 124, 0.18), transparent 72%),
+    linear-gradient(155deg, #091d39 0%, #061326 46%, #040b15 100%) !important;
+  background-repeat: no-repeat !important;
+  background-size: 100% 100% !important;
+  background-attachment: fixed !important;
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, "Helvetica Neue", Arial, sans-serif;
 }
 
@@ -68,6 +69,13 @@ body.portal-skin code {
   font-weight: 700;
   cursor: pointer;
   display: inline-block;
+  width: auto;
+}
+
+.portal-btn:hover {
+  transform: translateY(-1px);
+  border-color: rgba(169, 207, 255, 0.45);
+  background: rgba(255, 255, 255, 0.15);
 }
 
 .portal-btn.primary {
