@@ -8,7 +8,8 @@
 | `build_open_core_tree.py` | Каталог без `_*_pg` для публичного tarball |
 | `package_open_core_release.py` | Дерево + `.tar.gz` / `.zip` в `dist/` |
 | `check_open_core_bundle.py` | Проверка, что в дереве нет private-файлов из manifest |
-| `check_locales.py` | Паритет ключей `static/locales/ru.json` / `en.json` |
+| `check_locales.py` | Паритет ключей `static/locales/ru.json` / `en.json`; `--check-tv` — sync с `tv-locales.js`; `--warn-terms` |
+| `check_widget_parity.py` | Паритет `widgets/*.py` ↔ `static/widgets/*.js` ↔ `plugins-manifest.js` |
 | `neutralize_terminology.py` | Нейтральные термины в locale (опционально) |
 | `private_modules_manifest.json` | Список закрытых модулей для open-core |
 

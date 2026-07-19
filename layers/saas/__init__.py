@@ -20,6 +20,7 @@ from guardschool.capabilities import (
     CAP_TENANT_FEEDBACK,
     CapabilityInfo,
     CapabilityStatus,
+    make_capability_info,
 )
 from guardschool.layer_loader import mark_saas_routes_mounted
 from guardschool.saas_routes import ALL_SAAS_ROUTE_GROUPS, mount_all_saas_routes
@@ -36,8 +37,9 @@ _SAAS_CAPS = (
 
 def register_capabilities(registry: dict[str, CapabilityInfo]) -> None:
     for cap_id in _SAAS_CAPS:
-        registry[cap_id] = CapabilityInfo(
-            status=CapabilityStatus.available,
+        registry[cap_id] = make_capability_info(
+            cap_id,
+            CapabilityStatus.available,
             message="Функция доступна (SaaS слой).",
             module_hint="saas",
         )

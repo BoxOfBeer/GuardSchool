@@ -77,7 +77,7 @@
     (function () {
       try {
         var ts = Date.now();
-        var widgetScripts = ["/static/tv-locales.js", "/static/widgets/runtime.js", "/static/widgets/carousel-runtime.js", "/static/screen_widgets.js"];
+        var widgetScripts = ["/static/tv-locales.js", "/static/widgets/runtime.js", "/static/widgets/carousel-runtime.js", "/static/tv-core-utils.js", "/static/tv-schedule-table.js", "/static/tv-screen-shell.js", "/static/screen_widgets.js"];
         var plugins = window.GUARD_SCHOOL_TV_WIDGET_PLUGINS || [];
         for (var pi = 0; pi < plugins.length; pi++) {
           widgetScripts.push("/static/widgets/" + plugins[pi]);

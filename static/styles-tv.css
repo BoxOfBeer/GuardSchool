@@ -9,7 +9,7 @@
   --accent: #38bdf8;
   --danger: #ef4444;
   --admin-base-font: 14px;
-  /* Расписание: совпадает с SCHEDULE_THEME в static/screen_widgets.js (инлайн таблицы на ТВ без var()). */
+  /* Расписание: совпадает с SCHEDULE_THEME в static/tv-schedule-table.js (инлайн таблицы на ТВ без var()). */
   --schedule-fg: #0f172a;
   --schedule-surface: rgba(255, 255, 255, 0.92);
 }

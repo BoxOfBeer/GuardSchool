@@ -2,7 +2,7 @@
 
 GuardSchool использует единый реестр **capabilities** — UI и API спрашивают `has_capability("…")`, а не наличие конкретного файла.
 
-## Статусы
+## Статусы (может ли функция работать)
 
 | Статус | Значение |
 |--------|----------|
@@ -12,6 +12,24 @@ GuardSchool использует единый реестр **capabilities** — 
 | `locked` | Установлено, но закрыто лицензией или тарифом |
 | `unavailable` | Требует SaaS, интернет или подключение |
 | `error` | Модуль найден, но не загрузился |
+
+## Visibility / audience (кому показывать в UI)
+
+Отдельно от статуса: `has_capability()` и API gates **не** зависят от visibility.
+
+| `visibility` | Кто видит в `_meta.capabilities` / обзоре |
+|--------------|---------------------------------------------|
+| `school` | Админка школы (`school.*`) |
+| `licensor` | + портал `guarddoc.ru` |
+| `internal` | + localhost / dev-флаги (диагностика сборки) |
+
+Правило audience:
+
+- `school` → только `visibility=school`
+- `licensor` → `school` + `licensor`
+- `internal` → всё
+
+Блок «Функции сборки» в настройках показывается только при audience ≠ `school`.
 
 ## Идентификаторы
 
@@ -35,8 +53,8 @@ GuardSchool использует единый реестр **capabilities** — 
 
 ## API
 
-- `GET /api/capabilities` — полный список с сообщениями для UI
-- В `GET /api/admin/config` поле `_meta.capabilities` дублирует данные для админки
+- `GET /api/capabilities` — список с сообщениями для UI, отфильтрованный по audience запроса; поле `capabilities_audience`
+- В `GET /api/admin/config` поля `_meta.capabilities` и `_meta.capabilities_audience`
 
 ## Переменные окружения
 
@@ -44,6 +62,9 @@ GuardSchool использует единый реестр **capabilities** — 
 - `GUARDSCHOOL_LAYER_PATH` — каталог с закрытыми слоями (`layers/saas`, `layers/commercial`)
 - `GUARDSCHOOL_DISABLED_CAPABILITIES` — список id через запятую для принудительного `disabled`
 - `GUARDSCHOOL_TENANT_PLAN_ID` — тариф без SaaS БД (`free`, `starter`, `pro`, `enterprise`, …)
+- `GUARDSCHOOL_CAPABILITIES_AUDIENCE` — принудительно `school` | `licensor` | `internal`
+- `GUARDSCHOOL_DEV_CAPABILITIES` — `1` / `true` → audience `internal`
+- `GUARDSCHOOL_PUBLIC_SCHOOL_HOST` — хост школьной админки → audience `school`
 
 ## Слои
 

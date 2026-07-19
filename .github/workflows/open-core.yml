@@ -18,11 +18,20 @@ jobs:
         run: pip install -r requirements.txt
       - name: Syntax check JS
         run: |
+          node --check static/tv-core-utils.js
+          node --check static/tv-schedule-table.js
+          node --check static/tv-screen-shell.js
           node --check static/screen_widgets.js
-          node --check static/widgets/carousel-runtime.js
+          for f in static/widgets/*.js; do node --check "$f"; done
       - name: Unit tests (full tree)
         run: python -m unittest discover -s tests -q
       - name: Locale parity
-        run: python tools/check_locales.py
+        run: |
+          python tools/check_locales.py
+          python tools/check_locales.py --check-tv --warn-terms
+      - name: Widget parity (Python / JS / manifest)
+        run: python tools/check_widget_parity.py
       - name: Verify open-core bundle
         run: python tools/verify_open_core.py
+      - name: Docker build
+        run: docker compose build

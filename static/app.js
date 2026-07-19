@@ -2,6 +2,9 @@
 import "./widgets/plugins-manifest.js";
 import "./widgets/runtime.js";
 import "./widgets/carousel-runtime.js";
+import "./tv-core-utils.js?v=1.02.044";
+import "./tv-schedule-table.js?v=1.02.044";
+import "./tv-screen-shell.js?v=1.02.044";
 import "./screen_widgets.js?v=1.02.044";
 
 const TV_WIDGET_PLUGIN_SCRIPTS = window.GUARD_SCHOOL_TV_WIDGET_PLUGINS || [];
@@ -82,6 +85,7 @@ import {
   isWidgetAvailableInPalette,
 } from "./admin/widget-registry.js";
 import {
+  applyCapabilitiesDiagnosticsVisibility,
   applyCapabilityGates,
   renderCapabilitiesOverview,
   renderWidgetRegistryIssues,
@@ -435,8 +439,9 @@ function hydrateProgramSettingsPanelIfOpen() {
       screenFallbackEnabled: elements.screenFallbackEnabled,
     });
   }
+  applyCapabilitiesDiagnosticsVisibility(state.meta);
   renderCapabilitiesOverview(state.meta?.capabilities, elements.capabilitiesOverview, state.meta);
-  renderWidgetRegistryIssues(state.meta?.widget_registry, elements.widgetRegistryIssues);
+  renderWidgetRegistryIssues(state.meta?.widget_registry, elements.widgetRegistryIssues, state.meta);
   refreshSyncStatusLine().catch(() => {});
   refreshTvAccessUi().catch(() => {});
   try {
@@ -2955,8 +2960,9 @@ async function init() {
       screenFallbackEnabled: elements.screenFallbackEnabled,
     });
   }
+  applyCapabilitiesDiagnosticsVisibility(state.meta);
   renderCapabilitiesOverview(state.meta?.capabilities, elements.capabilitiesOverview, state.meta);
-  renderWidgetRegistryIssues(state.meta?.widget_registry, elements.widgetRegistryIssues);
+  renderWidgetRegistryIssues(state.meta?.widget_registry, elements.widgetRegistryIssues, state.meta);
   const mig = state.meta?.widget_registry?.migration_warnings;
   if (Array.isArray(mig) && mig.length) {
     console.warn("[widget_registry]", mig.join("; "));

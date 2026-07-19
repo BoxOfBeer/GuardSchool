@@ -13,6 +13,7 @@ from .app_host_routing import (
     request_host_for_routing as _request_host_for_routing,
 )
 from .gs_deploy import deployment_mode
+from .gs_health import health_payload
 from .gs_paths import APP_VERSION, AUTH_PATH, CONFIG_PATH, SAAS_TENANT_COOKIE, SESSION_COOKIE
 from .gs_school_news import load_school_news
 from .provider_auth import require_provider_admin as _require_provider_admin
@@ -27,6 +28,12 @@ def register_public_routes(app) -> None:
 @router.get("/api/version")
 def get_public_version() -> dict[str, str]:
     return {"product": "GuardSchool", "version": APP_VERSION}
+
+
+@router.get("/api/health")
+def get_health() -> dict[str, str | bool]:
+    """Liveness/readiness для мониторинга: версия, режим, запись в data/."""
+    return health_payload()
 
 
 @router.get("/api/_debug/tenant")

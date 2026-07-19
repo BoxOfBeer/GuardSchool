@@ -61,8 +61,8 @@ def demo_login(token: str, request: Request, response: Response) -> Response:
             detail=admin_msg(
                 loc,
                 "Гостевое демо только на отдельной песочнице. Откройте «Демо» с главной страницы портала, "
-                "а не адрес кабинета вашей школы.",
-                "Guest demo is only on the separate sandbox. Open “Demo” from the portal home page, not your school admin URL.",
+                "а не адрес кабинета вашей организации.",
+                "Guest demo is only on the separate sandbox. Open “Demo” from the portal home page, not your organization admin URL.",
             ),
         )
     th = demo_token_hash(token)

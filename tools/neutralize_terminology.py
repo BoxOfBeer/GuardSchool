@@ -65,6 +65,9 @@ RU_REPLACEMENTS: list[tuple[str, str]] = [
     ("старших", "старших"),  # noop anchor
     ("старших ~", "старших ~"),
     ("Регистрация школ", "Регистрация организации"),
+    ("школьный тариф", "полный тариф"),
+    ("облачная школа", "облачный хостинг"),
+    ("cookie школы", "cookie организации"),
     ("часовому поясу школы", "часовому поясу организации"),
     ("КОД ШКОЛЫ", "КОД ПОДКЛЮЧЕНИЯ"),
 ]
@@ -113,6 +116,9 @@ EN_REPLACEMENTS: list[tuple[str, str]] = [
     ("classes", "groups"),
     ("school", "organization"),
     ("School", "Organization"),
+    ("Full school plan", "Full paid plan"),
+    ("school cookie", "organization cookie"),
+    ("school plan", "paid plan"),
 ]
 
 

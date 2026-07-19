@@ -16,6 +16,7 @@ from .capabilities import (
     CAP_TENANT_PROVISIONING,
     CapabilityInfo,
     CapabilityStatus,
+    make_capability_info,
 )
 from .gs_deploy import deployment_mode
 
@@ -36,8 +37,9 @@ def register_embedded_capabilities(registry: dict[str, CapabilityInfo]) -> None:
         return
 
     def _set_available(cap_id: str) -> None:
-        registry[cap_id] = CapabilityInfo(
-            status=CapabilityStatus.available,
+        registry[cap_id] = make_capability_info(
+            cap_id,
+            CapabilityStatus.available,
             message="Функция доступна (встроенный модуль).",
             module_hint="embedded",
         )

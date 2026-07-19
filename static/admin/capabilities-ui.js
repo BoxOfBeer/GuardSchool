@@ -8,10 +8,7 @@ import { t, tf } from "./i18n-helpers.js";
 
 
 
-/** Порядок для обзора в настройках. */
-
-/** Не показывать админу школы — только лицензиату / порталу провайдера. */
-const CAPABILITY_LICENSOR_ONLY = new Set(["registration", "tenant_provisioning"]);
+/** Порядок для обзора в настройках (список уже отфильтрован сервером по capabilities_audience). */
 
 const CAPABILITY_OVERVIEW_ORDER = [
 
@@ -31,15 +28,15 @@ const CAPABILITY_OVERVIEW_ORDER = [
 
   "remote_tv_pairing",
 
-  "license_check",
-
-  "payment",
-
-  "tariff_limits",
-
-  "production_portal",
-
 ];
+
+
+
+/** Диагностика сборки (missing, module_hint) — не для school audience. */
+export function shouldShowCapabilitiesDiagnostics(meta) {
+  const aud = meta && meta.capabilities_audience != null ? String(meta.capabilities_audience) : "school";
+  return aud !== "school";
+}
 
 
 
@@ -249,9 +246,22 @@ export function applyCapabilityGates(capabilities, elements = {}) {
 
  */
 
+export function applyCapabilitiesDiagnosticsVisibility(meta) {
+  const show = shouldShowCapabilitiesDiagnostics(meta);
+  const section = document.getElementById("ps-capabilities-head")?.closest(".program-settings-block");
+  if (section) section.hidden = !show;
+}
+
+
+
 export function renderCapabilitiesOverview(capabilities, container, meta) {
 
   if (!container) return;
+
+  if (!shouldShowCapabilitiesDiagnostics(meta)) {
+    container.innerHTML = "";
+    return;
+  }
 
   if (!capabilities || typeof capabilities !== "object") {
 
@@ -269,11 +279,9 @@ export function renderCapabilitiesOverview(capabilities, container, meta) {
 
   const ids = [
 
-    ...CAPABILITY_OVERVIEW_ORDER.filter((id) => id in capabilities && !CAPABILITY_LICENSOR_ONLY.has(id)),
+    ...CAPABILITY_OVERVIEW_ORDER.filter((id) => id in capabilities),
 
-    ...Object.keys(capabilities)
-      .filter((id) => !CAPABILITY_OVERVIEW_ORDER.includes(id) && !CAPABILITY_LICENSOR_ONLY.has(id))
-      .sort(),
+    ...Object.keys(capabilities).filter((id) => !CAPABILITY_OVERVIEW_ORDER.includes(id)).sort(),
 
   ];
 
@@ -317,9 +325,15 @@ export function renderCapabilitiesOverview(capabilities, container, meta) {
 
  */
 
-export function renderWidgetRegistryIssues(registry, container) {
+export function renderWidgetRegistryIssues(registry, container, meta) {
 
   if (!container) return;
+
+  if (meta && !shouldShowCapabilitiesDiagnostics(meta)) {
+    container.hidden = true;
+    container.innerHTML = "";
+    return;
+  }
 
   const widgets = Array.isArray(registry && registry.widgets) ? registry.widgets : [];
 

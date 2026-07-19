@@ -1,13 +1,13 @@
-fastapi
-uvicorn
-python-multipart
-openpyxl
-pyinstaller
-tzdata
-httpx
-psycopg2-binary
-pillow
-pywebpush
+fastapi>=0.115.0,<1.0
+uvicorn[standard]>=0.30.0,<1.0
+python-multipart>=0.0.9,<1.0
+openpyxl>=3.1.0,<4.0
+pyinstaller>=6.0,<7.0
+tzdata>=2024.1
+httpx>=0.27.0,<1.0
+psycopg2-binary>=2.9.9,<3.0
+pillow>=10.0.0,<12.0
+pywebpush>=2.0.0,<3.0
 backports.zoneinfo>=0.2.1; python_version < "3.9"
 # Pydantic/FastAPI: dict[str, str], list[X], X | Y на Python < 3.10
 eval-type-backport>=0.2.0; python_version < "3.10"

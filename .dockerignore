@@ -1,0 +1,17 @@
+.venv
+venv
+__pycache__
+*.py[cod]
+.git
+.github
+dist
+build
+*.spec
+data
+tenants
+.cursor
+*.md
+!README.md
+tools/archive
+.pytest_cache
+.mypy_cache

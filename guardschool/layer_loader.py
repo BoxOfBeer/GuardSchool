@@ -23,6 +23,7 @@ from .capabilities import (
     CAP_TENANT_PROVISIONING,
     CapabilityInfo,
     CapabilityStatus,
+    make_capability_info,
     register_capability_provider,
 )
 
@@ -96,8 +97,9 @@ def _saas_layer_provider(registry: dict[str, CapabilityInfo]) -> None:
         CAP_CLOUD_STATUS,
     ):
         if cap_id in registry and registry[cap_id].status == CapabilityStatus.missing:
-            registry[cap_id] = CapabilityInfo(
-                status=CapabilityStatus.available,
+            registry[cap_id] = make_capability_info(
+                cap_id,
+                CapabilityStatus.available,
                 message="Функция доступна (SaaS слой установлен).",
                 module_hint="saas",
             )
@@ -113,8 +115,9 @@ def _commercial_layer_provider(registry: dict[str, CapabilityInfo]) -> None:
         CAP_PRODUCTION_PORTAL,
     ):
         if cap_id in registry and registry[cap_id].status == CapabilityStatus.missing:
-            registry[cap_id] = CapabilityInfo(
-                status=CapabilityStatus.available,
+            registry[cap_id] = make_capability_info(
+                cap_id,
+                CapabilityStatus.available,
                 message="Функция доступна (Commercial слой установлен).",
                 module_hint="commercial",
             )

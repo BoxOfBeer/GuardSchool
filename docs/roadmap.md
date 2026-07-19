@@ -39,3 +39,31 @@
 5. ~~Разрез монолитного `app.py`~~ — `gs_app_factory`, `routes_*`, `gs_*` ([architecture.md](architecture.md))
 6. ~~Релиз community tarball~~ — `package_open_core_release.py`, CI `.github/workflows/open-core-release.yml`
 7. ~~Архив одноразовых `tools/extract_*` / `patch_*`~~ — `tools/archive/`
+
+## Фаза: эксплуатация и качество
+
+1. ~~CI-проверка паритета виджетов Python ↔ JS~~ — `tools/check_widget_parity.py` + `.github/workflows/open-core.yml`
+2. ~~Интеграционные тесты ZIP и screen payload~~ — `tests/test_integration_core.py`
+3. ~~IT runbook~~ — [deploy.md](deploy.md): порты, бэкап `data/`, один worker для PC audio, reverse proxy
+4. ~~Docker Compose~~ — [`Dockerfile`](../Dockerfile), [`docker-compose.yml`](../docker-compose.yml)
+5. ~~Расширить CI JS~~ — `node --check` на все `static/widgets/*.js`
+6. ~~Тесты импорта Excel~~ — `tests/test_excel_import.py` (образцы `gs_import_sample_xlsx`)
+7. ~~Health endpoint~~ — `GET /api/health` (`gs_health.py`, `routes_public.py`)
+8. ~~Pin зависимостей~~ — диапазоны в `requirements.txt`
+
+## Фаза: нейтральная терминология (surface)
+
+Школьная модель остаётся **core**; обезличивание — **UI и импорт**, без rename schema.
+
+1. ~~Словарь surface vs core~~ — [neutral_model.md](neutral_model.md)
+2. ~~Алиасы Excel~~ — `Группа`/`Group`, `Слот1`/`Slot1`, `Date` (`gs_excel_import.py`)
+3. ~~Локали cap / тарифы~~ — `cap.effectivePlan*`, `neutralize_terminology.py`
+4. ~~Тесты алиасов Excel~~ — `tests/test_excel_import.py` (Group / Slot / Date)
+5. ~~Остатки UI~~ — `check_locales.py --check-tv --warn-terms`; SaaS/PC-audio сообщения; README RU
+
+## Фаза: onboarding и упаковка
+
+1. ~~Тесты `sanitize_config` / `migrate_screen_layout`~~ — `tests/test_gs_app_config.py`
+2. ~~Demo-seed при `/api/setup`~~ — `gs_community_seed.py` (local, пустой `config.json`)
+3. ~~PyInstaller spec~~ — `change_log_seed.json` в datas; `tests/test_community_seed.py`
+4. ~~CI Docker build~~ — `.github/workflows/open-core.yml`

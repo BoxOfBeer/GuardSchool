@@ -35,8 +35,8 @@ def export_weekly_schedule_bundle_bytes() -> bytes:
         "Недельное расписание GuardSchool\n"
         "— full_schedule.json — полное по дням недели (как в админке после загрузки Excel).\n"
         "— schedule_sample.json — образец отличий от полного (подсветка на ТВ).\n"
-        "— full_schedule_sample.xlsx — шаблон таблицы для Excel (колонки «День недели», «Класс», Урок1…).\n"
-        "Импорт: ZIP с теми же именами файлов в разделе «Уроки».\n"
+        "— full_schedule_sample.xlsx — шаблон Excel: «День недели», «Класс»/«Группа», «Урок1»/«Слот1» …\n"
+        "Импорт: ZIP с теми же именами файлов в разделе «Расписание».\n"
     )
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
         archive.writestr(

@@ -48,6 +48,8 @@ Open:
 - Admin: `http://127.0.0.1:8000`
 - TV screen: `http://127.0.0.1:8000/screen/tv-1`
 
+**Docker (community):** `docker compose up -d --build` — см. [docs/deploy.md](docs/deploy.md).
+
 ## Repository layout
 
 | Path | Role |
@@ -59,7 +61,7 @@ Open:
 | **`change_log_seed.json`** | Default **release notes** merged into `data/change_log.json` when the admin “Changes” log is seeded. |
 | **`requirements.txt`**, **`run_server.py`** | Dependencies and optional launcher. |
 | **`widgets/`** | Official widget plugins (Python manifests; TV render in `screen_widgets.js`). |
-| **`docs/`** | [architecture](docs/architecture.md), [capabilities](docs/capabilities.md), [widgets](docs/widgets.md), [private modules](docs/private_modules.md), [roadmap](docs/roadmap.md). |
+| **`docs/`** | [architecture](docs/architecture.md), [deploy](docs/deploy.md), [neutral model](docs/neutral_model.md), [capabilities](docs/capabilities.md), [widgets](docs/widgets.md), [private modules](docs/private_modules.md), [roadmap](docs/roadmap.md). |
 | **`tools/`** | [verify_open_core.py](tools/verify_open_core.py), [build_open_core_tree.py](tools/build_open_core_tree.py) — см. [tools/README.md](tools/README.md). |
 
 ## Community / Core vs Hybrid / SaaS
@@ -120,8 +122,10 @@ Output: `dist/GuardSchool.exe`. A `data` folder is created next to the executabl
 
 ## Excel (short)
 
-Typical dated schedule columns: `Date`, `Class`, `Lesson1` …  
+Typical dated schedule columns: `Date`, `Class`/`Group`, `Lesson1`/`Slot1` …  
 Example row: `2026-04-01 | 5 | Russian | English | Math`  
+
+See [neutral_model.md](docs/neutral_model.md) for school headers and neutral Excel aliases.
 
 Samples and auto-import from `data/import/` follow the same rules as in previous releases.
 
@@ -147,11 +151,11 @@ Samples and auto-import from `data/import/` follow the same rules as in previous
 
 ## Русский
 
-**README для GitHub:** репозиторий ориентирован на публичное описание проекта; блок ниже — краткая русская версия для школ, интеграторов и других площадок.
+**README для GitHub:** репозиторий ориентирован на публичное описание проекта; блок ниже — краткая русская версия для организаций, интеграторов и других площадок.
 
 ### GuardSchool — что это
 
-**Локально развёртываемое расписание и сигналы (звонки) на экранах в браузере.** Ядро модели — **школа: уроки, классы, звонки**; дальше это тот же принцип **«время + данные»** на экранах: **дежурства**, **смены**, приём по кабинетам или любая таблица, которую вы заводите через тот же импорт и виджеты — не обязательно «уроки».
+**Локально развёртываемое расписание и сигналы на экранах в браузере.** Исторически ядро — **школа (слоты, группы, сигналы по времени)**; тот же каркас — **«время + данные»** на экранах: **дежурства**, **смены**, приём по кабинетам или любая таблица через импорт и виджеты.
 
 После установки работает **полностью офлайн**: данные и медиа хранятся у вас, **без обязательного облака и внешних API**. Управление — **внутри вашей сети (LAN)**.
 
@@ -159,9 +163,9 @@ Samples and auto-import from `data/import/` follow the same rules as in previous
 
 Интерфейс админки: **русский и английский** (переключатель в шапке). В настройках — **часовой пояс** и **сдвиг времени в минутах**, если часы на ТВ расходятся с реальностью.
 
-### Зачем школе
+### Зачем организации
 
-- **Полный контроль**: конфигурация, расписание, звонки, фоны и загрузки в папке `data/`, а не на чужом сервере.
+- **Полный контроль**: конфигурация, расписание, сигналы, фоны и загрузки в папке `data/`, а не на чужом сервере.
 - **Оффлайн**: достаточно одного ПК или встроенного компьютера у панели; интернет для работы не обязателен.
 - **Прозрачность**: можно отдать ИТ архив (ZIP) для резервной копии или аудита.
 
@@ -185,12 +189,12 @@ uvicorn app:app --host 0.0.0.0 --port 8000 --reload
 
 - Язык: список **«Язык»** в шапке.
 - Пояс и сдвиг: блок **«Язык, время и пояс»** в меню **Настройки**.  
-  «Сегодня» для расписания и звонков считается **в выбранном поясе**.
+  «Сегодня» для расписания и сигналов считается **в выбранном поясе**.
 - Тексты ошибок при импорте Excel/ZIP на стороне API соответствуют выбранному языку интерфейса (заголовок `X-UI-Locale: en` или `ru`).
 
 ### Импорт и экспорт
 
-**Экспорт ZIP** / **Импорт ZIP** в админке — полный снимок настроек, расписаний, звонков и загрузок. Импорт полного архива принимается только если в **корне ZIP** есть **`config.json`** (как в экспорте GuardSchool); пустой или чужой архив не очищает `uploads`.
+**Экспорт ZIP** / **Импорт ZIP** в админке — полный снимок настроек, расписаний, сигналов и загрузок. Импорт полного архива принимается только если в **корне ZIP** есть **`config.json`** (как в экспорте GuardSchool); пустой или чужой архив не очищает `uploads`.
 
 ### Безопасность и эксплуатация
 
@@ -211,8 +215,10 @@ build_exe.bat
 
 ### Формат Excel (кратко)
 
-Колонки по датам: `Дата`, `Класс`, `Урок1` …  
+Колонки по датам: `Дата`/`Date`, `Класс`/`Группа`/`Group`, `Урок1`/`Слот1`/`Slot1` …  
 Пример: `01.04.2026 | 5 | Русский | Английский | Математика`  
+
+См. также [neutral_model.md](docs/neutral_model.md) — школьные заголовки и нейтральные алиасы.
 
 Образцы и автоимпорт из `data/import/` — без изменения логики прежних релизов.
 

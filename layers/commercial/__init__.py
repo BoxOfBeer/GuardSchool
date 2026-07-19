@@ -17,6 +17,7 @@ from guardschool.capabilities import (
     CAP_TENANT_PROVISIONING,
     CapabilityInfo,
     CapabilityStatus,
+    make_capability_info,
 )
 from guardschool.commercial_routes import mount_commercial_routes
 from guardschool.layer_loader import mark_commercial_routes_mounted
@@ -33,8 +34,9 @@ _COMMERCIAL_CAPS = (
 
 def register_capabilities(registry: dict[str, CapabilityInfo]) -> None:
     for cap_id in _COMMERCIAL_CAPS:
-        registry[cap_id] = CapabilityInfo(
-            status=CapabilityStatus.available,
+        registry[cap_id] = make_capability_info(
+            cap_id,
+            CapabilityStatus.available,
             message="Функция доступна (Commercial слой).",
             module_hint="commercial",
         )

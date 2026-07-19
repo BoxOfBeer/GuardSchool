@@ -11,7 +11,7 @@ from .app_host_routing import (
     is_public_school_host as _is_public_school_host,
     portal_request_host as _portal_request_host,
 )
-from .capabilities import get_capabilities_public
+from .capabilities import get_capabilities_public, resolve_capabilities_audience
 from .gs_admin_http import admin_msg, admin_ui_lang, session_cookie_secure
 from .gs_auth import (
     create_session_token,
@@ -23,6 +23,7 @@ from .gs_auth import (
 )
 from .gs_deploy import deployment_mode
 from .gs_jsonio import write_json
+from .gs_community_seed import seed_community_demo_data_if_empty
 from .gs_paths import AUTH_PATH, SAAS_TENANT_COOKIE, SESSION_COOKIE
 from .gs_saas_limits import saas_mode
 from .gs_tv_screen_api import encode_saas_tenant_cookie_value as _encode_saas_tenant_cookie_value
@@ -37,18 +38,24 @@ def register_auth_routes(app) -> None:
 
 
 @router.get("/api/bootstrap")
-def bootstrap_state() -> dict[str, Any]:
+def bootstrap_state(request: Request) -> dict[str, Any]:
+    cap_audience = resolve_capabilities_audience(request)
     return {
         "configured": bool(load_auth()),
         "saas_mode": saas_mode(),
         "deployment_mode": deployment_mode(),
-        "capabilities": get_capabilities_public(),
+        "capabilities": get_capabilities_public(audience=cap_audience),
+        "capabilities_audience": cap_audience,
     }
 
 
 @router.get("/api/capabilities")
-def api_capabilities() -> dict[str, Any]:
-    return {"capabilities": get_capabilities_public()}
+def api_capabilities(request: Request) -> dict[str, Any]:
+    cap_audience = resolve_capabilities_audience(request)
+    return {
+        "capabilities": get_capabilities_public(audience=cap_audience),
+        "capabilities_audience": cap_audience,
+    }
 
 
 @router.get("/api/widgets/registry")
@@ -80,6 +87,7 @@ async def setup_admin(request: Request, username: str = Form(...), password: str
         )
     salt = secrets.token_hex(16)
     write_json(AUTH_PATH, {"username": username.strip(), "salt": salt, "password_hash": hash_password(password, salt)})
+    seed_community_demo_data_if_empty()
     return {"status": "ok"}
 
 

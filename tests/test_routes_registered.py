@@ -24,6 +24,8 @@ class RoutesRegisteredTests(unittest.TestCase):
 
             "/api/capabilities",
 
+            "/api/health",
+
             "/api/widgets/registry",
 
             "/api/sync/status",

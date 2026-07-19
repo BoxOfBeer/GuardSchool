@@ -90,24 +90,41 @@ def parse_weekday_value(raw: Any) -> int | None:
 
 
 def parse_lesson_column_index(header: str) -> int | None:
-    """Номер урока из заголовка столбца: «Урок1», «урок 7», «УРОК6» (без чувствительности к регистру)."""
+    """Номер слота из заголовка: «Урок1», «Слот2», «Slot3», «Lesson4» (без регистра)."""
     s = str(header or "").strip()
     if not s:
         return None
     sl = s.lower().replace("ё", "е")
-    if not sl.startswith("урок"):
-        return None
-    tail = sl[4:].strip()
-    if not tail:
-        return None
-    m = re.match(r"^(\d+)", tail)
-    if not m:
-        return None
-    try:
-        n = int(m.group(1))
-    except ValueError:
-        return None
-    return n if 1 <= n <= 24 else None
+    for prefix in ("урок", "слот", "slot", "lesson"):
+        if not sl.startswith(prefix):
+            continue
+        tail = sl[len(prefix) :].strip()
+        if not tail:
+            return None
+        m = re.match(r"^(\d+)", tail)
+        if not m:
+            return None
+        try:
+            n = int(m.group(1))
+        except ValueError:
+            return None
+        return n if 1 <= n <= 24 else None
+    return None
+
+
+def _normalize_excel_header(header: str) -> str:
+    return str(header or "").strip().lower().replace("ё", "е")
+
+
+def _column_index_by_header_aliases(headers: list[str], aliases: frozenset[str]) -> int | None:
+    for i, h in enumerate(headers):
+        if _normalize_excel_header(h) in aliases:
+            return i
+    return None
+
+
+_CLASS_COLUMN_ALIASES = frozenset({"класс", "группа", "class", "group"})
+_DATE_COLUMN_ALIASES = frozenset({"дата", "date"})
 
 
 def _is_blank_excel_scalar(value: Any) -> bool:
@@ -213,17 +230,18 @@ def parse_weekly_schedule_excel(file_path: Path, *, lang: str = "ru") -> list[di
         if hl in aliases:
             weekday_col_idx = i
             break
-    if weekday_col_idx is None or "Класс" not in headers:
+    if weekday_col_idx is None or _column_index_by_header_aliases(headers, _CLASS_COLUMN_ALIASES) is None:
         raise HTTPException(
             status_code=400,
             detail=admin_msg(
                 lang,
-                "Ожидаются колонки «День недели» (или Weekday) и «Класс».",
-                "Expected columns «День недели» (or Weekday) and «Класс».",
+                "Ожидаются колонки «День недели» (или Weekday) и «Класс» / «Группа» (или Class / Group).",
+                "Expected columns «День недели» (or Weekday) and «Класс» / «Group» (or Class / Group).",
             ),
         )
 
-    class_col_idx = headers.index("Класс")
+    class_col_idx = _column_index_by_header_aliases(headers, _CLASS_COLUMN_ALIASES)
+    assert class_col_idx is not None
     data_rows = rows[1:]
     lesson_specs = _discover_lesson_specs(headers, class_col_idx, data_rows)
     if not lesson_specs:
@@ -231,8 +249,8 @@ def parse_weekly_schedule_excel(file_path: Path, *, lang: str = "ru") -> list[di
             status_code=400,
             detail=admin_msg(
                 lang,
-                "Нужны колонки 'Урок1', 'Урок2' и т.д.",
-                "Lesson columns are required (e.g. Урок1, Урок2, …).",
+                "Нужны колонки «Урок1» / «Слот1» / «Slot1» и т.д.",
+                "Slot columns are required (e.g. Урок1, Слот1, Slot1, …).",
             ),
         )
 
@@ -284,18 +302,18 @@ def parse_excel(file_path: Path, *, lang: str = "ru") -> list[dict[str, Any]]:
     )
     rows = [_pad_row_to_width(r, max_col) for r in rows_raw]
     headers = [str(cell).strip() if cell is not None else "" for cell in rows[0]]
-    if "Дата" not in headers or "Класс" not in headers:
+    date_col_idx = _column_index_by_header_aliases(headers, _DATE_COLUMN_ALIASES)
+    class_col_idx = _column_index_by_header_aliases(headers, _CLASS_COLUMN_ALIASES)
+    if date_col_idx is None or class_col_idx is None:
         raise HTTPException(
             status_code=400,
             detail=admin_msg(
                 lang,
-                "Ожидаются колонки 'Дата' и 'Класс'.",
-                "Expected columns 'Дата' and 'Класс'.",
+                "Ожидаются колонки «Дата» / «Date» и «Класс» / «Группа» (или Class / Group).",
+                "Expected columns «Дата» / «Date» and «Класс» / «Group» (or Class / Group).",
             ),
         )
 
-    class_col_idx = headers.index("Класс")
-    date_col_idx = headers.index("Дата")
     data_rows = rows[1:]
     lesson_specs = _discover_lesson_specs(headers, class_col_idx, data_rows)
     if not lesson_specs:
@@ -303,8 +321,8 @@ def parse_excel(file_path: Path, *, lang: str = "ru") -> list[dict[str, Any]]:
             status_code=400,
             detail=admin_msg(
                 lang,
-                "Нужны колонки 'Урок1', 'Урок2' и т.д.",
-                "Lesson columns are required (e.g. Урок1, Урок2, …).",
+                "Нужны колонки «Урок1» / «Слот1» / «Slot1» и т.д.",
+                "Slot columns are required (e.g. Урок1, Слот1, Slot1, …).",
             ),
         )
 

@@ -17,6 +17,7 @@ from .capabilities import (
     CAP_LICENSE_CHECK,
     CapabilityInfo,
     CapabilityStatus,
+    make_capability_info,
 )
 
 # Полный SaaS-набор для школы (без платформенных registration / tenant_provisioning).
@@ -71,7 +72,7 @@ _COMMERCIAL_GATED = frozenset(
 )
 
 def _plan_lock_message(plan_norm: str) -> str:
-    return f"Модуль установлен, но недоступен в тарифе «{plan_norm}» (полный школьный — paid)."
+    return f"Модуль установлен, но недоступен в тарифе «{plan_norm}» (полный тариф — paid)."
 
 
 def normalize_plan_id(plan: str | None) -> str | None:
@@ -122,10 +123,12 @@ def apply_plan_capability_limits(registry: dict[str, CapabilityInfo], plan: str 
         if info is None or info.status != CapabilityStatus.available:
             continue
         if cap_id not in allowed:
-            registry[cap_id] = CapabilityInfo(
-                status=CapabilityStatus.locked,
+            registry[cap_id] = make_capability_info(
+                cap_id,
+                CapabilityStatus.locked,
                 message=_plan_lock_message(plan_norm),
                 module_hint=f"plan:{plan_norm}",
+                visibility=info.visibility,
             )
 
 

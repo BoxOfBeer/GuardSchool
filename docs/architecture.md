@@ -14,7 +14,7 @@
 |--------|----------------|
 | `routes_pages.py` | `/`, `/screen/*`, `/uploads/*`, `sw.js` |
 | `routes_auth.py` | `/api/setup`, `/api/login`, `/api/bootstrap`, capabilities, widget registry |
-| `routes_public.py` | `/api/version`, school-news (public) |
+| `routes_public.py` | `/api/version`, `/api/health`, school-news (public) |
 | `routes_screen.py` | `/api/screen/*`, check-in с ТВ |
 | `routes_admin.py` | `/api/admin/*` |
 | `app_pwa_manifest.py` | PWA manifest (фасад → `_pg` / stub) |
