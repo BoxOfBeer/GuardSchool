@@ -29,12 +29,9 @@ def demo_middleware_binding_slug(request: Request, host_slug: str | None) -> str
         return None
     bound = demo_v3_binding_from_token(tok)
     if bound:
-        tpl, iso = bound
-        host = request_host_for_routing(request)
-        # На обычной схеме демо открывается на <template>.guarddoc.ru.
-        # Для единого school.* host_slug отсутствует, но сам хост явно публичный.
-        if tpl != host_slug and not is_public_school_host(host):
-            return None
+        _tpl, iso = bound
+        # v3 token подписан сервером и уже содержит единственный допустимый
+        # isolated_slug. Технический host редиректа не является источником tenant.
         if not tenant_data_dir(iso).is_dir():
             return None
         return iso
@@ -79,9 +76,11 @@ async def tenant_middleware(request: Request, call_next):
                 host_slug = left
         slug: str | None = None
         demo_token = request.cookies.get(SESSION_COOKIE) or ""
-        if verify_demo_session_token(demo_token):
+        looks_like_demo = str(demo_token).startswith(("__gsdemo__:", "__gsdemo_v3__:"))
+        if looks_like_demo:
             # Для демо cookie выбора тенанта не является доверенным источником.
-            # Контекст берём только из подписанного demo token.
+            # Контекст берём только из действительного подписанного demo token.
+            # Просроченный/повреждённый токен не должен откатываться к tenant-cookie.
             slug = demo_middleware_binding_slug(request, host_slug)
         else:
             # Обычная сессия: tenant из cookie, затем резерв из поддомена.

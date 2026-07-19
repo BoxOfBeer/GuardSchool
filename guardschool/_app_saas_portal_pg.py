@@ -20,7 +20,6 @@ from .app_try_demo import (
 from .gs_admin_http import admin_msg, admin_ui_lang, session_cookie_secure
 from .gs_auth import (
     create_demo_session_token,
-    load_auth,
     obliterate_session_cookies,
 )
 from .gs_deploy import deployment_mode
@@ -48,51 +47,58 @@ def demo_login(token: str, request: Request, response: Response) -> Response:
         cleanup_expired_demo_sessions()
     except Exception:
         pass
-    from .tenant_ctx import tenant_slug as current_tenant
-
-    slug = current_tenant()
-    if not slug:
-        raise HTTPException(status_code=404, detail="Not found.")
     sandbox = try_demo_sandbox_slug()
-    if slug != sandbox and not demo_allow_any_tenant_token():
-        loc = admin_ui_lang(request)
-        raise HTTPException(
-            status_code=403,
-            detail=admin_msg(
-                loc,
-                "Гостевое демо только на отдельной песочнице. Откройте «Демо» с главной страницы портала, "
-                "а не адрес кабинета вашей организации.",
-                "Guest demo is only on the separate sandbox. Open “Demo” from the portal home page, not your organization admin URL.",
-            ),
-        )
     th = demo_token_hash(token)
     now = utcnow()
+    slug = ""
     isolated_res = ""
     expires_at = None
     with connect_public() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                """
-                UPDATE demo_sessions
-                SET consumed_at = now()
-                WHERE token_hash=%s AND tenant_slug=%s AND expires_at > %s AND consumed_at IS NULL
-                RETURNING COALESCE(isolated_slug,''), expires_at
-                """,
-                (th, slug, now),
-            )
+            if demo_allow_any_tenant_token():
+                cur.execute(
+                    """
+                    UPDATE demo_sessions
+                    SET consumed_at = now()
+                    WHERE token_hash=%s AND expires_at > %s AND consumed_at IS NULL
+                    RETURNING tenant_slug, COALESCE(isolated_slug,''), expires_at
+                    """,
+                    (th, now),
+                )
+            else:
+                cur.execute(
+                    """
+                    UPDATE demo_sessions
+                    SET consumed_at = now()
+                    WHERE token_hash=%s AND tenant_slug=%s AND expires_at > %s AND consumed_at IS NULL
+                    RETURNING tenant_slug, COALESCE(isolated_slug,''), expires_at
+                    """,
+                    (th, sandbox, now),
+                )
             row = cur.fetchone()
             if row:
-                isolated_res = str(row[0] or "").strip().lower()
-                expires_at = row[1]
+                slug = str(row[0] or "").strip().lower()
+                isolated_res = str(row[1] or "").strip().lower()
+                expires_at = row[2]
             if not row:
                 cur.execute(
-                    "SELECT expires_at, consumed_at FROM demo_sessions WHERE token_hash=%s AND tenant_slug=%s",
-                    (th, slug),
+                    "SELECT tenant_slug, expires_at, consumed_at FROM demo_sessions WHERE token_hash=%s",
+                    (th,),
                 )
                 row2 = cur.fetchone()
                 if not row2:
                     raise HTTPException(status_code=403, detail="Demo token invalid.")
-                exp2, cons2 = row2[0], row2[1]
+                token_slug, exp2, cons2 = str(row2[0] or "").strip().lower(), row2[1], row2[2]
+                if token_slug != sandbox and not demo_allow_any_tenant_token():
+                    loc = admin_ui_lang(request)
+                    raise HTTPException(
+                        status_code=403,
+                        detail=admin_msg(
+                            loc,
+                            "Гостевое демо доступно только в отдельной песочнице.",
+                            "Guest demo is available only in the isolated sandbox.",
+                        ),
+                    )
                 if not exp2 or exp2 <= now:
                     raise HTTPException(status_code=403, detail="Demo token expired.")
                 if cons2:
@@ -100,9 +106,6 @@ def demo_login(token: str, request: Request, response: Response) -> Response:
                 raise HTTPException(status_code=403, detail="Demo token invalid.")
         conn.commit()
 
-    auth = load_auth()
-    if not auth:
-        raise HTTPException(status_code=428, detail="Tenant is not configured.")
     try:
         exp_epoch = int(expires_at.timestamp())  # type: ignore[union-attr]
     except Exception:

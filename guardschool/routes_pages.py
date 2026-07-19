@@ -101,14 +101,15 @@ def root(request: Request) -> Response:
     # guarddoc.ru — портал экосистемы (лендинг/регистрация), не админка школы
     if _is_guarddoc_portal(request):
         return FileResponse(STATIC_DIR / "portal.html")
+    # Подписанная демо-сессия не требует auth.json и учётной записи владельца.
+    if is_authenticated(request):
+        return FileResponse(
+            STATIC_DIR / "index.html",
+            headers={"Cache-Control": "no-cache, must-revalidate"},
+        )
     if not load_auth():
         return RedirectResponse("/setup")
-    if not is_authenticated(request):
-        return RedirectResponse("/login")
-    return FileResponse(
-        STATIC_DIR / "index.html",
-        headers={"Cache-Control": "no-cache, must-revalidate"},
-    )
+    return RedirectResponse("/login")
 
 
 

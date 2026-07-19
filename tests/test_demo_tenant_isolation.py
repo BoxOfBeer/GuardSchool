@@ -5,20 +5,24 @@ import tempfile
 import time
 import unittest
 import zipfile
+from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
 from fastapi import HTTPException
+from fastapi.responses import FileResponse
 
 from guardschool import _gs_feedback_pg as feedback
 from guardschool import _provider_demo_pg as provider_demo
 from guardschool import gs_screen_watch as screen_watch
 from guardschool import gs_import_bundle as import_bundle
+from guardschool import _app_saas_portal_pg as saas_portal
 from guardschool.app_hosting import tenant_middleware
 from guardschool.gs_auth import create_demo_session_token, require_auth
 from guardschool.gs_paths import SAAS_TENANT_COOKIE, SESSION_COOKIE
+from guardschool.routes_pages import root as root_page
 from guardschool.tenant_ctx import set_tenant_slug, tenant_slug
 
 
@@ -73,7 +77,7 @@ class DemoTenantIsolationTests(unittest.IsolatedAsyncioTestCase):
         (self.tenants / isolated / "data").mkdir(parents=True)
         token = create_demo_session_token(int(time.time()) + 300, "template", isolated)
         request = FakeRequest(
-            host="template.guarddoc.ru",
+            host="gateway.guarddoc.ru",
             cookies={SESSION_COOKIE: token, SAAS_TENANT_COOKIE: "permanent-school"},
         )
 
@@ -83,6 +87,33 @@ class DemoTenantIsolationTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(await tenant_middleware(request, call_next), "ok")
         self.assertIsNone(tenant_slug())
+
+    async def test_expired_demo_does_not_fall_back_to_tenant_cookie(self) -> None:
+        isolated = "demo-template-expired"
+        (self.tenants / isolated / "data").mkdir(parents=True)
+        token = create_demo_session_token(int(time.time()) - 1, "template", isolated)
+        request = FakeRequest(
+            host="gateway.guarddoc.ru",
+            cookies={SESSION_COOKIE: token, SAAS_TENANT_COOKIE: isolated},
+        )
+
+        async def call_next(_request):
+            self.assertIsNone(tenant_slug())
+            return "expired"
+
+        self.assertEqual(await tenant_middleware(request, call_next), "expired")
+
+    def test_demo_root_does_not_require_auth_file(self) -> None:
+        isolated = "demo-template-abc123"
+        (self.tenants / isolated / "data").mkdir(parents=True)
+        token = create_demo_session_token(int(time.time()) + 300, "template", isolated)
+        request = FakeRequest(cookies={SESSION_COOKIE: token})
+        set_tenant_slug(isolated)
+
+        response = root_page(request)
+
+        self.assertIsInstance(response, FileResponse)
+        self.assertTrue(str(response.path).endswith("index.html"))
 
     def test_demo_auth_requires_its_isolated_tenant(self) -> None:
         token = create_demo_session_token(int(time.time()) + 300, "template", "demo-template-abc123")
@@ -94,6 +125,50 @@ class DemoTenantIsolationTests(unittest.IsolatedAsyncioTestCase):
 
         set_tenant_slug("demo-template-abc123")
         require_auth(request)
+
+    def test_demo_link_creates_session_without_tenant_auth(self) -> None:
+        isolated = "d" + "b" * 24
+        expires = datetime.now(timezone.utc) + timedelta(hours=1)
+
+        class Cursor:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def execute(self, _query, _params):
+                pass
+
+            def fetchone(self):
+                return ("demo", isolated, expires)
+
+        class Connection:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def cursor(self):
+                return Cursor()
+
+            def commit(self):
+                pass
+
+        with (
+            patch.object(saas_portal, "saas_db_enabled", return_value=True),
+            patch.object(saas_portal, "cleanup_expired_demo_sessions"),
+            patch.object(saas_portal, "demo_token_hash", return_value="hash"),
+            patch.object(saas_portal, "connect_public", return_value=Connection()),
+            patch.object(saas_portal, "try_demo_sandbox_slug", return_value="demo"),
+        ):
+            response = saas_portal.demo_login("one-time-token", FakeRequest(host="gateway.guarddoc.ru"), None)
+
+        cookies = "\n".join(value.decode("latin-1") for key, value in response.raw_headers if key.lower() == b"set-cookie")
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.headers["location"], "/")
+        self.assertIn("__gsdemo_v3__", cookies)
 
     def test_feedback_has_separate_database_per_tenant(self) -> None:
         set_tenant_slug("school-a")
