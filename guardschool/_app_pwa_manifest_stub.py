@@ -9,7 +9,9 @@ from fastapi import APIRouter, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from .gs_deploy import deployment_mode
+from .gs_app_config import load_config
 from .gs_paths import APP_VERSION
+from .gs_pwa_profile import pwa_widget_types_from_value, resolve_pwa_profile
 from .gs_tv_screen_api import normalize_screen_slug_for_api as _normalize_screen_slug_for_api
 
 router = APIRouter(tags=["pwa-manifest"])
@@ -48,16 +50,31 @@ def pwa_manifest_for_screen_standalone(request: Request, screen_slug: str) -> JS
     slug_n = _normalize_screen_slug_for_api(str(screen_slug or ""))
     if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", slug_n):
         raise HTTPException(status_code=404, detail="Not found.")
+    preferred_widget_types = pwa_widget_types_from_value(request.query_params.get("gs_mw"))
+    widget_filter = ",".join(preferred_widget_types)
+    widget_query = f"&gs_mw={quote(widget_filter, safe=',')}" if widget_filter else ""
+    title, icon_url = resolve_pwa_profile(load_config(), slug_n, preferred_widget_types)
+    icon_low = icon_url.lower().split("?", 1)[0]
+    if icon_low.endswith((".svg", ".svgz")):
+        icon_type, icon_sizes = "image/svg+xml", "any"
+    elif icon_low.endswith(".ico"):
+        icon_type, icon_sizes = "image/x-icon", "any"
+    elif icon_low.endswith(".webp"):
+        icon_type, icon_sizes = "image/webp", "512x512"
+    elif icon_low.endswith((".jpg", ".jpeg")):
+        icon_type, icon_sizes = "image/jpeg", "512x512"
+    else:
+        icon_type, icon_sizes = "image/png", "512x512"
     manifest = {
-        "name": "GuardSchool",
-        "short_name": "GuardSchool",
-        "id": f"/pwa/screen/local/{slug_n}",
-        "start_url": f"/screen/{quote(slug_n, safe='')}?pwa=1",
+        "name": title,
+        "short_name": title,
+        "id": f"/pwa/screen/local/{slug_n}" + (f"/{widget_filter}" if widget_filter else ""),
+        "start_url": f"/screen/{quote(slug_n, safe='')}?pwa=1{widget_query}",
         "scope": "/",
         "display": "standalone",
         "background_color": "#0f172a",
         "theme_color": "#0f172a",
-        "icons": [{"src": "/static/pwa/icon_default.png", "sizes": "512x512", "type": "image/png"}],
+        "icons": [{"src": icon_url, "sizes": icon_sizes, "type": icon_type}],
         "gs_pwa_manifest_version": APP_VERSION,
     }
     return JSONResponse(

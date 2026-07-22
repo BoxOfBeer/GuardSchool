@@ -69,7 +69,7 @@ import {
   syncWidgetModal,
   bindWidgetModalOnce,
   renderWidgets,
-} from "./admin/widgets.js";
+} from "./admin/widgets.js?v=1.02.054";
 import { renderHistory } from "./admin/history.js";
 import { state, elements, GRID } from "./admin/state.js";
 import { t, tf, getSectionTabs } from "./admin/i18n-helpers.js";
@@ -131,6 +131,79 @@ function setWidgetTypeHiddenInPalette(wtype, hidden) {
   renderWidgets();
 }
 
+function ensureGeneralPwaSettings() {
+  if (!state.config) return { title: "", icon_url: "" };
+  if (!state.config.pwa || typeof state.config.pwa !== "object" || Array.isArray(state.config.pwa)) {
+    state.config.pwa = { title: "", icon_url: "" };
+  }
+  state.config.pwa.title = String(state.config.pwa.title || "");
+  state.config.pwa.icon_url = String(state.config.pwa.icon_url || "");
+  return state.config.pwa;
+}
+
+function pwaFieldError(title, iconUrl) {
+  if (String(title || "").trim().length > 64) return t("programSettings.pwaErrorTitleLength");
+  const icon = String(iconUrl || "").trim();
+  if (icon && !icon.startsWith("/uploads/")) return t("programSettings.pwaErrorIconPath");
+  return "";
+}
+
+function updateGeneralPwaValidation() {
+  const out = elements.pwaDefaultValidation;
+  if (!out || !state.config) return;
+  const pwa = ensureGeneralPwaSettings();
+  const error = pwaFieldError(pwa.title, pwa.icon_url);
+  out.classList.toggle("is-valid", !error && Boolean(pwa.title.trim() && pwa.icon_url.trim()));
+  out.classList.toggle("is-warning", !error && !(pwa.title.trim() && pwa.icon_url.trim()));
+  if (error) out.textContent = error;
+  else if (pwa.title.trim() && pwa.icon_url.trim()) out.textContent = t("programSettings.pwaValid");
+  else out.textContent = t("programSettings.pwaTechnicalFallback");
+  elements.pwaDefaultTitle?.classList.toggle("pwa-settings-invalid", Boolean(pwaFieldError(pwa.title, "")));
+  elements.pwaDefaultIconUrl?.classList.toggle("pwa-settings-invalid", Boolean(pwaFieldError("", pwa.icon_url)));
+}
+
+function validatePwaSettingsBeforeSave() {
+  const general = ensureGeneralPwaSettings();
+  let error = pwaFieldError(general.title, general.icon_url);
+  let focusTarget = null;
+  if (error) {
+    focusTarget = error === t("programSettings.pwaErrorIconPath") ? elements.pwaDefaultIconUrl : elements.pwaDefaultTitle;
+  }
+  for (const screenCfg of state.config?.screens || []) {
+    for (const widget of screenCfg?.widgets || []) {
+      if (!["checkin_submit", "checkin_monitor", "booking_public", "booking_manager"].includes(String(widget?.type || ""))) continue;
+      const settings = widget?.settings && typeof widget.settings === "object" ? widget.settings : {};
+      const widgetError = pwaFieldError(settings.pwa_title, settings.pwa_icon_url);
+      if (!widgetError) continue;
+      const screenName = String(screenCfg?.name || screenCfg?.slug || "");
+      const widgetName = String(widget?.title || settings.heading || widget.type || "");
+      error = `${screenName} / ${widgetName}: ${widgetError}`;
+      break;
+    }
+    if (error) break;
+  }
+  updateGeneralPwaValidation();
+  if (!error) return true;
+  alert(`${t("programSettings.pwaValidationFailed")}\n${error}`);
+  focusTarget?.focus();
+  return false;
+}
+
+async function uploadGeneralPwaIcon(file) {
+  if (!file) return;
+  if (file.size > MAX_WIDGET_IMAGE_UPLOAD_BYTES) {
+    alert(t("w.widgetImageTooLarge"));
+    return;
+  }
+  const formData = new FormData();
+  formData.append("file", file);
+  const payload = await api("/api/admin/upload-widget-image", { method: "POST", body: formData });
+  const pwa = ensureGeneralPwaSettings();
+  pwa.icon_url = String(payload.path || "");
+  if (elements.pwaDefaultIconUrl) elements.pwaDefaultIconUrl.value = pwa.icon_url;
+  updateGeneralPwaValidation();
+}
+
 function syncProgramSettingsFieldsFromState() {
   if (!state.config) return;
   if (elements.adminLocaleSelect) {
@@ -141,6 +214,10 @@ function syncProgramSettingsFieldsFromState() {
     const o = Number(state.config.clock_offset_minutes);
     elements.adminClockOffset.value = String(Number.isFinite(o) ? o : 0);
   }
+  const pwa = ensureGeneralPwaSettings();
+  if (elements.pwaDefaultTitle) elements.pwaDefaultTitle.value = pwa.title;
+  if (elements.pwaDefaultIconUrl) elements.pwaDefaultIconUrl.value = pwa.icon_url;
+  updateGeneralPwaValidation();
   if (elements.cloudBaseUrl) elements.cloudBaseUrl.value = String(state.config.cloud_base_url || "");
   if (elements.cloudSyncInterval) {
     const ci = Number(state.config.cloud_sync_interval_minutes);
@@ -2724,6 +2801,30 @@ function bindForm() {
       renderPreview();
     };
   }
+  if (elements.pwaDefaultTitle) {
+    elements.pwaDefaultTitle.oninput = (event) => {
+      ensureGeneralPwaSettings().title = String(event.target.value || "");
+      updateGeneralPwaValidation();
+    };
+  }
+  if (elements.pwaDefaultIconUrl) {
+    elements.pwaDefaultIconUrl.oninput = (event) => {
+      ensureGeneralPwaSettings().icon_url = String(event.target.value || "").trim();
+      updateGeneralPwaValidation();
+    };
+  }
+  if (elements.pwaDefaultIconBrowse && elements.pwaDefaultIconFile) {
+    elements.pwaDefaultIconBrowse.onclick = () => elements.pwaDefaultIconFile.click();
+    elements.pwaDefaultIconFile.onchange = async (event) => {
+      try {
+        await uploadGeneralPwaIcon(event.target.files?.[0]);
+      } catch (err) {
+        alert(err?.message || String(err));
+      } finally {
+        event.target.value = "";
+      }
+    };
+  }
   if (elements.cloudBaseUrl) {
     elements.cloudBaseUrl.oninput = (e) => {
       state.config.cloud_base_url = String(e.target.value || "").trim();
@@ -2898,6 +2999,7 @@ function renderLessonImportStats() {
 }
 
 async function saveAll() {
+  if (!validatePwaSettingsBeforeSave()) return;
   if (state.programSettingsPanelActive && getStoredProgramSettingsTab() === "emergency") {
     flushEmergencyEditorToState();
   }

@@ -401,9 +401,16 @@ def _apply_builtin_type_defaults(widget: dict[str, Any]) -> None:
     if wtype in ("booking_public", "booking_manager"):
         widget["settings"].setdefault("module_id", "booking-main")
         widget["settings"].setdefault("heading", "Запись" if wtype == "booking_public" else "Управление записями")
+        widget["settings"].setdefault("pwa_icon_url", "")
+        widget["settings"].setdefault("pwa_title", "")
         mid = "".join(ch for ch in str(widget["settings"].get("module_id") or "booking-main").lower() if ch.isalnum() or ch in "-_")
         widget["settings"]["module_id"] = (mid or "booking-main")[:80]
         widget["settings"]["heading"] = str(widget["settings"].get("heading") or "").strip()[:100]
+        piu = str(widget["settings"].get("pwa_icon_url") or "").strip()
+        if piu and not piu.startswith("/uploads/"):
+            piu = ""
+        widget["settings"]["pwa_icon_url"] = piu[:512]
+        widget["settings"]["pwa_title"] = str(widget["settings"].get("pwa_title") or "").strip()[:64]
     widget["settings"].setdefault("backdrop", True)
 
 

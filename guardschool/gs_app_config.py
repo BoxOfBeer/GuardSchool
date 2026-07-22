@@ -31,6 +31,7 @@ from .gs_app_config_defaults import (  # noqa: F401
     default_screen,
     ensure_default_widgets,
     migrate_screen_layout,
+    sanitize_pwa_block,
     _valid_iana_timezone,
 )
 
@@ -103,6 +104,7 @@ def load_config() -> dict[str, Any]:
     except (TypeError, ValueError):
         _off0 = 0
     config["clock_offset_minutes"] = max(-720, min(720, _off0))
+    config["pwa"] = sanitize_pwa_block(config.get("pwa"))
     _raw_hidden = config.get("admin_palette_hidden_types")
     if not isinstance(_raw_hidden, list):
         config["admin_palette_hidden_types"] = []
@@ -254,6 +256,7 @@ def sanitize_config(config: dict[str, Any]) -> dict[str, Any]:
     except (TypeError, ValueError):
         off = 0
     config["clock_offset_minutes"] = max(-720, min(720, off))
+    config["pwa"] = sanitize_pwa_block(config.get("pwa"))
     raw_hidden = config.get("admin_palette_hidden_types")
     if not isinstance(raw_hidden, list):
         config["admin_palette_hidden_types"] = []

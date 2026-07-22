@@ -91,6 +91,34 @@ class WidgetRegistryTests(unittest.TestCase):
         load_all_widgets()
         self.assertEqual(widget_status("time"), WidgetLoadStatus.loaded)
 
+    def test_booking_widget_keeps_valid_pwa_override(self) -> None:
+        from guardschool.widget_loader import load_all_widgets
+        from guardschool.widget_registry import normalize_widget
+
+        load_all_widgets()
+        widget = normalize_widget(
+            {
+                "id": "booking-test",
+                "type": "booking_public",
+                "settings": {
+                    "pwa_title": "  Запись онлайн  ",
+                    "pwa_icon_url": "/uploads/widget_images/booking.png",
+                },
+            }
+        )
+        self.assertEqual(widget["settings"]["pwa_title"], "Запись онлайн")
+        self.assertEqual(widget["settings"]["pwa_icon_url"], "/uploads/widget_images/booking.png")
+
+    def test_booking_widget_rejects_external_pwa_icon(self) -> None:
+        from guardschool.widget_loader import load_all_widgets
+        from guardschool.widget_registry import normalize_widget
+
+        load_all_widgets()
+        widget = normalize_widget(
+            {"id": "booking-test", "type": "booking_manager", "settings": {"pwa_icon_url": "https://bad.test/x.png"}}
+        )
+        self.assertEqual(widget["settings"]["pwa_icon_url"], "")
+
 
 class CapabilitiesLocalTests(unittest.TestCase):
     def setUp(self) -> None:

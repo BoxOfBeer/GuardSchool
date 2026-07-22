@@ -13,7 +13,7 @@ import {
   bindSchemaValidation,
   renderSchemaSettingsFields,
   schemaExcludeKeysForType,
-} from "./widget-settings-form.js";
+} from "./widget-settings-form.js?v=1.02.054";
 
 /** Как на сервере gs_checkin._PLACE_ID_RE — только допустимые id мест. */
 const CHECKIN_PLACE_ID_RE = /^[a-zA-Z0-9_-]{1,64}$/;
@@ -387,6 +387,8 @@ function settingInputs(widget, index) {
     );
     parts.push(`<p class="hint">${t("w.checkinFontSizeHint")}</p>`);
     parts.push(widgetToggle(t("w.bold"), widget.settings.bold === true, `widget:${index}:settings.bold`));
+  }
+  if (["checkin_submit", "checkin_monitor", "booking_public", "booking_manager"].includes(widget.type)) {
     const pwaTitle = escapeHtmlAttr(String(widget.settings?.pwa_title || ""));
     parts.push(`<div class="settings-row">
       <label class="compact-field">
@@ -394,6 +396,7 @@ function settingInputs(widget, index) {
         <input type="text" class="standard-input wide-input" data-key="widget:${index}:settings.pwa_title" value="${pwaTitle}" placeholder="${escapeHtmlAttr(t("w.pwaTitlePh"))}" maxlength="64">
       </label>
       <div class="hint">${escapeHtml(t("w.pwaTitleHint"))}</div>
+      <div class="hint">${escapeHtml(t("w.pwaInheritHint"))}</div>
     </div>`);
     const iconUrl = escapeHtmlAttr(String(widget.settings?.pwa_icon_url || ""));
     parts.push(`<div class="settings-row">
@@ -586,7 +589,7 @@ export async function uploadEmergencyWidgetImage(file, widgetIndex) {
   deps.renderPreview();
 }
 
-export async function uploadCheckinPwaIcon(file, widgetIndex) {
+export async function uploadWidgetPwaIcon(file, widgetIndex) {
   if (!file) return;
   if (file.size > MAX_WIDGET_IMAGE_UPLOAD_BYTES) {
     alert(t("w.widgetImageTooLarge"));
@@ -598,7 +601,7 @@ export async function uploadCheckinPwaIcon(file, widgetIndex) {
   const sc = screen();
   if (!sc) return;
   const w = sc.widgets[widgetIndex];
-  if (!w || (w.type !== "checkin_submit" && w.type !== "checkin_monitor")) return;
+  if (!w || !["checkin_submit", "checkin_monitor", "booking_public", "booking_manager"].includes(w.type)) return;
   if (!w.settings) w.settings = {};
   w.settings.pwa_icon_url = payload.path || "";
   deps.render();
@@ -809,7 +812,7 @@ function bindWidgetEditorEvents(root, index) {
         const idx = Number(input.dataset.checkinPwaIconUpload);
         const file = e?.target?.files?.[0];
         if (!file) return;
-        await uploadCheckinPwaIcon(file, idx);
+        await uploadWidgetPwaIcon(file, idx);
       } catch (err) {
         window.alert(err?.message || String(err));
       } finally {

@@ -1098,6 +1098,8 @@ function gsMaybeAttachSaasManifestForScreenSlug(slug) {
     const bearer = (() => { try { return getGsTvBearer(); } catch (_) { return ""; } })();
     const qParts = [];
     if (bearer) qParts.push(`gs_tv_token=${encodeURIComponent(bearer)}`);
+    const widgetFilter = (localStorage.getItem(`gs_mw_${s}`) || "").trim();
+    if (widgetFilter) qParts.push(`gs_mw=${encodeURIComponent(widgetFilter)}`);
     if (vv) qParts.push(`v=${vv}`);
     const q = qParts.length ? `?${qParts.join("&")}` : "";
     const nextHref = code

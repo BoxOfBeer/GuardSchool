@@ -27,6 +27,16 @@ from .widget_registry import (
     widget_status,
 )
 
+
+def sanitize_pwa_block(raw: object) -> dict[str, str]:
+    """General PWA profile. Empty values intentionally mean technical defaults."""
+    src = raw if isinstance(raw, dict) else {}
+    title = str(src.get("title") or "").strip()[:64]
+    icon_url = str(src.get("icon_url") or "").strip()
+    if icon_url and not icon_url.startswith("/uploads/"):
+        icon_url = ""
+    return {"title": title, "icon_url": icon_url[:512]}
+
 def default_screen(name: str, slug: str) -> dict[str, Any]:
     return {
         "id": secrets.token_hex(4),
@@ -494,6 +504,7 @@ def default_config() -> dict[str, Any]:
         "ui_locale": "ru",
         "timezone": "Europe/Moscow",
         "clock_offset_minutes": 0,
+        "pwa": sanitize_pwa_block({}),
         "admin_palette_hidden_types": [],
         "screens": [default_screen("ТВ-1", "tv-1")],
         "audio_stream": default_audio_stream_settings(),

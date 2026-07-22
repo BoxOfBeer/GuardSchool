@@ -13,6 +13,8 @@ from fastapi.responses import JSONResponse
 from .gs_admin_http import session_cookie_secure
 from .gs_deploy import deployment_mode
 from .gs_paths import APP_VERSION, SAAS_TENANT_COOKIE, UPLOADS_DIR, WIDGET_IMAGES_SUBDIR
+from .gs_pwa_profile import pwa_widget_types_from_value, resolve_pwa_profile
+from .gs_checkin_screen import screen_widgets_ordered_with_carousel_children as _screen_widgets_ordered_with_carousel_children
 from .gs_tv_screen_api import (
     canonical_tv_school_code as _canonical_tv_school_code,
     encode_saas_tenant_cookie_value as _encode_saas_tenant_cookie_value,
@@ -626,8 +628,15 @@ def _pwa_first_image_widget_icon_url(visit_enabled: list[dict[str, Any]]) -> str
     return ""
 
 
-def _pwa_widget_title_icon_for_slug(cfg: dict[str, Any], slug_n: str) -> tuple[str, str]:
-    """Имя и иконка в webmanifest: checkin (сводка/оперативная) → pwa_* у любых виджетов → изображение (лого) → дефолт."""
+def _pwa_widget_title_icon_for_slug(
+    cfg: dict[str, Any], slug_n: str, preferred_widget_types: tuple[str, ...] = ()
+) -> tuple[str, str]:
+    """Effective profile: widget override, then general profile, then technical defaults."""
+    return resolve_pwa_profile(cfg, slug_n, preferred_widget_types)
+
+
+def _pwa_widget_title_icon_for_slug_legacy(cfg: dict[str, Any], slug_n: str) -> tuple[str, str]:
+    """Previous resolver retained temporarily for comparison during rollout."""
     # Дефолт-иконка из статики (всегда 200), не из uploads/ тенанта — иначе 404 и пустой ярлык.
     icon_url = "/static/pwa/icon_default.png"
     slug_key = slug_n.strip().lower()
@@ -744,6 +753,7 @@ def _pwa_manifest_for_tv_pair(
     screen_slug: str,
     app_title: str,
     icon_url: str,
+    preferred_widget_types: tuple[str, ...] = (),
 ) -> JSONResponse:
     """
     SaaS: PWA manifest для ссылки /t/{code}/{screen_slug}.
@@ -753,12 +763,14 @@ def _pwa_manifest_for_tv_pair(
     - icon должен быть tenant-scoped (через /uploads/*, который резолвится по cookie тенанта).
     """
     icon_entries, _mime = _pwa_manifest_icon_specs(icon_url, request=request)
-    start_url = f"/t/{quote(code_canon, safe='')}/{quote(screen_slug, safe='')}?pwa=1"
+    widget_filter = ",".join(preferred_widget_types)
+    widget_query = f"&gs_mw={quote(widget_filter, safe=',')}" if widget_filter else ""
+    start_url = f"/t/{quote(code_canon, safe='')}/{quote(screen_slug, safe='')}?pwa=1{widget_query}"
     scope_path = f"/t/{quote(code_canon, safe='')}/{quote(screen_slug, safe='')}"
     manifest = {
         "name": app_title,
         "short_name": app_title[:24],
-        "id": f"/pwa/t/{code_canon}/{screen_slug}",
+        "id": f"/pwa/t/{code_canon}/{screen_slug}" + (f"/{widget_filter}" if widget_filter else ""),
         "start_url": start_url,
         "scope": scope_path,
         "display": "standalone",
@@ -803,6 +815,7 @@ def pwa_manifest_for_tv_pair(request: Request, code: str, screen_slug: str) -> J
     slug_n = _normalize_screen_slug_for_api(str(screen_slug or ""))
     if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", slug_n):
         raise HTTPException(status_code=404, detail="Not found.")
+    preferred_widget_types = pwa_widget_types_from_value(request.query_params.get("gs_mw"))
     with connect_public() as conn:
         with conn.cursor() as cur:
             row = _tv_access_lookup_row(cur, code_canon=code_canon)
@@ -819,14 +832,14 @@ def pwa_manifest_for_tv_pair(request: Request, code: str, screen_slug: str) -> J
     try:
         set_tenant_slug(tenant_slug)
         cfg = load_config()
-        title, icon_url = _pwa_widget_title_icon_for_slug(cfg, slug_n)
+        title, icon_url = _pwa_widget_title_icon_for_slug(cfg, slug_n, preferred_widget_types)
     except Exception:
         _log.exception(
             "PWA /pwa/t manifest: ошибка load_config или разбора pwa_* slug=%r tenant=%r",
             slug_n,
             tenant_slug,
         )
-        title, icon_url = _pwa_widget_title_icon_for_slug({}, slug_n)
+        title, icon_url = _pwa_widget_title_icon_for_slug({}, slug_n, preferred_widget_types)
     finally:
         try:
             set_tenant_slug(prev_tenant)
@@ -839,6 +852,7 @@ def pwa_manifest_for_tv_pair(request: Request, code: str, screen_slug: str) -> J
         screen_slug=slug_n,
         app_title=title,
         icon_url=icon_url,
+        preferred_widget_types=preferred_widget_types,
     )
 
 
@@ -851,6 +865,7 @@ def pwa_manifest_for_screen_standalone(request: Request, screen_slug: str) -> JS
     slug_n = _normalize_screen_slug_for_api(str(screen_slug or ""))
     if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", slug_n):
         raise HTTPException(status_code=404, detail="Not found.")
+    preferred_widget_types = pwa_widget_types_from_value(request.query_params.get("gs_mw"))
     if deployment_mode() == "saas":
         tenant_slug = _pwa_manifest_resolve_tenant_slug(request, slug_n)
         if not tenant_slug:
@@ -870,14 +885,14 @@ def pwa_manifest_for_screen_standalone(request: Request, screen_slug: str) -> JS
     try:
         set_tenant_slug(tenant_slug)
         cfg = load_config()
-        title, icon_url = _pwa_widget_title_icon_for_slug(cfg, slug_n)
+        title, icon_url = _pwa_widget_title_icon_for_slug(cfg, slug_n, preferred_widget_types)
     except Exception:
         _log.exception(
             "PWA /pwa/screen manifest: ошибка load_config или разбора pwa_* slug=%r tenant=%r",
             slug_n,
             tenant_slug,
         )
-        title, icon_url = _pwa_widget_title_icon_for_slug({}, slug_n)
+        title, icon_url = _pwa_widget_title_icon_for_slug({}, slug_n, preferred_widget_types)
     finally:
         try:
             set_tenant_slug(prev_tenant)
@@ -885,11 +900,13 @@ def pwa_manifest_for_screen_standalone(request: Request, screen_slug: str) -> JS
             set_tenant_slug(None)
 
     icon_entries_sc, _mime_sc = _pwa_manifest_icon_specs(icon_url, request=request)
-    start_url = f"/screen/{quote(slug_n, safe='')}?pwa=1"
+    widget_filter = ",".join(preferred_widget_types)
+    widget_query = f"&gs_mw={quote(widget_filter, safe=',')}" if widget_filter else ""
+    start_url = f"/screen/{quote(slug_n, safe='')}?pwa=1{widget_query}"
     manifest = {
         "name": title,
         "short_name": title[:24],
-        "id": f"/pwa/screen/{tenant_slug}/{slug_n}",
+        "id": f"/pwa/screen/{tenant_slug}/{slug_n}" + (f"/{widget_filter}" if widget_filter else ""),
         "start_url": start_url,
         "scope": "/",
         "display": "standalone",

@@ -7,6 +7,7 @@
   --accent: #38bdf8;
   --danger: #ef4444;
   --admin-base-font: 14px;
+  --admin-page-inline-gap: 4px;
 }
 
 /* Фоллбек для ТВ и предпросмотра — те же правила таблицы, что на экране ТВ. */
@@ -1702,8 +1703,9 @@ button {
 .program-settings-embed .program-settings-page-scroll {
   overflow: visible;
   flex: 0 1 auto;
-  padding: 8px 4px 14px;
+  padding: 8px var(--admin-page-inline-gap) 14px;
   max-width: 100%;
+  width: 100%;
 }
 
 .program-settings-page-scroll {
@@ -1718,8 +1720,9 @@ button {
 }
 
 .program-settings-pane {
-  max-width: 1100px;
-  margin: 0 auto;
+  width: 100%;
+  max-width: none;
+  margin: 0;
 }
 
 .program-settings-general-grid {
@@ -1727,8 +1730,9 @@ button {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px 18px;
   align-items: stretch;
-  max-width: 1100px;
-  margin: 0 auto;
+  width: 100%;
+  max-width: none;
+  margin: 0;
 }
 
 .program-settings-general-grid > .program-settings-block {
@@ -1746,8 +1750,9 @@ button {
 }
 
 .program-settings-rss-block--framed {
-  max-width: 1100px;
-  margin: 0 auto;
+  width: 100%;
+  max-width: none;
+  margin: 0;
   padding: 10px 12px 12px;
   border: 1px solid rgba(148, 163, 184, 0.22);
   border-radius: 10px;
@@ -1774,6 +1779,24 @@ button {
 
 .program-settings-block .settings-popover-subhead:first-child {
   margin-top: 0;
+}
+
+.pwa-settings-validation {
+  min-height: 1.25em;
+  margin-bottom: 0;
+}
+
+.pwa-settings-validation.is-valid {
+  color: #86efac;
+}
+
+.pwa-settings-validation.is-warning {
+  color: #fde68a;
+}
+
+.pwa-settings-invalid {
+  border-color: #f87171 !important;
+  box-shadow: 0 0 0 1px rgba(248, 113, 113, 0.45);
 }
 
 .capabilities-overview {

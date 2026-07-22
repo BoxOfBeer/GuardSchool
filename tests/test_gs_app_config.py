@@ -79,6 +79,19 @@ class SanitizeConfigTests(unittest.TestCase):
         out = sanitize_config(cfg)
         self.assertEqual(out["ui_locale"], "ru")
 
+    def test_sanitize_pwa_profile_and_legacy_default(self) -> None:
+        self.assertEqual(sanitize_config({})["pwa"], {"title": "", "icon_url": ""})
+        cfg = default_config()
+        cfg["pwa"] = {"title": "  Моя организация  ", "icon_url": "/uploads/widget_images/app.png"}
+        out = sanitize_config(cfg)
+        self.assertEqual(out["pwa"]["title"], "Моя организация")
+        self.assertEqual(out["pwa"]["icon_url"], "/uploads/widget_images/app.png")
+
+    def test_sanitize_pwa_rejects_external_icon(self) -> None:
+        cfg = default_config()
+        cfg["pwa"] = {"title": "Приложение", "icon_url": "https://example.test/icon.png"}
+        self.assertEqual(sanitize_config(cfg)["pwa"]["icon_url"], "")
+
     def test_sanitize_carousel_drops_orphan_child_ids(self) -> None:
         cfg = default_config()
         screen = cfg["screens"][0]

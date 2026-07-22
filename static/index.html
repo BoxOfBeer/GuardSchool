@@ -344,6 +344,23 @@
                   <p class="hint settings-regional-hint" data-i18n="regional.offsetHint">Добавляется к «настенному» времени на ТВ (если часы устройства неточны). Диапазон ±720 мин.</p>
                 </section>
 
+                <section class="program-settings-block" aria-labelledby="ps-pwa-head">
+                  <h4 id="ps-pwa-head" class="settings-popover-subhead" data-i18n="programSettings.pwaTitle">Приложение PWA</h4>
+                  <p class="hint" data-i18n="programSettings.pwaLead">Базовые название и иконка приложения. Настройки виджета имеют приоритет.</p>
+                  <label class="settings-row"><span data-i18n="programSettings.pwaDefaultTitle">Название приложения</span>
+                    <input type="text" id="pwa-default-title" class="standard-input wide-input" maxlength="64" data-i18n-placeholder="w.pwaTitlePh" placeholder="Например: Организация">
+                  </label>
+                  <label class="settings-row"><span data-i18n="programSettings.pwaDefaultIcon">Иконка приложения</span>
+                    <input type="text" id="pwa-default-icon-url" class="standard-input wide-input" placeholder="/uploads/widget_images/..." autocomplete="off">
+                  </label>
+                  <div class="settings-row-actions">
+                    <button type="button" id="pwa-default-icon-browse" class="secondary-btn compact-btn" data-i18n="w.pwaIconBrowse">Загрузить</button>
+                    <input type="file" id="pwa-default-icon-file" accept="image/*" hidden>
+                  </div>
+                  <p class="hint" data-i18n="programSettings.pwaIconHint">Допустим загруженный файл с адресом /uploads/…; предпочтительно квадратное изображение 512×512.</p>
+                  <p id="pwa-default-validation" class="hint pwa-settings-validation" role="status"></p>
+                </section>
+
                 <section class="program-settings-block" aria-labelledby="ps-cloud-head">
                   <h4 id="ps-cloud-head" class="settings-popover-subhead" data-i18n="programSettings.cloudTitle">Облако / гибрид</h4>
                   <p class="hint" data-i18n="programSettings.cloudHint">ZIP с облака по токену; для ТВ — URL в соседнем блоке.</p>
@@ -726,6 +743,6 @@
   </div>
 
   <script src="/static/i18n.js?v=4"></script>
-  <script type="module" src="/static/app.js?v=1.02.044"></script>
+  <script type="module" src="/static/app.js?v=1.02.054"></script>
 </body>
 </html>
