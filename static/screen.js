@@ -84,6 +84,34 @@ function getSlug() {
   }
 }
 
+function gsTvPairCodeFromCurrentPath(slug) {
+  try {
+    const parts = window.location.pathname.split("/").filter(Boolean);
+    if (parts.length < 3 || parts[0] !== "t") return "";
+    const pathSlug = decodeURIComponent(String(parts[2] || "")).trim().toLowerCase();
+    if (!pathSlug || pathSlug !== String(slug || "").trim().toLowerCase()) return "";
+    const code = decodeURIComponent(String(parts[1] || "")).trim().toLowerCase();
+    return /^[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}$/.test(code) ? code : "";
+  } catch (_) {
+    return "";
+  }
+}
+
+function gsPwaTvCodeForPage(slug) {
+  const s = String(slug || "").trim().toLowerCase();
+  if (!s) return "";
+  const pathCode = gsTvPairCodeFromCurrentPath(s);
+  if (pathCode) {
+    try { localStorage.setItem(`gs_pwa_tv_code__${s}`, pathCode); } catch (_) {}
+    return pathCode;
+  }
+  try {
+    return (localStorage.getItem(`gs_pwa_tv_code__${s}`) || "").trim().toLowerCase();
+  } catch (_) {
+    return "";
+  }
+}
+
 /** Старый путь /screen/slug Chrome может открыть внутри уже установленного PWA с широким scope. */
 function gsPathIsLegacyScreenRoute() {
   try {
@@ -109,12 +137,12 @@ function gsBuildTvPairPageUrl(slug, code, token, withPwa) {
 async function gsNavigateToTvPairForPwaInstall() {
   const slug = getSlug();
   if (!slug) return false;
-  let code = (localStorage.getItem(`gs_pwa_tv_code__${slug}`) || "").trim().toLowerCase();
+  let code = gsPwaTvCodeForPage(slug);
   if (!code) {
     try {
       await gsTryHydrateSaasCodeForExistingScreenSession();
     } catch (_) {}
-    code = (localStorage.getItem(`gs_pwa_tv_code__${slug}`) || "").trim().toLowerCase();
+    code = gsPwaTvCodeForPage(slug);
   }
   if (!code) return false;
   let tok = "";
@@ -475,7 +503,7 @@ async function gsPwaInstallFallbackMessage() {
   } catch (_) {}
   const namePart = appLabel ? `«${appLabel}»` : "нужное приложение";
   const slug = getSlug();
-  const code = (localStorage.getItem(`gs_pwa_tv_code__${slug}`) || "").trim().toLowerCase();
+  const code = gsPwaTvCodeForPage(slug);
   let tok = "";
   try {
     tok = getGsTvBearer();
@@ -1087,7 +1115,7 @@ function gsMaybeAttachSaasManifestForScreenSlug(slug) {
   try {
     const s = String(slug || "").trim().toLowerCase();
     if (!s) return;
-    const code = (localStorage.getItem(`gs_pwa_tv_code__${s}`) || "").trim().toLowerCase();
+    const code = gsPwaTvCodeForPage(s);
     let link = document.querySelector("link[rel='manifest']");
     if (!link) {
       link = document.createElement("link");
@@ -1134,7 +1162,12 @@ async function gsTryHydrateSaasCodeForExistingScreenSession() {
     const slug = getSlug();
     if (!slug) return;
     const key = `gs_pwa_tv_code__${slug}`;
-    if ((localStorage.getItem(key) || "").trim()) return;
+    const pathCode = gsTvPairCodeFromCurrentPath(slug);
+    if (pathCode) {
+      localStorage.setItem(key, pathCode);
+      gsMaybeAttachSaasManifestForScreenSlug(slug);
+      return;
+    }
     const base = String(window.__lastScreenPollBase || "").trim().replace(/\/$/, "");
     if (!base) return;
     const url = `${base}/api/screen/${encodeURIComponent(slug)}/tv-pair-link`;
