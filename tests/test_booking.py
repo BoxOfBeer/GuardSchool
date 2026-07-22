@@ -71,6 +71,14 @@ class BookingTests(unittest.TestCase):
         self.assertFalse(slot["available"])
         self.assertEqual(state["timezone"], "UTC")
 
+    def test_availability_recovers_from_stale_service_id(self):
+        cfg = booking.default_booking_config()
+        cfg["services"] = [{"id": "current", "title": "Текущая", "duration_min": 30, "active": True}]
+        booking.save_config(self.module, cfg)
+        state = booking.availability(self.module, self.future_monday().date().isoformat(), "removed-service")
+        self.assertEqual(state["service_id"], "current")
+        self.assertTrue(state["days"])
+
     def test_weekly_limit_counts_cancelled_records(self):
         start = self.future_monday()
         for i in range(5):

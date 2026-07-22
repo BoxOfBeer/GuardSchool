@@ -262,7 +262,12 @@ def _row_public(row: sqlite3.Row, *, own: bool = False) -> dict[str, Any]:
 
 def availability(module_id: str, week: str | None, service_id: str, raw_device: str = "") -> dict[str, Any]:
     mid, cfg = _clean_module_id(module_id), get_config(module_id)
-    service = _service(cfg, service_id)
+    try:
+        service = _service(cfg, service_id)
+    except ValueError:
+        service = next((item for item in cfg["services"] if item.get("active", True)), None)
+        if service is None:
+            raise
     monday = _week_start(week)
     today = datetime.now(_tz())
     max_day = today + timedelta(weeks=cfg["booking_horizon_weeks"])
@@ -311,6 +316,7 @@ def availability(module_id: str, week: str | None, service_id: str, raw_device: 
     return {
         "module_id": mid,
         "config": cfg,
+        "service_id": service["id"],
         "timezone": _timezone_name(),
         "today": today.date().isoformat(),
         "week_start": monday.isoformat(),
