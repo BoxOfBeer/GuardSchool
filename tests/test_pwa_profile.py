@@ -92,6 +92,22 @@ class PwaProfileTests(unittest.TestCase):
             ("Управление", "/uploads/manager.png"),
         )
 
+    def test_booking_fallback_never_uses_neighbor_checkin_title(self) -> None:
+        cfg = {
+            "pwa": {"title": "", "icon_url": ""},
+            "screens": [
+                {
+                    "slug": "mobil",
+                    "widgets": [
+                        _widget("old-monitor", "checkin_monitor", panel_title="Форпост"),
+                        _widget("booking", "booking_public", heading="Парикмахерская"),
+                    ],
+                }
+            ],
+        }
+        title, _icon = resolve_pwa_profile(cfg, "mobil", ("booking_public",))
+        self.assertEqual(title, "Парикмахерская")
+
 
 if __name__ == "__main__":
     unittest.main()

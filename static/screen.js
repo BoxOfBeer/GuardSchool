@@ -84,7 +84,7 @@ function getSlug() {
   }
 }
 
-/** Старый путь /screen/slug — Chrome открывает его внутри уже установленного PWA «Форпост». */
+/** Старый путь /screen/slug Chrome может открыть внутри уже установленного PWA с широким scope. */
 function gsPathIsLegacyScreenRoute() {
   try {
     const p = window.location.pathname.split("/").filter(Boolean);
@@ -482,7 +482,7 @@ async function gsPwaInstallFallbackMessage() {
   } catch (_) {}
   const pairUrl = code ? gsBuildTvPairPageUrl(slug, code, tok, true) : "";
   const pairHint = pairUrl
-    ? `Откройте в новой вкладке Chrome (не внутри уже установленного «Форпост»):\n${location.origin}${pairUrl}\n\nи снова нажмите «Создать на рабочем столе».`
+    ? `Откройте в новой вкладке Chrome (не внутри ранее установленного приложения этого сайта):\n${location.origin}${pairUrl}\n\nи снова нажмите «Создать на рабочем столе».`
     : "Откройте ссылку /t/…/slug?pwa=1 из админки (не /screen/…) и повторите.";
   return (
     `Браузер не открыл диалог установки (так бывает для второго ярлыка на ${location.hostname}).\n\n` +

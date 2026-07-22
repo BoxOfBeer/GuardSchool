@@ -169,13 +169,21 @@ def resolve_pwa_profile(
     title = specific_title or general_title
     icon = specific_icon or general_icon
     if not title:
-        # Preserve useful legacy headings only after the explicit general profile.
-        for widget in widgets:
-            st = _settings(widget)
-            if str(widget.get("type") or "") == "checkin_monitor":
-                title = str(st.get("panel_title") or "").strip()[:64]
-            elif str(widget.get("type") or "") in ("booking_public", "booking_manager"):
-                title = str(st.get("heading") or "").strip()[:64]
+        # A semantic fallback must stay inside the selected widget family.
+        # Otherwise an old check-in title can brand a booking-only device.
+        if selected_type in ("booking_public", "booking_manager") or has_booking:
+            fallback_types = booking_order
+            fallback_key = "heading"
+        else:
+            fallback_types = checkin_order
+            fallback_key = "panel_title"
+        for widget_type in fallback_types:
+            for widget in widgets:
+                if str(widget.get("type") or "") != widget_type:
+                    continue
+                title = str(_settings(widget).get(fallback_key) or "").strip()[:64]
+                if title:
+                    break
             if title:
                 break
     if not icon:
