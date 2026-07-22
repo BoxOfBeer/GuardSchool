@@ -79,6 +79,43 @@ class BookingTests(unittest.TestCase):
         self.assertEqual(state["service_id"], "current")
         self.assertTrue(state["days"])
 
+    def test_admin_state_is_chronological(self):
+        start = self.future_monday()
+        booking.create_booking(self.module, self.person(start + timedelta(hours=2), device="device-identifier-0002"))
+        booking.create_booking(self.module, self.person(start + timedelta(hours=1), device="device-identifier-0003"))
+        state = booking.admin_state(self.module, start.date().isoformat())
+        starts = [item["start_at"] for item in state["bookings"]]
+        self.assertEqual(starts, sorted(starts))
+
+    def test_admin_state_lists_upcoming_before_recent_past(self):
+        monday = self.future_monday()
+        now = monday + timedelta(days=2, hours=3)
+        past_old = monday
+        past_recent = monday + timedelta(days=2, hours=1)
+        upcoming_near = monday + timedelta(days=2, hours=4)
+        upcoming_later = monday + timedelta(days=3)
+        with patch.object(booking, "_now", lambda: now):
+            for index, start in enumerate((past_old, upcoming_later, past_recent, upcoming_near), start=10):
+                booking.create_booking(self.module, self.person(start, device=f"device-identifier-{index:04d}"), actor="admin")
+            state = booking.admin_state(self.module, monday.date().isoformat())
+        self.assertEqual(
+            [item["start_at"] for item in state["bookings"]],
+            [upcoming_near.isoformat(), upcoming_later.isoformat(), past_recent.isoformat(), past_old.isoformat()],
+        )
+        self.assertEqual(state["now"], now.isoformat())
+
+    def test_admin_all_scope_combines_active_bookings_across_weeks(self):
+        first = self.future_monday()
+        second = first + timedelta(days=10)
+        booking.create_booking(self.module, self.person(second, device="device-identifier-0102"))
+        booking.create_booking(self.module, self.person(first, device="device-identifier-0101"))
+        state = booking.admin_state(self.module)
+        self.assertEqual(state["scope"], "all")
+        self.assertEqual(
+            [item["start_at"] for item in state["bookings"]],
+            [first.isoformat(), second.isoformat()],
+        )
+
     def test_weekly_limit_counts_cancelled_records(self):
         start = self.future_monday()
         for i in range(5):

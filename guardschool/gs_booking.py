@@ -407,15 +407,34 @@ def request_cancel(module_id: str, booking_id: int, raw_device: str) -> dict[str
 
 
 def admin_state(module_id: str, week: str | None = None) -> dict[str, Any]:
-    mid, cfg, monday = _clean_module_id(module_id), get_config(module_id), _week_start(week)
-    end = monday + timedelta(days=8)
+    mid, cfg = _clean_module_id(module_id), get_config(module_id)
+    monday = _week_start(week) if week else None
+    now = _now()
     with _connect() as conn:
-        rows = conn.execute("SELECT * FROM bookings WHERE module_id=? AND start_at>=? AND start_at<? ORDER BY start_at", (mid, _iso(datetime.combine(monday, time.min, tzinfo=_tz())), _iso(datetime.combine(end, time.min, tzinfo=_tz())))).fetchall()
+        if monday is None:
+            rows = conn.execute("SELECT * FROM bookings WHERE module_id=? ORDER BY start_at, id", (mid,)).fetchall()
+        else:
+            end = monday + timedelta(days=8)
+            rows = conn.execute("SELECT * FROM bookings WHERE module_id=? AND start_at>=? AND start_at<? ORDER BY start_at, id", (mid, _iso(datetime.combine(monday, time.min, tzinfo=_tz())), _iso(datetime.combine(end, time.min, tzinfo=_tz())))).fetchall()
+    rows = sorted(
+        rows,
+        key=lambda row: (
+            0
+            if row["status"] in {"confirmed", "cancel_requested"} and datetime.fromisoformat(row["end_at"]) > now
+            else 1,
+            -datetime.fromisoformat(row["start_at"]).timestamp()
+            if row["status"] not in {"confirmed", "cancel_requested"} or datetime.fromisoformat(row["end_at"]) <= now
+            else datetime.fromisoformat(row["start_at"]).timestamp(),
+            int(row["id"]),
+        ),
+    )
     return {
         "module_id": mid,
         "config": cfg,
         "timezone": _timezone_name(),
-        "week_start": monday.isoformat(),
+        "now": _iso(now),
+        "week_start": monday.isoformat() if monday else "",
+        "scope": "week" if monday else "all",
         "bookings": [dict(r) for r in rows],
     }
 
