@@ -33,6 +33,15 @@ class BookingTests(unittest.TestCase):
     def person(start, device="device-identifier-0001", service="basic"):
         return {"device_id": device, "service_id": service, "start_at": start.isoformat(), "family_name": "Иванов", "given_name": "Иван", "phone": "+70000000000"}
 
+    @staticmethod
+    def slot_at(state, start):
+        return next(
+            slot
+            for day in state["days"]
+            for slot in day["slots"]
+            if slot["start_at"] == start.isoformat()
+        )
+
     def test_public_data_hides_personal_fields(self):
         start = self.future_monday()
         booking.create_booking(self.module, self.person(start))
@@ -45,11 +54,22 @@ class BookingTests(unittest.TestCase):
         start = self.future_monday()
         row = booking.create_booking(self.module, self.person(start))
         booking.request_cancel(self.module, row["id"], "device-identifier-0001")
-        blocked = {s["start_at"] for d in booking.availability(self.module, start.date().isoformat(), "basic")["days"] for s in d["slots"]}
-        self.assertNotIn(start.isoformat(), blocked)
+        blocked = self.slot_at(booking.availability(self.module, start.date().isoformat(), "basic"), start)
+        self.assertEqual(blocked["status"], "cancel_requested")
+        self.assertFalse(blocked["available"])
         booking.admin_action(self.module, row["id"], "confirm_cancel", {})
-        released = {s["start_at"] for d in booking.availability(self.module, start.date().isoformat(), "basic")["days"] for s in d["slots"]}
-        self.assertIn(start.isoformat(), released)
+        released = self.slot_at(booking.availability(self.module, start.date().isoformat(), "basic"), start)
+        self.assertEqual(released["status"], "free")
+        self.assertTrue(released["available"])
+
+    def test_confirmed_slot_stays_visible_and_response_has_timezone(self):
+        start = self.future_monday()
+        booking.create_booking(self.module, self.person(start))
+        state = booking.availability(self.module, start.date().isoformat(), "basic")
+        slot = self.slot_at(state, start)
+        self.assertEqual(slot["status"], "booked")
+        self.assertFalse(slot["available"])
+        self.assertEqual(state["timezone"], "UTC")
 
     def test_weekly_limit_counts_cancelled_records(self):
         start = self.future_monday()
@@ -68,10 +88,10 @@ class BookingTests(unittest.TestCase):
         start = self.future_monday()
         booking.create_booking(self.module, self.person(start, service="long"))
         state = booking.availability(self.module, start.date().isoformat(), "long")
-        labels = {s["label"] for d in state["days"] if d["date"] == start.date().isoformat() for s in d["slots"]}
-        self.assertNotIn("09:15", labels)
-        self.assertNotIn("09:30", labels)
-        self.assertIn("09:45", labels)
+        slots = {s["label"]: s for d in state["days"] if d["date"] == start.date().isoformat() for s in d["slots"]}
+        self.assertEqual(slots["09:15"]["status"], "booked")
+        self.assertEqual(slots["09:30"]["status"], "booked")
+        self.assertEqual(slots["09:45"]["status"], "free")
 
     def test_overnight_window_accepts_after_midnight_slot(self):
         start = self.future_monday()

@@ -111,6 +111,11 @@ def _tz() -> ZoneInfo:
         return ZoneInfo("Europe/Moscow")
 
 
+def _timezone_name() -> str:
+    tz = _tz()
+    return str(getattr(tz, "key", "") or tz)
+
+
 def device_hash(raw: str) -> str:
     value = str(raw or "").strip()
     if len(value) < 12 or len(value) > 256:
@@ -270,7 +275,10 @@ def availability(module_id: str, week: str | None, service_id: str, raw_device: 
         if raw_device:
             dh = device_hash(raw_device)
             mine = conn.execute("SELECT * FROM bookings WHERE module_id=? AND device_hash=? AND start_at>=? ORDER BY start_at", (mid, dh, _iso(datetime.combine(monday, time.min, tzinfo=_tz())))).fetchall()
-    busy = [(datetime.fromisoformat(r["start_at"]), datetime.fromisoformat(r["end_at"])) for r in rows]
+    busy = [
+        (datetime.fromisoformat(r["start_at"]), datetime.fromisoformat(r["end_at"]), str(r["status"]))
+        for r in rows
+    ]
     days = []
     step = timedelta(minutes=cfg["step_min"])
     duration = timedelta(minutes=service["duration_min"])
@@ -281,11 +289,34 @@ def availability(module_id: str, week: str | None, service_id: str, raw_device: 
             cursor = wstart
             while cursor + duration <= wend:
                 end = cursor + duration
-                if cursor > today and cursor <= max_day and not any(cursor < b_end and end > b_start for b_start, b_end in busy):
-                    slots.append({"start_at": _iso(cursor), "label": cursor.strftime("%H:%M")})
+                if cursor > today and cursor <= max_day:
+                    overlaps = [status for b_start, b_end, status in busy if cursor < b_end and end > b_start]
+                    slot_status = (
+                        "cancel_requested"
+                        if "cancel_requested" in overlaps
+                        else "booked"
+                        if overlaps
+                        else "free"
+                    )
+                    slots.append(
+                        {
+                            "start_at": _iso(cursor),
+                            "label": cursor.strftime("%H:%M"),
+                            "status": slot_status,
+                            "available": slot_status == "free",
+                        }
+                    )
                 cursor += step
         days.append({"date": day.isoformat(), "slots": slots})
-    return {"module_id": mid, "config": cfg, "week_start": monday.isoformat(), "days": days, "mine": [_row_public(r, own=True) for r in mine]}
+    return {
+        "module_id": mid,
+        "config": cfg,
+        "timezone": _timezone_name(),
+        "today": today.date().isoformat(),
+        "week_start": monday.isoformat(),
+        "days": days,
+        "mine": [_row_public(r, own=True) for r in mine],
+    }
 
 
 def _overlaps(conn: sqlite3.Connection, mid: str, start: datetime, end: datetime, exclude_id: int = 0) -> bool:
@@ -374,7 +405,13 @@ def admin_state(module_id: str, week: str | None = None) -> dict[str, Any]:
     end = monday + timedelta(days=8)
     with _connect() as conn:
         rows = conn.execute("SELECT * FROM bookings WHERE module_id=? AND start_at>=? AND start_at<? ORDER BY start_at", (mid, _iso(datetime.combine(monday, time.min, tzinfo=_tz())), _iso(datetime.combine(end, time.min, tzinfo=_tz())))).fetchall()
-    return {"module_id": mid, "config": cfg, "week_start": monday.isoformat(), "bookings": [dict(r) for r in rows]}
+    return {
+        "module_id": mid,
+        "config": cfg,
+        "timezone": _timezone_name(),
+        "week_start": monday.isoformat(),
+        "bookings": [dict(r) for r in rows],
+    }
 
 
 def admin_action(module_id: str, booking_id: int, action: str, raw: dict[str, Any]) -> dict[str, Any]:
