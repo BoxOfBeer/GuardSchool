@@ -898,10 +898,8 @@ export function renderWidgets() {
   const sc = screen();
   if (!sc) return;
   elements.widgetList.innerHTML = "";
-  sc.widgets
-    .filter((widget) => !deps.isWidgetTypeHiddenInAdminPalette(widget.type))
-    .forEach((widget) => {
-      const div = document.createElement("div");
+  sc.widgets.forEach((widget) => {
+    const div = document.createElement("div");
       div.className = "widget-item widget-item-compact";
       const wid = escapeHtmlAttr(String(widget.id));
       const w = Number(widget.w);
@@ -918,6 +916,9 @@ export function renderWidgets() {
         st === "missing" || st === "error"
           ? `<div class="widget-item-warning hint">${escapeHtml(widgetStatusMessage(widget.type) || `Виджет ${widget.type} недоступен.`)}</div>`
           : "";
+      const hiddenFromSet = deps.isWidgetTypeHiddenInAdminPalette(widget.type)
+        ? `<div class="hint widget-item-palette-note">${escapeHtml(t("widget.installedHiddenType"))}</div>`
+        : "";
       div.innerHTML = `
       <div class="widget-title-row">
         <h3>${escapeHtmlAttr(widgetDisplayTitle(widget))}</h3>
@@ -927,7 +928,7 @@ export function renderWidgets() {
           </button>
         </div>
       </div>
-      ${warn}${perms}
+      ${warn}${hiddenFromSet}${perms}
       <div class="widget-item-meta"><span class="widget-item-type">${escapeHtmlAttr(String(widget.type))}</span> · ${tf("widget.gridMeta", { wh: escapeHtmlAttr(wh) })}</div>
     `;
       elements.widgetList.appendChild(div);
