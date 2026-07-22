@@ -129,6 +129,8 @@ _SCHEMAS: dict[str, dict[str, Any]] = {
             "panel_title": {"type": "string"},
         },
     ),
+    "booking_public": _obj({"module_id": {"type": "string"}, "heading": {"type": "string"}, "backdrop": {"type": "boolean"}}),
+    "booking_manager": _obj({"module_id": {"type": "string"}, "heading": {"type": "string"}, "backdrop": {"type": "boolean"}}),
 }
 
 

@@ -20,6 +20,8 @@ const FALLBACK_TYPES = [
   "image",
   "checkin_submit",
   "checkin_monitor",
+  "booking_public",
+  "booking_manager",
 ];
 
 const FALLBACK_ORDER = [...FALLBACK_TYPES];

@@ -970,6 +970,24 @@ function createWidgetStubForPaletteType(typ) {
       },
     };
   }
+  if (typeKey === "booking_public" || typeKey === "booking_manager") {
+    const isPublic = typeKey === "booking_public";
+    return {
+      id: createWidgetId("widget"),
+      type: typeKey,
+      title: isPublic ? "Запись" : "Управление записями",
+      enabled: true,
+      x: isPublic ? 0 : 12,
+      y: 14,
+      w: 14,
+      h: 12,
+      settings: {
+        module_id: "booking-main",
+        heading: isPublic ? "Запись" : "Управление записями",
+        backdrop: true,
+      },
+    };
+  }
   return null;
 }
 

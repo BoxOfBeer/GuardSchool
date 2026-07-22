@@ -17,6 +17,7 @@ from .routes_auth import register_auth_routes
 from .routes_pages import register_page_routes
 from .routes_public import register_public_routes
 from .routes_screen import register_screen_routes
+from .routes_booking import router as booking_router
 from .saas_routes import configure_saas_http
 
 
@@ -30,6 +31,7 @@ def create_app() -> FastAPI:
     register_portal_web_routes(application)
     register_admin_routes(application)
     register_screen_routes(application)
+    application.include_router(booking_router)
     register_public_routes(application)
     register_auth_routes(application)
     register_page_routes(application)

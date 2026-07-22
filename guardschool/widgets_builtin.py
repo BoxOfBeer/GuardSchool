@@ -26,6 +26,8 @@ _BUILTIN_SPECS: list[dict] = [
     {"type": "image", "title": "Изображение", "category": "media", "singleton_id": "image"},
     {"type": "checkin_submit", "title": "Отметка", "category": "checkin"},
     {"type": "checkin_monitor", "title": "Монитор отметок", "category": "checkin"},
+    {"type": "booking_public", "title": "Запись", "category": "booking"},
+    {"type": "booking_manager", "title": "Управление записями", "category": "booking"},
 ]
 
 

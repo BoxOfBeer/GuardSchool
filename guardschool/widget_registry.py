@@ -58,6 +58,8 @@ ADMIN_PALETTE_WIDGET_TYPES: frozenset[str] = frozenset(
         "image",
         "checkin_submit",
         "checkin_monitor",
+        "booking_public",
+        "booking_manager",
     }
 )
 
@@ -79,6 +81,8 @@ DEVICE_WIDGET_TAB_ORDER: tuple[str, ...] = (
     "image",
     "checkin_submit",
     "checkin_monitor",
+    "booking_public",
+    "booking_manager",
 )
 
 VALID_PERMISSIONS = frozenset({"filesystem", "network", "subprocess"})
@@ -394,6 +398,12 @@ def _apply_builtin_type_defaults(widget: dict[str, Any]) -> None:
             fs = 0
         widget["settings"]["fontSize"] = max(0, min(48, fs))
         widget["settings"]["bold"] = bool(widget["settings"].get("bold"))
+    if wtype in ("booking_public", "booking_manager"):
+        widget["settings"].setdefault("module_id", "booking-main")
+        widget["settings"].setdefault("heading", "Запись" if wtype == "booking_public" else "Управление записями")
+        mid = "".join(ch for ch in str(widget["settings"].get("module_id") or "booking-main").lower() if ch.isalnum() or ch in "-_")
+        widget["settings"]["module_id"] = (mid or "booking-main")[:80]
+        widget["settings"]["heading"] = str(widget["settings"].get("heading") or "").strip()[:100]
     widget["settings"].setdefault("backdrop", True)
 
 

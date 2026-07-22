@@ -21,6 +21,7 @@
     "rss_news.js",
     "checkin_submit.js",
     "checkin_monitor.js",
+    "booking.js",
   ];
   global.GUARD_SCHOOL_TV_WIDGET_PLUGINS = list;
 })(typeof window !== "undefined" ? window : globalThis);

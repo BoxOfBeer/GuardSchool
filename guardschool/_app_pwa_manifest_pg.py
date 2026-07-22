@@ -670,6 +670,12 @@ def _pwa_widget_title_icon_for_slug(cfg: dict[str, Any], slug_n: str) -> tuple[s
         return _PWA_MANIFEST_DEFAULT_TITLE[:64], icon_url
     visit_all = _screen_widgets_ordered_with_carousel_children(sc)
     visit_enabled = [w for w in visit_all if _pwa_widget_enabled_for_manifest(w)]
+    booking_widgets = [w for w in visit_enabled if str(w.get("type") or "") in ("booking_public", "booking_manager")]
+    if booking_widgets:
+        settings = booking_widgets[0].get("settings") if isinstance(booking_widgets[0].get("settings"), dict) else {}
+        booking_title = str(settings.get("heading") or "Запись").strip()[:64] or "Запись"
+        _, fallback_icon = _pwa_fallback_pwa_fields_from_widgets(visit_enabled, have_title=True, have_icon=False)
+        return booking_title, fallback_icon or _pwa_first_image_widget_icon_url(visit_enabled) or icon_url
     checkin_ordered: list[dict[str, Any]] = []
     for w in visit_enabled:
         if str(w.get("type") or "") not in ("checkin_submit", "checkin_monitor"):

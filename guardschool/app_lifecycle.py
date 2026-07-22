@@ -18,6 +18,7 @@ from .gs_ensure_dirs import ensure_dirs
 from .gs_saas_bootstrap import ensure_saas_bootstrap_admin
 from .optional_imports import ensure_feedback_tables_if_needed
 from .gs_checkin import ensure_checkin_tables
+from . import booking_notification_worker
 
 
 @asynccontextmanager
@@ -34,10 +35,16 @@ async def guard_school_lifespan(_app: FastAPI):
     load_all_widgets()
     cancel_sync = start_cloud_sync_cancel()
     demo_cleanup_task = start_demo_cleanup_task()
+    booking_task = booking_notification_worker.start()
     bell_rupor_worker.start_worker()
     try:
         yield
     finally:
+        booking_task.cancel()
+        try:
+            await booking_task
+        except BaseException:
+            pass
         await shutdown_demo_task(demo_cleanup_task)
         if cancel_sync is not None:
             cancel_sync()

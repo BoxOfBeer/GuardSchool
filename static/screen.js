@@ -1373,6 +1373,8 @@ const GS_DEVICE_WIDGET_TYPE_LABELS = {
   image: "Фон / картинка",
   checkin_submit: "Оперативная отметка",
   checkin_monitor: "Сводка отметок",
+  booking_public: "Запись",
+  booking_manager: "Управление записями",
 };
 
 /** Первый виджет типа `type` в конфиге экрана (в т.ч. только внутри карусели — его нет в mobile-stack / sortWidgetsForDom). */
@@ -1909,7 +1911,7 @@ function shouldSoftRefreshWidget(widget, scheduleChanged, staticChanged) {
   if (t === "text" || t === "emergency" || t === "blank") {
     return staticChanged;
   }
-  if (t === "checkin_submit" || t === "checkin_monitor") {
+  if (t === "checkin_submit" || t === "checkin_monitor" || t === "booking_public" || t === "booking_manager") {
     return staticChanged;
   }
   return scheduleChanged || staticChanged;
@@ -2048,7 +2050,7 @@ function render(screenPayload) {
         if (!widget || widget.enabled === false) return;
         if (hiddenWidgetIds.has(widget.id) && widget.type !== "carousel") return;
         if (widget.type === "carousel") return;
-        if (widget.type === "checkin_submit" || widget.type === "checkin_monitor") return;
+        if (widget.type === "checkin_submit" || widget.type === "checkin_monitor" || widget.type === "booking_public" || widget.type === "booking_manager") return;
         if (!shouldSoftRefreshWidget(widget, scheduleChanged, staticChanged)) return;
         if (widget.type === "text") {
           el.style.background = widget.settings.background;
@@ -2193,7 +2195,7 @@ function render(screenPayload) {
       if (hiddenWidgetIds.has(widget.id) && widget.type !== "carousel") return;
       if (widget.type === "carousel") return;
       // Отметки: не пересобираем разметку при опросе — данные обновляют сами обработчики (таблицы / форма).
-      if (widget.type === "checkin_submit" || widget.type === "checkin_monitor") return;
+      if (widget.type === "checkin_submit" || widget.type === "checkin_monitor" || widget.type === "booking_public" || widget.type === "booking_manager") return;
       if (!shouldSoftRefreshWidget(widget, scheduleChanged, staticChanged)) return;
       const el = root.querySelector(`.screen-widget[data-widget-id="${gsCssEscape(String(widget.id))}"]`);
       if (!el) return;
@@ -2219,6 +2221,9 @@ function render(screenPayload) {
   }
   if (typeof GRef.bindCheckinWidgets === "function") {
     GRef.bindCheckinWidgets(root, screenPayload);
+  }
+  if (window.GuardSchoolBooking && typeof window.GuardSchoolBooking.bind === "function") {
+    window.GuardSchoolBooking.bind(root, screenPayload);
   }
   window.__lastScheduleSig = scheduleSig;
   window.__lastStaticSig = staticSig;
