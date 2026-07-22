@@ -95,25 +95,6 @@ def _first_widget_pwa(widgets: list[dict[str, Any]], widget_types: tuple[str, ..
     return title, icon
 
 
-def _first_image_icon(widgets: list[dict[str, Any]]) -> str:
-    for widget in widgets:
-        if str(widget.get("type") or "") != "image":
-            continue
-        st = _settings(widget)
-        images = st.get("images")
-        if isinstance(images, list):
-            for item in images:
-                if not isinstance(item, dict):
-                    continue
-                icon = normalize_pwa_upload_icon_path(item.get("url") or item.get("imageUrl"))
-                if icon:
-                    return icon
-        icon = normalize_pwa_upload_icon_path(st.get("imageUrl"))
-        if icon:
-            return icon
-    return ""
-
-
 def resolve_pwa_profile(
     config: dict[str, Any],
     screen_slug: str,
@@ -186,6 +167,4 @@ def resolve_pwa_profile(
                     break
             if title:
                 break
-    if not icon:
-        icon = _first_image_icon(widgets)
     return title or PWA_DEFAULT_TITLE, icon or PWA_DEFAULT_ICON

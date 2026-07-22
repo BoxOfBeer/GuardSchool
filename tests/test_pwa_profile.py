@@ -108,6 +108,22 @@ class PwaProfileTests(unittest.TestCase):
         title, _icon = resolve_pwa_profile(cfg, "mobil", ("booking_public",))
         self.assertEqual(title, "Парикмахерская")
 
+    def test_booking_without_icon_never_uses_unrelated_image_widget(self) -> None:
+        cfg = {
+            "pwa": {"title": "", "icon_url": ""},
+            "screens": [
+                {
+                    "slug": "mobil",
+                    "widgets": [
+                        _widget("old-logo", "image", images=[{"url": "/uploads/forpost.png"}]),
+                        _widget("booking", "booking_public", heading="Парикмахерская"),
+                    ],
+                }
+            ],
+        }
+        _title, icon = resolve_pwa_profile(cfg, "mobil", ("booking_public",))
+        self.assertEqual(icon, PWA_DEFAULT_ICON)
+
 
 if __name__ == "__main__":
     unittest.main()
