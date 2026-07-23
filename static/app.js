@@ -4,7 +4,7 @@ import "./widgets/runtime.js";
 import "./widgets/carousel-runtime.js";
 import "./tv-core-utils.js?v=1.02.044";
 import "./tv-schedule-table.js?v=1.02.044";
-import "./tv-screen-shell.js?v=1.02.059";
+import "./tv-screen-shell.js?v=1.02.060";
 import "./screen_widgets.js?v=1.02.044";
 
 const TV_WIDGET_PLUGIN_SCRIPTS = window.GUARD_SCHOOL_TV_WIDGET_PLUGINS || [];
@@ -69,7 +69,7 @@ import {
   syncWidgetModal,
   bindWidgetModalOnce,
   renderWidgets,
-} from "./admin/widgets.js?v=1.02.059";
+} from "./admin/widgets.js?v=1.02.060";
 import { renderHistory } from "./admin/history.js";
 import { state, elements, GRID } from "./admin/state.js";
 import { t, tf, getSectionTabs } from "./admin/i18n-helpers.js";

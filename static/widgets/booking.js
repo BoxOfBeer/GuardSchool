@@ -36,6 +36,26 @@
     };
   }
 
+  function refreshElementColors(el, payload) {
+    const screen=payload&&payload.screen&&typeof payload.screen==="object"?payload.screen:{};
+    const widgets=Array.isArray(screen.widgets)?screen.widgets:[];
+    const outer=el.closest?el.closest(".screen-widget[data-widget-id]"):null;
+    const widgetId=outer&&outer.dataset?String(outer.dataset.widgetId||""):"";
+    const kind=String(el.dataset.bookingKind||"public");
+    const expectedType=kind==="manager"?"booking_manager":"booking_public";
+    const moduleId=String(el.dataset.moduleId||"booking-main");
+    const widget=widgets.find((item)=>String(item&&item.id||"")===widgetId&&item.type===expectedType)
+      || widgets.find((item)=>item&&item.type===expectedType&&String(item.settings&&item.settings.module_id||"booking-main")===moduleId);
+    if(!widget||!widget.settings)return;
+    const colors=publicColors({screen},widget.settings);
+    const actions=kind==="manager"?managerColors(widget.settings,colors):colors;
+    el.style.setProperty("--bk-action-bg",actions.action);
+    el.style.setProperty("--bk-button-text",actions.text);
+    el.style.setProperty("--bk-free-bg",colors.free);
+    el.style.setProperty("--bk-booked-bg",colors.booked);
+    el.style.setProperty("--bk-cancel-bg",colors.cancel);
+  }
+
   function shell(ctx, kind) {
     const s = ctx.widget.settings || {};
     const title = s.heading || (kind === "public" ? "Запись" : "Управление записями");
@@ -207,6 +227,6 @@
     }
     load();
   }
-  function bind(root,payload){root.querySelectorAll('.gs-booking[data-booking-kind]').forEach(el=>el.dataset.bookingKind==='public'?bindPublic(el,payload):bindManager(el,payload))}
+  function bind(root,payload){root.querySelectorAll('.gs-booking[data-booking-kind]').forEach(el=>{refreshElementColors(el,payload);el.dataset.bookingKind==='public'?bindPublic(el,payload):bindManager(el,payload)})}
   global.GuardSchoolBooking={bind};
 })(typeof window !== "undefined" ? window : globalThis);

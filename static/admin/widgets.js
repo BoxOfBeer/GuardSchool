@@ -13,7 +13,7 @@ import {
   bindSchemaValidation,
   renderSchemaSettingsFields,
   schemaExcludeKeysForType,
-} from "./widget-settings-form.js?v=1.02.059";
+} from "./widget-settings-form.js?v=1.02.060";
 
 /** Как на сервере gs_checkin._PLACE_ID_RE — только допустимые id мест. */
 const CHECKIN_PLACE_ID_RE = /^[a-zA-Z0-9_-]{1,64}$/;
