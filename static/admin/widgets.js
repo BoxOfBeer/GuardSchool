@@ -13,7 +13,7 @@ import {
   bindSchemaValidation,
   renderSchemaSettingsFields,
   schemaExcludeKeysForType,
-} from "./widget-settings-form.js?v=1.02.057";
+} from "./widget-settings-form.js?v=1.02.059";
 
 /** Как на сервере gs_checkin._PLACE_ID_RE — только допустимые id мест. */
 const CHECKIN_PLACE_ID_RE = /^[a-zA-Z0-9_-]{1,64}$/;
@@ -413,13 +413,16 @@ function settingInputs(widget, index) {
   }
   if (widget.type === "booking_manager") {
     parts.push(`<div class="widget-schema-fields booking-public-colors">
-      <p class="hint widget-schema-fields-title">Оформление кнопок виджета «Запись»</p>
-      <p class="hint">Применяется к публичному виджету «Запись» с таким же идентификатором модуля.</p>
+      <p class="hint widget-schema-fields-title">Оформление кнопок виджетов записи</p>
+      <p class="hint"><strong>Публичный виджет «Запись»</strong> — применяется ко всем экранам с таким же идентификатором модуля.</p>
       ${widgetInput("Основные кнопки", widget.settings.public_action_color || "#2563eb", `widget:${index}:settings.public_action_color`, "color", "standard-input")}
       ${widgetInput("Текст на кнопках", widget.settings.public_action_text_color || "#ffffff", `widget:${index}:settings.public_action_text_color`, "color", "standard-input")}
       ${widgetInput("Свободное время", widget.settings.public_free_color || "#16a34a", `widget:${index}:settings.public_free_color`, "color", "standard-input")}
       ${widgetInput("Занятое время", widget.settings.public_booked_color || "#b91c1c", `widget:${index}:settings.public_booked_color`, "color", "standard-input")}
       ${widgetInput("Запрошена отмена", widget.settings.public_cancel_color || "#ca8a04", `widget:${index}:settings.public_cancel_color`, "color", "standard-input")}
+      <p class="hint"><strong>Виджет «Контроль записи»</strong></p>
+      ${widgetInput("Кнопки контроля", widget.settings.manager_action_color || widget.settings.public_action_color || "#2563eb", `widget:${index}:settings.manager_action_color`, "color", "standard-input")}
+      ${widgetInput("Текст кнопок контроля", widget.settings.manager_action_text_color || widget.settings.public_action_text_color || "#ffffff", `widget:${index}:settings.manager_action_text_color`, "color", "standard-input")}
     </div>`);
   }
   parts.push(

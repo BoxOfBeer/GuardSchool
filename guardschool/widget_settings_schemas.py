@@ -140,6 +140,8 @@ _SCHEMAS: dict[str, dict[str, Any]] = {
             "public_free_color": {"type": "string"},
             "public_booked_color": {"type": "string"},
             "public_cancel_color": {"type": "string"},
+            "manager_action_color": {"type": "string"},
+            "manager_action_text_color": {"type": "string"},
         }
     ),
 }

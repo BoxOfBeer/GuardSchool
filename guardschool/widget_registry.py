@@ -427,6 +427,18 @@ def _apply_builtin_type_defaults(widget: dict[str, Any]) -> None:
                     and all(ch in "0123456789abcdef" for ch in value[1:])
                 )
                 widget["settings"][key] = value if valid else fallback
+            manager_color_defaults = {
+                "manager_action_color": widget["settings"]["public_action_color"],
+                "manager_action_text_color": widget["settings"]["public_action_text_color"],
+            }
+            for key, fallback in manager_color_defaults.items():
+                value = str(widget["settings"].get(key) or "").strip().lower()
+                valid = (
+                    len(value) == 7
+                    and value.startswith("#")
+                    and all(ch in "0123456789abcdef" for ch in value[1:])
+                )
+                widget["settings"][key] = value if valid else fallback
     widget["settings"].setdefault("backdrop", True)
 
 

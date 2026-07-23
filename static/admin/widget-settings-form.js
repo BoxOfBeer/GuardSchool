@@ -90,6 +90,8 @@ const EXCLUDE_BY_TYPE = {
     "public_free_color",
     "public_booked_color",
     "public_cancel_color",
+    "manager_action_color",
+    "manager_action_text_color",
   ],
 };
 

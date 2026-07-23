@@ -116,6 +116,29 @@ class BookingTests(unittest.TestCase):
             [first.isoformat(), second.isoformat()],
         )
 
+    def test_admin_move_updates_start_and_preserves_duration(self):
+        start = self.future_monday()
+        row = booking.create_booking(self.module, self.person(start), actor="admin")
+        moved_start = start + timedelta(days=1, hours=1, minutes=30)
+        moved = booking.admin_action(self.module, row["id"], "move", {"start_at": moved_start.isoformat()})
+        self.assertEqual(moved["start_at"], moved_start.isoformat())
+        self.assertEqual(
+            datetime.fromisoformat(moved["end_at"]) - datetime.fromisoformat(moved["start_at"]),
+            timedelta(minutes=30),
+        )
+
+    def test_admin_move_rejects_occupied_time(self):
+        start = self.future_monday()
+        first = booking.create_booking(self.module, self.person(start), actor="admin")
+        occupied = start + timedelta(hours=1)
+        booking.create_booking(
+            self.module,
+            self.person(occupied, device="device-identifier-0002"),
+            actor="admin",
+        )
+        with self.assertRaisesRegex(ValueError, "уже занято"):
+            booking.admin_action(self.module, first["id"], "move", {"start_at": occupied.isoformat()})
+
     def test_weekly_limit_counts_cancelled_records(self):
         start = self.future_monday()
         for i in range(5):

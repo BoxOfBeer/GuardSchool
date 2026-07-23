@@ -131,12 +131,15 @@ class WidgetRegistryTests(unittest.TestCase):
                 "settings": {
                     "public_action_color": "#ABCDEF",
                     "public_free_color": "red",
+                    "manager_action_text_color": "#112233",
                 },
             }
         )
         self.assertEqual(widget["settings"]["public_action_color"], "#abcdef")
         self.assertEqual(widget["settings"]["public_free_color"], "#16a34a")
         self.assertEqual(widget["settings"]["public_booked_color"], "#b91c1c")
+        self.assertEqual(widget["settings"]["manager_action_color"], "#abcdef")
+        self.assertEqual(widget["settings"]["manager_action_text_color"], "#112233")
 
 
 class CapabilitiesLocalTests(unittest.TestCase):

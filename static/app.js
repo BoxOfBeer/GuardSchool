@@ -4,7 +4,7 @@ import "./widgets/runtime.js";
 import "./widgets/carousel-runtime.js";
 import "./tv-core-utils.js?v=1.02.044";
 import "./tv-schedule-table.js?v=1.02.044";
-import "./tv-screen-shell.js?v=1.02.057";
+import "./tv-screen-shell.js?v=1.02.059";
 import "./screen_widgets.js?v=1.02.044";
 
 const TV_WIDGET_PLUGIN_SCRIPTS = window.GUARD_SCHOOL_TV_WIDGET_PLUGINS || [];
@@ -69,7 +69,7 @@ import {
   syncWidgetModal,
   bindWidgetModalOnce,
   renderWidgets,
-} from "./admin/widgets.js?v=1.02.057";
+} from "./admin/widgets.js?v=1.02.059";
 import { renderHistory } from "./admin/history.js";
 import { state, elements, GRID } from "./admin/state.js";
 import { t, tf, getSectionTabs } from "./admin/i18n-helpers.js";
@@ -1080,6 +1080,8 @@ function createWidgetStubForPaletteType(typ) {
               public_free_color: "#16a34a",
               public_booked_color: "#b91c1c",
               public_cancel_color: "#ca8a04",
+              manager_action_color: "#2563eb",
+              manager_action_text_color: "#ffffff",
             }),
       },
     };

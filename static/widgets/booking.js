@@ -29,13 +29,20 @@
     };
   }
 
+  function managerColors(settings, fallback) {
+    return {
+      action:validColor(settings.manager_action_color,fallback.action),
+      text:validColor(settings.manager_action_text_color,fallback.text),
+    };
+  }
+
   function shell(ctx, kind) {
     const s = ctx.widget.settings || {};
     const title = s.heading || (kind === "public" ? "Запись" : "Управление записями");
-    const colors=publicColors(ctx,s);
-    const colorStyle=`--bk-action-bg:${colors.action};--bk-button-text:${colors.text};--bk-free-bg:${colors.free};--bk-booked-bg:${colors.booked};--bk-cancel-bg:${colors.cancel}`;
+    const colors=publicColors(ctx,s),actions=kind==="manager"?managerColors(s,colors):colors;
+    const colorStyle=`--bk-action-bg:${actions.action};--bk-button-text:${actions.text};--bk-free-bg:${colors.free};--bk-booked-bg:${colors.booked};--bk-cancel-bg:${colors.cancel}`;
     return `<div class="gs-booking" data-booking-kind="${kind}" data-module-id="${esc(s.module_id || "booking-main")}" style="${colorStyle}">
-      <style>.gs-booking{box-sizing:border-box;height:100%;overflow:auto;padding:14px;color:inherit;font:inherit}.gs-booking *{box-sizing:border-box}.gs-booking h2{margin:0 0 10px;font-size:1.18em}.gs-booking button,.gs-booking input,.gs-booking select,.gs-booking textarea{font:inherit;border:1px solid rgba(148,163,184,.55);border-radius:8px;padding:8px 10px}.gs-booking input,.gs-booking select,.gs-booking textarea{color:#0f172a!important;background:#fff!important;text-shadow:none!important;-webkit-text-stroke:0 transparent!important}.gs-booking input::placeholder,.gs-booking textarea::placeholder{color:#64748b!important;opacity:1;text-shadow:none!important;-webkit-text-stroke:0 transparent!important}.gs-booking button{cursor:pointer;background:var(--bk-action-bg);color:var(--bk-button-text)}.gs-booking button[disabled]{cursor:default}.gs-booking .bk-muted{opacity:.75;font-size:.88em}.gs-booking .bk-error{color:#fecaca;background:rgba(127,29,29,.55);padding:8px;border-radius:8px}.gs-booking .bk-toolbar{display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-bottom:10px}.gs-booking .bk-filter{display:flex;grid-template-columns:auto 1fr;align-items:center;gap:6px;padding:5px 8px;border:1px solid rgba(148,163,184,.45);border-radius:8px}.gs-booking .bk-filter input{width:auto;margin:0;padding:0}.gs-booking .bk-days{display:block}.gs-booking .bk-day{width:100%;background:rgba(15,23,42,.38);padding:9px;border-radius:9px}.gs-booking .bk-day strong{display:block;margin-bottom:6px}.gs-booking .bk-slot{display:block;width:100%;margin:4px 0;padding:8px}.gs-booking .bk-slot--free{background:var(--bk-free-bg)}.gs-booking .bk-slot--free.is-selected{box-shadow:0 0 0 3px rgba(255,255,255,.8) inset}.gs-booking .bk-slot--booked{background:var(--bk-booked-bg);opacity:1}.gs-booking .bk-slot--cancel{background:var(--bk-cancel-bg);opacity:1}.gs-booking .bk-legend{display:flex;gap:12px;flex-wrap:wrap;margin:7px 2px 2px;font-size:.76em;opacity:.9}.gs-booking .bk-legend span{display:flex;align-items:center;gap:5px}.gs-booking .bk-dot{width:9px;height:9px;border-radius:50%;display:inline-block}.gs-booking .bk-form{display:grid;grid-template-columns:repeat(4,minmax(110px,1fr));gap:7px;margin:10px 0}.gs-booking .bk-list{display:grid;gap:7px}.gs-booking .bk-card{padding:9px;border:1px solid rgba(148,163,184,.35);border-radius:9px;background:rgba(15,23,42,.3)}.gs-booking .bk-grid{display:grid;grid-template-columns:repeat(2,minmax(180px,1fr));gap:8px}.gs-booking label{display:grid;gap:4px}.gs-booking textarea{min-height:90px}.gs-booking details{margin-top:10px}.gs-booking table{width:100%;border-collapse:collapse}.gs-booking td,.gs-booking th{padding:6px;border-bottom:1px solid rgba(148,163,184,.3);text-align:left}.gs-booking .bk-actions{display:flex;gap:5px;flex-wrap:wrap}.gs-booking tr.bk-row--cancel-requested td{background:rgba(202,138,4,.32);border-top:1px solid #facc15;border-bottom:1px solid #facc15}.gs-booking tr.bk-row--hidden{display:none}@media(max-width:700px){.gs-booking .bk-form,.gs-booking .bk-grid{grid-template-columns:1fr}}</style>
+      <style>.gs-booking{box-sizing:border-box;height:100%;overflow:auto;padding:14px;color:inherit;font:inherit}.gs-booking *{box-sizing:border-box}.gs-booking h2{margin:0 0 10px;font-size:1.18em}.gs-booking button,.gs-booking input,.gs-booking select,.gs-booking textarea{font:inherit;border:1px solid rgba(148,163,184,.55);border-radius:8px;padding:8px 10px}.gs-booking input,.gs-booking select,.gs-booking textarea{color:#0f172a!important;background:#fff!important;text-shadow:none!important;-webkit-text-stroke:0 transparent!important}.gs-booking input::placeholder,.gs-booking textarea::placeholder{color:#64748b!important;opacity:1;text-shadow:none!important;-webkit-text-stroke:0 transparent!important}.gs-booking button{cursor:pointer;background:var(--bk-action-bg);color:var(--bk-button-text)}.gs-booking button[disabled]{cursor:default}.gs-booking .bk-muted{opacity:.75;font-size:.88em}.gs-booking .bk-error{color:#fecaca;background:rgba(127,29,29,.55);padding:8px;border-radius:8px}.gs-booking .bk-toolbar{display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-bottom:10px}.gs-booking .bk-filter{display:flex;grid-template-columns:auto 1fr;align-items:center;gap:6px;padding:5px 8px;border:1px solid rgba(148,163,184,.45);border-radius:8px}.gs-booking .bk-filter input{width:auto;margin:0;padding:0}.gs-booking .bk-days{display:block}.gs-booking .bk-day{width:100%;background:rgba(15,23,42,.38);padding:9px;border-radius:9px}.gs-booking .bk-day strong{display:block;margin-bottom:6px}.gs-booking .bk-slot{display:block;width:100%;margin:4px 0;padding:8px}.gs-booking .bk-slot--free{background:var(--bk-free-bg)}.gs-booking .bk-slot--free.is-selected{box-shadow:0 0 0 3px rgba(255,255,255,.8) inset}.gs-booking .bk-slot--booked{background:var(--bk-booked-bg);opacity:1}.gs-booking .bk-slot--cancel{background:var(--bk-cancel-bg);opacity:1}.gs-booking .bk-legend{display:flex;gap:12px;flex-wrap:wrap;margin:7px 2px 2px;font-size:.76em;opacity:.9}.gs-booking .bk-legend span{display:flex;align-items:center;gap:5px}.gs-booking .bk-dot{width:9px;height:9px;border-radius:50%;display:inline-block}.gs-booking .bk-form{display:grid;grid-template-columns:repeat(4,minmax(110px,1fr));gap:7px;margin:10px 0}.gs-booking .bk-list{display:grid;gap:7px}.gs-booking .bk-card{padding:9px;border:1px solid rgba(148,163,184,.35);border-radius:9px;background:rgba(15,23,42,.3)}.gs-booking .bk-grid{display:grid;grid-template-columns:repeat(2,minmax(180px,1fr));gap:8px}.gs-booking label{display:grid;gap:4px}.gs-booking textarea{min-height:90px}.gs-booking details{margin-top:10px}.gs-booking table{width:100%;border-collapse:collapse}.gs-booking td,.gs-booking th{padding:6px;border-bottom:1px solid rgba(148,163,184,.3);text-align:left}.gs-booking .bk-actions{display:flex;gap:5px;flex-wrap:wrap}.gs-booking tr.bk-row--cancel-requested td{background:rgba(202,138,4,.32);border-top:1px solid #facc15;border-bottom:1px solid #facc15}.gs-booking tr.bk-row--hidden{display:none}.gs-booking .bk-move-row td{padding:10px;background:rgba(15,23,42,.2)}.gs-booking .bk-move-form{display:grid;gap:9px}.gs-booking .bk-move-fields{display:grid;grid-template-columns:minmax(150px,1fr) repeat(2,minmax(90px,.45fr));gap:8px}.gs-booking .bk-move-actions{display:flex;gap:7px;flex-wrap:wrap;align-items:center}@media(max-width:700px){.gs-booking .bk-form,.gs-booking .bk-grid,.gs-booking .bk-move-fields{grid-template-columns:1fr}}</style>
       <h2>${esc(title)}</h2><div class="bk-body"><div class="bk-muted">Загрузка…</div></div></div>`;
   }
   W.register("booking_public", (ctx) => shell(ctx, "public"));
@@ -55,6 +62,40 @@
   function dayTitle(iso) { const d=new Date(`${iso}T12:00:00Z`);return new Intl.DateTimeFormat("ru-RU",{weekday:"long",day:"2-digit",month:"2-digit"}).format(d); }
   async function json(url, init) { const r=await apiFetch(url,init);let b={};try{b=await r.json()}catch(_){}if(!r.ok)throw new Error(b.detail||`Ошибка ${r.status}`);return b; }
   function fmt(iso, timeZone) { const options={day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"};if(timeZone)options.timeZone=timeZone;return new Intl.DateTimeFormat("ru-RU",options).format(new Date(iso)); }
+  function zonedDateTimeParts(iso, timeZone) {
+    const value=new Date(iso);
+    if (!Number.isFinite(value.getTime())) throw new Error("Некорректное время записи.");
+    const options={year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"};
+    if(timeZone)options.timeZone=timeZone;
+    const parts=new Intl.DateTimeFormat("en-CA",options).formatToParts(value);
+    const result={};
+    parts.forEach((part)=>{if(part.type!=="literal")result[part.type]=part.value});
+    return {date:`${result.year}-${result.month}-${result.day}`,hour:Number(result.hour),minute:Number(result.minute)};
+  }
+  function zonedLocalToIso(dateValue, hourValue, minuteValue, timeZone) {
+    const match=/^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dateValue||""));
+    const hour=Number(hourValue),minute=Number(minuteValue);
+    if(!match||!Number.isInteger(hour)||hour<0||hour>23||!Number.isInteger(minute)||minute<0||minute>59)throw new Error("Выберите корректные дату и время.");
+    const desired=Date.UTC(Number(match[1]),Number(match[2])-1,Number(match[3]),hour,minute);
+    let guess=desired;
+    for(let i=0;i<3;i+=1){
+      const observed=zonedDateTimeParts(new Date(guess).toISOString(),timeZone);
+      const observedUtc=Date.UTC(Number(observed.date.slice(0,4)),Number(observed.date.slice(5,7))-1,Number(observed.date.slice(8,10)),observed.hour,observed.minute);
+      guess+=desired-observedUtc;
+    }
+    const check=zonedDateTimeParts(new Date(guess).toISOString(),timeZone);
+    if(check.date!==String(dateValue)||check.hour!==hour||check.minute!==minute)throw new Error("Такого местного времени нет в выбранном часовом поясе.");
+    return new Date(guess).toISOString();
+  }
+  function selectOptions(values, selected) {
+    return values.map((value)=>`<option value="${value}" ${Number(value)===Number(selected)?"selected":""}>${String(value).padStart(2,"0")}</option>`).join("");
+  }
+  function minuteValues(step, current) {
+    const safeStep=[15,30,60].includes(Number(step))?Number(step):30;
+    const values=[];for(let value=0;value<60;value+=safeStep)values.push(value);
+    if(!values.includes(Number(current)))values.push(Number(current));
+    return values.sort((a,b)=>a-b);
+  }
   function slugOf(p) { return String(p&&p.screen&&p.screen.slug||location.pathname.split("/").filter(Boolean).pop()||""); }
   function vapidBytes(value){const pad="=".repeat((4-value.length%4)%4),raw=atob((value+pad).replace(/-/g,"+").replace(/_/g,"/")),out=new Uint8Array(raw.length);for(let i=0;i<raw.length;i++)out[i]=raw.charCodeAt(i);return out}
   async function subscribePush(slug,mid,audience,did){if(!('serviceWorker'in navigator)||!('PushManager'in global))throw new Error('Уведомления не поддерживаются этим браузером.');const permission=await Notification.requestPermission();if(permission!=="granted")throw new Error('Разрешение на уведомления не выдано.');const key=await json(`/api/screen/${encodeURIComponent(slug)}/push/vapid-public-key`),reg=await navigator.serviceWorker.ready;let sub=await reg.pushManager.getSubscription();if(!sub)sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:vapidBytes(key.application_server_key||key.public_key)});await json(`/api/screen/${encodeURIComponent(slug)}/booking/${encodeURIComponent(mid)}/push/subscribe`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({audience,device_id:did||'',subscription:sub.toJSON()})});return true}
@@ -79,20 +120,92 @@
   }
 
   function bindManager(el,payload) {
-    if(el.dataset.bookingBound)return;el.dataset.bookingBound="1";const body=el.querySelector(".bk-body"),mid=el.dataset.moduleId,slug=slugOf(payload),hideKey=`gs_booking_hide_cancelled_${mid}`,hidePastKey=`gs_booking_hide_past_${mid}`;let state=null,hideCancelled=true,hidePast=true;try{hideCancelled=localStorage.getItem(hideKey)!=="0";hidePast=localStorage.getItem(hidePastKey)!=="0"}catch(_){}
+    if(el.dataset.bookingBound)return;
+    el.dataset.bookingBound="1";
+    const body=el.querySelector(".bk-body"),mid=el.dataset.moduleId,slug=slugOf(payload),hideKey=`gs_booking_hide_cancelled_${mid}`,hidePastKey=`gs_booking_hide_past_${mid}`;
+    let state=null,hideCancelled=true,hidePast=true;
+    try{hideCancelled=localStorage.getItem(hideKey)!=="0";hidePast=localStorage.getItem(hidePastKey)!=="0"}catch(_){}
     const managerBase=`/api/screen/${encodeURIComponent(slug)}/booking-admin/${encodeURIComponent(mid)}`;
     async function load(){try{state=await json(managerBase);render()}catch(e){body.innerHTML=`<div class="bk-error">${esc(e.message)}</div>`}}
-    function render(){const c=state.config,l=c.labels;body.innerHTML=`<div class="bk-toolbar"><button data-a="prev">←</button><button data-a="today">Текущая неделя</button><button data-a="next">→</button><span>${esc(state.week_start)}</span><button data-a="notify">Уведомлять обо всех изменениях</button></div><details><summary>Создать запись вручную</summary><form class="bk-create bk-grid"><select name="service_id">${c.services.filter(x=>x.active!==false).map(x=>`<option value="${esc(x.id)}">${esc(x.title)}</option>`).join('')}</select><input name="start_at" type="datetime-local" required><input name="family_name" placeholder="${esc(l.family_name)}" required><input name="given_name" placeholder="${esc(l.given_name)}" required><input name="phone" placeholder="${esc(l.phone)}" required><button>Создать</button></form></details><table><thead><tr><th>Время</th><th>${esc(l.person)}</th><th>${esc(l.service)}</th><th>Состояние</th><th></th></tr></thead><tbody>${state.bookings.length?state.bookings.map(x=>`<tr><td>${fmt(x.start_at)}</td><td>${esc(x.family_name)} ${esc(x.given_name)}<br>${esc(x.phone)}</td><td>${esc(x.service_title)}</td><td>${esc(statuses[x.status]||x.status)}</td><td><div class="bk-actions">${x.status==='cancel_requested'?`<button data-id="${x.id}" data-action="confirm_cancel">Подтвердить отмену</button><button data-id="${x.id}" data-action="reject_cancel">Отклонить</button>`:""}${x.status!=='cancelled'?`<button data-id="${x.id}" data-action="move">Перенести</button><button data-id="${x.id}" data-action="cancel">Отменить</button>`:""}</div></td></tr>`).join(""):`<tr><td colspan="5">Записей нет.</td></tr>`}</tbody></table><details><summary>Настройки модуля</summary><form class="bk-settings"><div class="bk-grid">${Object.entries(l).map(([k,v])=>`<label>${esc(labelNames[k]||k)}<input data-label="${esc(k)}" value="${esc(v)}"></label>`).join("")}<label>Шаг времени<select name="step_min"><option>15</option><option>30</option><option>60</option></select></label><label><input name="paused" type="checkbox" ${c.paused?"checked":""}> Приостановить новые записи</label><label>Сообщение<input name="pause_message" value="${esc(c.pause_message)}"></label></div><label>Услуги: название | длительность<textarea name="services">${esc(c.services.map(x=>`${x.title} | ${x.duration_min}`).join("\n"))}</textarea></label><label>Интервалы Пн–Вс: 09:00-18:00; несколько через запятую<textarea name="windows">${esc(Array.from({length:7},(_,i)=>`${weekday[i]}: ${(c.weekly_windows[i]||[]).map(x=>x.join("-")).join(", ")}`).join("\n"))}</textarea></label><button>Сохранить настройки</button><div class="bk-msg"></div></form></details>`;
-      body.querySelectorAll('[data-a=prev],[data-a=today],[data-a=next]').forEach(button=>button.remove());const scopeLabel=body.querySelector('.bk-toolbar span');if(scopeLabel)scopeLabel.textContent='Все записи';
-      body.querySelectorAll('tbody tr').forEach((row,i)=>{if(state.bookings[i])row.querySelector('td').textContent=fmt(state.bookings[i].start_at,state.timezone)});
-      const filter=document.createElement('label'),pastFilter=document.createElement('label');filter.className=pastFilter.className='bk-filter';filter.innerHTML=`<input type="checkbox" ${hideCancelled?'checked':''}> Скрыть отменённые`;pastFilter.innerHTML=`<input type="checkbox" ${hidePast?'checked':''}> Скрыть прошедшие`;body.querySelector('.bk-toolbar').append(filter,pastFilter);
-      const applyFilter=()=>{const now=new Date(state.now).getTime();body.querySelectorAll('tbody tr').forEach((row,i)=>{const item=state.bookings[i];if(!item)return;const isPast=new Date(item.end_at).getTime()<=now;row.classList.toggle('bk-row--cancel-requested',item.status==='cancel_requested');row.classList.toggle('bk-row--hidden',(hideCancelled&&item.status==='cancelled')||(hidePast&&isPast));row.style.opacity=isPast?'.62':''})};filter.querySelector('input').onchange=e=>{hideCancelled=e.target.checked;try{localStorage.setItem(hideKey,hideCancelled?'1':'0')}catch(_){}applyFilter()};pastFilter.querySelector('input').onchange=e=>{hidePast=e.target.checked;try{localStorage.setItem(hidePastKey,hidePast?'1':'0')}catch(_){}applyFilter()};applyFilter();
+    function openMoveEditor(button) {
+      body.querySelectorAll(".bk-move-row").forEach((row)=>row.remove());
+      const bookingId=Number(button.dataset.id);
+      const item=state.bookings.find((booking)=>Number(booking.id)===bookingId);
+      const sourceRow=button.closest("tr[data-booking-id]");
+      if(!item||!sourceRow)return;
+      let parts;
+      try{parts=zonedDateTimeParts(item.start_at,state.timezone)}catch(error){alert(error.message);return}
+      const moveRow=document.createElement("tr");
+      moveRow.className="bk-move-row";
+      moveRow.innerHTML=`<td colspan="5"><form class="bk-move-form">
+        <strong>Перенос: ${esc(item.family_name)} ${esc(item.given_name)}</strong>
+        <div class="bk-move-fields">
+          <label>Дата<input name="date" type="date" value="${parts.date}" required></label>
+          <label>Часы<select name="hour">${selectOptions(Array.from({length:24},(_,index)=>index),parts.hour)}</select></label>
+          <label>Минуты<select name="minute">${selectOptions(minuteValues(state.config.step_min,parts.minute),parts.minute)}</select></label>
+        </div>
+        <div class="bk-muted">Часовой пояс: ${esc(state.timezone||"локальный")}. Минуты идут с шагом ${Number(state.config.step_min)||30}.</div>
+        <div class="bk-move-actions"><button type="submit">Сохранить перенос</button><button type="button" data-a="cancel-move">Закрыть</button><div class="bk-msg"></div></div>
+      </form></td>`;
+      sourceRow.insertAdjacentElement("afterend",moveRow);
+      const form=moveRow.querySelector("form");
+      form.querySelector('[data-a="cancel-move"]').onclick=()=>moveRow.remove();
+      form.onsubmit=async(event)=>{
+        event.preventDefault();
+        const message=form.querySelector(".bk-msg"),submit=form.querySelector('button[type="submit"]');
+        try{
+          submit.disabled=true;
+          const startAt=zonedLocalToIso(form.elements.date.value,form.elements.hour.value,form.elements.minute.value,state.timezone);
+          await json(`${managerBase}/${bookingId}/move`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({start_at:startAt})});
+          await load();
+        }catch(error){
+          submit.disabled=false;
+          message.innerHTML=`<div class="bk-error">${esc(error.message)}</div>`;
+        }
+      };
+      moveRow.querySelector('input[name="date"]').focus();
+      if(moveRow.scrollIntoView)moveRow.scrollIntoView({block:"nearest",behavior:"smooth"});
+    }
+    function render(){
+      const c=state.config,l=c.labels;
+      body.innerHTML=`<div class="bk-toolbar"><button data-a="prev">←</button><button data-a="today">Текущая неделя</button><button data-a="next">→</button><span>${esc(state.week_start)}</span><button data-a="notify">Уведомлять обо всех изменениях</button></div><details><summary>Создать запись вручную</summary><form class="bk-create bk-grid"><select name="service_id">${c.services.filter(x=>x.active!==false).map(x=>`<option value="${esc(x.id)}">${esc(x.title)}</option>`).join('')}</select><input name="start_at" type="datetime-local" required><input name="family_name" placeholder="${esc(l.family_name)}" required><input name="given_name" placeholder="${esc(l.given_name)}" required><input name="phone" placeholder="${esc(l.phone)}" required><button>Создать</button></form></details><table><thead><tr><th>Время</th><th>${esc(l.person)}</th><th>${esc(l.service)}</th><th>Состояние</th><th></th></tr></thead><tbody>${state.bookings.length?state.bookings.map(x=>`<tr data-booking-id="${x.id}"><td>${fmt(x.start_at)}</td><td>${esc(x.family_name)} ${esc(x.given_name)}<br>${esc(x.phone)}</td><td>${esc(x.service_title)}</td><td>${esc(statuses[x.status]||x.status)}</td><td><div class="bk-actions">${x.status==='cancel_requested'?`<button data-id="${x.id}" data-action="confirm_cancel">Подтвердить отмену</button><button data-id="${x.id}" data-action="reject_cancel">Отклонить</button>`:""}${x.status!=='cancelled'?`<button data-id="${x.id}" data-action="move">Перенести</button><button data-id="${x.id}" data-action="cancel">Отменить</button>`:""}</div></td></tr>`).join(""):`<tr><td colspan="5">Записей нет.</td></tr>`}</tbody></table><details><summary>Настройки модуля</summary><form class="bk-settings"><div class="bk-grid">${Object.entries(l).map(([k,v])=>`<label>${esc(labelNames[k]||k)}<input data-label="${esc(k)}" value="${esc(v)}"></label>`).join("")}<label>Шаг времени<select name="step_min"><option>15</option><option>30</option><option>60</option></select></label><label><input name="paused" type="checkbox" ${c.paused?"checked":""}> Приостановить новые записи</label><label>Сообщение<input name="pause_message" value="${esc(c.pause_message)}"></label></div><label>Услуги: название | длительность<textarea name="services">${esc(c.services.map(x=>`${x.title} | ${x.duration_min}`).join("\n"))}</textarea></label><label>Интервалы Пн–Вс: 09:00-18:00; несколько через запятую<textarea name="windows">${esc(Array.from({length:7},(_,i)=>`${weekday[i]}: ${(c.weekly_windows[i]||[]).map(x=>x.join("-")).join(", ")}`).join("\n"))}</textarea></label><button>Сохранить настройки</button><div class="bk-msg"></div></form></details>`;
+      body.querySelectorAll('[data-a=prev],[data-a=today],[data-a=next]').forEach(button=>button.remove());
+      const scopeLabel=body.querySelector('.bk-toolbar span');
+      if(scopeLabel)scopeLabel.textContent='Все записи';
+      const bookingsById=new Map(state.bookings.map((item)=>[String(item.id),item]));
+      body.querySelectorAll('tbody tr[data-booking-id]').forEach((row)=>{
+        const item=bookingsById.get(String(row.dataset.bookingId));
+        if(item)row.querySelector('td').textContent=fmt(item.start_at,state.timezone);
+      });
+      const filter=document.createElement('label'),pastFilter=document.createElement('label');
+      filter.className=pastFilter.className='bk-filter';
+      filter.innerHTML=`<input type="checkbox" ${hideCancelled?'checked':''}> Скрыть отменённые`;
+      pastFilter.innerHTML=`<input type="checkbox" ${hidePast?'checked':''}> Скрыть прошедшие`;
+      body.querySelector('.bk-toolbar').append(filter,pastFilter);
+      const applyFilter=()=>{
+        const now=new Date(state.now).getTime();
+        body.querySelectorAll('tbody tr[data-booking-id]').forEach((row)=>{
+          const item=bookingsById.get(String(row.dataset.bookingId));
+          if(!item)return;
+          const isPast=new Date(item.end_at).getTime()<=now;
+          row.classList.toggle('bk-row--cancel-requested',item.status==='cancel_requested');
+          row.classList.toggle('bk-row--hidden',(hideCancelled&&item.status==='cancelled')||(hidePast&&isPast));
+          row.style.opacity=isPast?'.62':'';
+        });
+      };
+      filter.querySelector('input').onchange=e=>{hideCancelled=e.target.checked;try{localStorage.setItem(hideKey,hideCancelled?'1':'0')}catch(_){}applyFilter()};
+      pastFilter.querySelector('input').onchange=e=>{hidePast=e.target.checked;try{localStorage.setItem(hidePastKey,hidePast?'1':'0')}catch(_){}applyFilter()};
+      applyFilter();
       body.querySelector('[name=step_min]').value=String(c.step_min);
       body.querySelector('[data-a=notify]').onclick=async e=>{try{await subscribePush(slug,mid,'admin','');e.target.textContent='Уведомления включены';e.target.disabled=true}catch(x){alert(x.message)}};
       body.querySelector('.bk-create').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.currentTarget),local=new Date(f.get('start_at'));try{await json(managerBase,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({screen_slug:slug,service_id:f.get('service_id'),start_at:local.toISOString(),family_name:f.get('family_name'),given_name:f.get('given_name'),phone:f.get('phone')})});load()}catch(x){alert(x.message)}};
-      body.querySelectorAll('[data-action]').forEach(b=>b.onclick=async()=>{let data={};if(b.dataset.action==='move'){const value=prompt('Новое время: 2026-07-22T14:30+11:00');if(!value)return;data.start_at=value}try{await json(`${managerBase}/${b.dataset.id}/${b.dataset.action}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});load()}catch(x){alert(x.message)}});
+      body.querySelectorAll('[data-action]').forEach(button=>button.onclick=async()=>{
+        if(button.dataset.action==='move'){openMoveEditor(button);return}
+        try{await json(`${managerBase}/${button.dataset.id}/${button.dataset.action}`,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});load()}catch(x){alert(x.message)}
+      });
       body.querySelector('.bk-settings').onsubmit=async e=>{e.preventDefault();const f=e.currentTarget,labels={};f.querySelectorAll('[data-label]').forEach(x=>labels[x.dataset.label]=x.value);const services=f.services.value.split(/\r?\n/).map((line,i)=>{const p=line.split('|');return{id:`service-${i+1}`,title:(p[0]||'').trim(),duration_min:Number(p[1])||Number(f.step_min.value),active:true}}).filter(x=>x.title);const weekly_windows={};f.windows.value.split(/\r?\n/).forEach((line,i)=>{const rest=line.replace(/^[^:]+:\s*/,"");weekly_windows[String(i)]=rest.split(',').map(x=>x.trim().split('-')).filter(x=>x.length===2)});try{await json(`${managerBase}/config`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.assign({},c,{labels,services,weekly_windows,step_min:Number(f.step_min.value),paused:f.paused.checked,pause_message:f.pause_message.value}))});load()}catch(x){f.querySelector('.bk-msg').innerHTML=`<div class="bk-error">${esc(x.message)}</div>`}};
-    }load();
+    }
+    load();
   }
   function bind(root,payload){root.querySelectorAll('.gs-booking[data-booking-kind]').forEach(el=>el.dataset.bookingKind==='public'?bindPublic(el,payload):bindManager(el,payload))}
   global.GuardSchoolBooking={bind};
