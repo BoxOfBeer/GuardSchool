@@ -48,7 +48,7 @@ SCREEN_WATCH_STATS_PATH = DATA_DIR / "screen_watch_stats.json"
 OVERRIDES_PATH = DATA_DIR / "overrides.json"
 BELL_SCHEDULES_PATH = DATA_DIR / "bell_schedules.json"
 CHANGE_LOG_PATH = DATA_DIR / "change_log.json"
-APP_VERSION = "1.02.056"
+APP_VERSION = "1.02.057"
 IMPORT_STATE_PATH = DATA_DIR / "import_state.json"
 SYNC_STATE_PATH = DATA_DIR / "sync_state.json"
 # Маркетинговый контент портала guarddoc.ru: всегда в корневом data/, не в tenants/<slug>/data.

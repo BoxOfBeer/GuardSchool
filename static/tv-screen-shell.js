@@ -109,8 +109,61 @@
     };
   }
 
+  const MOBILE_APPEARANCE_DEFAULTS = {
+    background_color: "#172554",
+    card_color: "#13234b",
+    text_color: "#f8fafc",
+    muted_color: "#cbd5e1",
+    accent_color: "#38bdf8",
+    font_size_px: 16,
+    card_radius_px: 12,
+    card_gap_px: 10,
+  };
+
+  function mobileHex(value, fallback) {
+    const color = String(value || "").trim().toLowerCase();
+    return /^#[0-9a-f]{6}$/.test(color) ? color : fallback;
+  }
+
+  function mobileNumber(value, fallback, minimum, maximum) {
+    const number = Number(value);
+    return Number.isFinite(number) ? Math.max(minimum, Math.min(maximum, Math.round(number))) : fallback;
+  }
+
+  function applyMobileAppearance(el, screen) {
+    if (!el) return;
+    const active = Boolean(screen && screen.mobile_mode);
+    el.classList.toggle("gs-mobile-screen", active);
+    const keys = [
+      "--gs-mobile-background",
+      "--gs-mobile-card",
+      "--gs-mobile-text",
+      "--gs-mobile-muted",
+      "--gs-mobile-accent",
+      "--gs-mobile-font-size",
+      "--gs-mobile-card-radius",
+      "--gs-mobile-card-gap",
+    ];
+    if (!active) {
+      keys.forEach((key) => el.style.removeProperty(key));
+      return;
+    }
+    const appearance = screen.mobile_appearance && typeof screen.mobile_appearance === "object"
+      ? screen.mobile_appearance
+      : {};
+    el.style.setProperty("--gs-mobile-background", mobileHex(appearance.background_color, MOBILE_APPEARANCE_DEFAULTS.background_color));
+    el.style.setProperty("--gs-mobile-card", mobileHex(appearance.card_color, MOBILE_APPEARANCE_DEFAULTS.card_color));
+    el.style.setProperty("--gs-mobile-text", mobileHex(appearance.text_color, MOBILE_APPEARANCE_DEFAULTS.text_color));
+    el.style.setProperty("--gs-mobile-muted", mobileHex(appearance.muted_color, MOBILE_APPEARANCE_DEFAULTS.muted_color));
+    el.style.setProperty("--gs-mobile-accent", mobileHex(appearance.accent_color, MOBILE_APPEARANCE_DEFAULTS.accent_color));
+    el.style.setProperty("--gs-mobile-font-size", `${mobileNumber(appearance.font_size_px, 16, 12, 30)}px`);
+    el.style.setProperty("--gs-mobile-card-radius", `${mobileNumber(appearance.card_radius_px, 12, 0, 40)}px`);
+    el.style.setProperty("--gs-mobile-card-gap", `${mobileNumber(appearance.card_gap_px, 10, 0, 40)}px`);
+  }
+
   function applyTvScreenBackground(el, screen, gallery) {
     if (!el) return;
+    applyMobileAppearance(el, screen);
     // В мобильном режиме оставляем дефолтный градиент страницы (без подстановки фоновых изображений).
     // Это проще для читаемости и не ломает вертикальную ленту.
     if (screen && screen.mobile_mode) {
@@ -828,6 +881,7 @@
     resolveBackgroundImageUrl,
     cssBackgroundImageUrl,
     ensureTvBgLayers,
+    applyMobileAppearance,
     applyTvScreenBackground,
     buildTextOutlineShadow,
     applyTvTextOutline,

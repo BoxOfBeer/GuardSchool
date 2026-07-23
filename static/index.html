@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>GuardSchool Admin</title>
-  <link rel="stylesheet" id="admin-styles" href="/static/styles.css?v=1.02.044">
+  <link rel="stylesheet" id="admin-styles" href="/static/styles.css?v=1.02.057">
   <script>
     (function () {
       try {
@@ -92,6 +92,34 @@
                 <input id="screen-mobile-mode" type="checkbox">
                 <span>Мобильный режим (вертикальная лента, скролл)</span>
               </label>
+              <fieldset id="screen-mobile-style-settings" class="mobile-style-settings" hidden>
+                <legend>Настройка мобильного вида</legend>
+                <p class="hint mobile-style-settings-hint">Применяется только при включённом мобильном режиме этого экрана.</p>
+                <label><span>Цвет фона</span>
+                  <input id="screen-mobile-background-color" type="color" value="#172554">
+                </label>
+                <label><span>Цвет карточек</span>
+                  <input id="screen-mobile-card-color" type="color" value="#13234b">
+                </label>
+                <label><span>Цвет текста</span>
+                  <input id="screen-mobile-text-color" type="color" value="#f8fafc">
+                </label>
+                <label><span>Дополнительный текст</span>
+                  <input id="screen-mobile-muted-color" type="color" value="#cbd5e1">
+                </label>
+                <label><span>Цвет акцента</span>
+                  <input id="screen-mobile-accent-color" type="color" value="#38bdf8">
+                </label>
+                <label><span>Базовый шрифт, px</span>
+                  <input id="screen-mobile-font-size" type="number" min="12" max="30" step="1" value="16" class="standard-input">
+                </label>
+                <label><span>Скругление карточек, px</span>
+                  <input id="screen-mobile-card-radius" type="number" min="0" max="40" step="1" value="12" class="standard-input">
+                </label>
+                <label><span>Расстояние между карточками, px</span>
+                  <input id="screen-mobile-card-gap" type="number" min="0" max="40" step="1" value="10" class="standard-input">
+                </label>
+              </fieldset>
               <label class="compact-field toggle-label" style="align-items:center; gap: 10px">
                 <input id="screen-enable-feedback" type="checkbox">
                 <span>Обратная связь (разрешить отправку)</span>
@@ -743,6 +771,6 @@
   </div>
 
   <script src="/static/i18n.js?v=4"></script>
-  <script type="module" src="/static/app.js?v=1.02.054"></script>
+  <script type="module" src="/static/app.js?v=1.02.057"></script>
 </body>
 </html>

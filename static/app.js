@@ -4,7 +4,7 @@ import "./widgets/runtime.js";
 import "./widgets/carousel-runtime.js";
 import "./tv-core-utils.js?v=1.02.044";
 import "./tv-schedule-table.js?v=1.02.044";
-import "./tv-screen-shell.js?v=1.02.044";
+import "./tv-screen-shell.js?v=1.02.057";
 import "./screen_widgets.js?v=1.02.044";
 
 const TV_WIDGET_PLUGIN_SCRIPTS = window.GUARD_SCHOOL_TV_WIDGET_PLUGINS || [];
@@ -69,7 +69,7 @@ import {
   syncWidgetModal,
   bindWidgetModalOnce,
   renderWidgets,
-} from "./admin/widgets.js?v=1.02.054";
+} from "./admin/widgets.js?v=1.02.057";
 import { renderHistory } from "./admin/history.js";
 import { state, elements, GRID } from "./admin/state.js";
 import { t, tf, getSectionTabs } from "./admin/i18n-helpers.js";
@@ -733,6 +733,16 @@ function createDefaultScreen(index) {
     tv_text_outline_color: "rgba(0,0,0,0.85)",
     selected_classes: ["5", "6", "7", "8"],
     mobile_mode: false,
+    mobile_appearance: {
+      background_color: "#172554",
+      card_color: "#13234b",
+      text_color: "#f8fafc",
+      muted_color: "#cbd5e1",
+      accent_color: "#38bdf8",
+      font_size_px: 16,
+      card_radius_px: 12,
+      card_gap_px: 10,
+    },
     enable_feedback: false,
     /** Устарело: порядок ленты = порядок виджетов на экране; поле сохраняется для совместимости. */
     mobile_widget_ids: [],
@@ -1062,6 +1072,15 @@ function createWidgetStubForPaletteType(typ) {
         module_id: "booking-main",
         heading: isPublic ? "Запись" : "Управление записями",
         backdrop: true,
+        ...(isPublic
+          ? {}
+          : {
+              public_action_color: "#2563eb",
+              public_action_text_color: "#ffffff",
+              public_free_color: "#16a34a",
+              public_booked_color: "#b91c1c",
+              public_cancel_color: "#ca8a04",
+            }),
       },
     };
   }
@@ -1747,6 +1766,19 @@ function renderForm() {
   elements.screenSlug.value = screen.slug;
   if (elements.screenOrientation) elements.screenOrientation.value = screen.orientation === "portrait" ? "portrait" : "landscape";
   if (elements.screenMobileMode) elements.screenMobileMode.checked = Boolean(screen.mobile_mode);
+  const mobileAppearance =
+    screen.mobile_appearance && typeof screen.mobile_appearance === "object"
+      ? screen.mobile_appearance
+      : {};
+  if (elements.screenMobileStyleSettings) elements.screenMobileStyleSettings.hidden = !Boolean(screen.mobile_mode);
+  if (elements.screenMobileBackgroundColor) elements.screenMobileBackgroundColor.value = mobileAppearance.background_color || "#172554";
+  if (elements.screenMobileCardColor) elements.screenMobileCardColor.value = mobileAppearance.card_color || "#13234b";
+  if (elements.screenMobileTextColor) elements.screenMobileTextColor.value = mobileAppearance.text_color || "#f8fafc";
+  if (elements.screenMobileMutedColor) elements.screenMobileMutedColor.value = mobileAppearance.muted_color || "#cbd5e1";
+  if (elements.screenMobileAccentColor) elements.screenMobileAccentColor.value = mobileAppearance.accent_color || "#38bdf8";
+  if (elements.screenMobileFontSize) elements.screenMobileFontSize.value = String(mobileAppearance.font_size_px || 16);
+  if (elements.screenMobileCardRadius) elements.screenMobileCardRadius.value = String(mobileAppearance.card_radius_px ?? 12);
+  if (elements.screenMobileCardGap) elements.screenMobileCardGap.value = String(mobileAppearance.card_gap_px ?? 10);
   if (elements.screenEnableFeedback) elements.screenEnableFeedback.checked = Boolean(screen.enable_feedback);
   elements.screenIpNote.value = screen.ip_note;
   elements.screenPollInterval.value = screen.poll_interval_sec;
@@ -2677,9 +2709,28 @@ function bindForm() {
   if (elements.screenMobileMode) {
     elements.screenMobileMode.onchange = () => {
       selectedScreen().mobile_mode = Boolean(elements.screenMobileMode.checked);
+      if (elements.screenMobileStyleSettings) elements.screenMobileStyleSettings.hidden = !selectedScreen().mobile_mode;
       renderPreview();
     };
   }
+  const bindMobileAppearance = (element, key, fallback, numeric = false) => {
+    if (!element) return;
+    element.oninput = () => {
+      const screen = selectedScreen();
+      if (!screen.mobile_appearance || typeof screen.mobile_appearance !== "object") screen.mobile_appearance = {};
+      const raw = numeric ? Number(element.value) : String(element.value || "");
+      screen.mobile_appearance[key] = numeric && !Number.isFinite(raw) ? fallback : raw;
+      renderPreview();
+    };
+  };
+  bindMobileAppearance(elements.screenMobileBackgroundColor, "background_color", "#172554");
+  bindMobileAppearance(elements.screenMobileCardColor, "card_color", "#13234b");
+  bindMobileAppearance(elements.screenMobileTextColor, "text_color", "#f8fafc");
+  bindMobileAppearance(elements.screenMobileMutedColor, "muted_color", "#cbd5e1");
+  bindMobileAppearance(elements.screenMobileAccentColor, "accent_color", "#38bdf8");
+  bindMobileAppearance(elements.screenMobileFontSize, "font_size_px", 16, true);
+  bindMobileAppearance(elements.screenMobileCardRadius, "card_radius_px", 12, true);
+  bindMobileAppearance(elements.screenMobileCardGap, "card_gap_px", 10, true);
   if (elements.screenEnableFeedback) {
     elements.screenEnableFeedback.onchange = () => {
       selectedScreen().enable_feedback = Boolean(elements.screenEnableFeedback.checked);

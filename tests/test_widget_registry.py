@@ -119,6 +119,25 @@ class WidgetRegistryTests(unittest.TestCase):
         )
         self.assertEqual(widget["settings"]["pwa_icon_url"], "")
 
+    def test_booking_manager_sanitizes_public_button_colors(self) -> None:
+        from guardschool.widget_loader import load_all_widgets
+        from guardschool.widget_registry import normalize_widget
+
+        load_all_widgets()
+        widget = normalize_widget(
+            {
+                "id": "booking-test",
+                "type": "booking_manager",
+                "settings": {
+                    "public_action_color": "#ABCDEF",
+                    "public_free_color": "red",
+                },
+            }
+        )
+        self.assertEqual(widget["settings"]["public_action_color"], "#abcdef")
+        self.assertEqual(widget["settings"]["public_free_color"], "#16a34a")
+        self.assertEqual(widget["settings"]["public_booked_color"], "#b91c1c")
+
 
 class CapabilitiesLocalTests(unittest.TestCase):
     def setUp(self) -> None:

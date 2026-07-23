@@ -82,7 +82,15 @@ const EXCLUDE_BY_TYPE = {
     "pwa_icon_url",
   ],
   booking_public: ["pwa_title", "pwa_icon_url"],
-  booking_manager: ["pwa_title", "pwa_icon_url"],
+  booking_manager: [
+    "pwa_title",
+    "pwa_icon_url",
+    "public_action_color",
+    "public_action_text_color",
+    "public_free_color",
+    "public_booked_color",
+    "public_cancel_color",
+  ],
 };
 
 export function schemaExcludeKeysForType(widgetType) {

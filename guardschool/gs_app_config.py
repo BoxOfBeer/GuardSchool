@@ -35,6 +35,73 @@ from .gs_app_config_defaults import (  # noqa: F401
     _valid_iana_timezone,
 )
 
+_MOBILE_APPEARANCE_DEFAULTS: dict[str, str | int] = {
+    "background_color": "#172554",
+    "card_color": "#13234b",
+    "text_color": "#f8fafc",
+    "muted_color": "#cbd5e1",
+    "accent_color": "#38bdf8",
+    "font_size_px": 16,
+    "card_radius_px": 12,
+    "card_gap_px": 10,
+}
+
+
+def _safe_hex_color(value: object, fallback: str) -> str:
+    text = str(value or "").strip().lower()
+    if len(text) == 7 and text.startswith("#") and all(ch in "0123456789abcdef" for ch in text[1:]):
+        return text
+    return fallback
+
+
+def sanitize_mobile_appearance(raw: object) -> dict[str, str | int]:
+    src = raw if isinstance(raw, dict) else {}
+    out: dict[str, str | int] = {}
+    for key in ("background_color", "card_color", "text_color", "muted_color", "accent_color"):
+        out[key] = _safe_hex_color(src.get(key), str(_MOBILE_APPEARANCE_DEFAULTS[key]))
+    for key, minimum, maximum in (
+        ("font_size_px", 12, 30),
+        ("card_radius_px", 0, 40),
+        ("card_gap_px", 0, 40),
+    ):
+        try:
+            value = int(src.get(key, _MOBILE_APPEARANCE_DEFAULTS[key]))
+        except (TypeError, ValueError):
+            value = int(_MOBILE_APPEARANCE_DEFAULTS[key])
+        out[key] = max(minimum, min(maximum, value))
+    return out
+
+
+_BOOKING_PUBLIC_COLOR_KEYS = (
+    "public_action_color",
+    "public_action_text_color",
+    "public_free_color",
+    "public_booked_color",
+    "public_cancel_color",
+)
+
+
+def _sync_booking_public_colors(screens: list[dict[str, Any]]) -> None:
+    """Manager owns public button colors; copy them to every public view of the same module."""
+    palettes: dict[str, dict[str, str]] = {}
+    for screen in screens:
+        for widget in screen.get("widgets") or []:
+            if not isinstance(widget, dict) or widget.get("type") != "booking_manager":
+                continue
+            settings = widget.get("settings") if isinstance(widget.get("settings"), dict) else {}
+            module_id = str(settings.get("module_id") or "booking-main")
+            palettes[module_id] = {key: str(settings.get(key) or "") for key in _BOOKING_PUBLIC_COLOR_KEYS}
+    for screen in screens:
+        for widget in screen.get("widgets") or []:
+            if not isinstance(widget, dict) or widget.get("type") != "booking_public":
+                continue
+            settings = widget.setdefault("settings", {})
+            module_id = str(settings.get("module_id") or "booking-main")
+            palette = palettes.get(module_id)
+            if palette:
+                settings.update(palette)
+
+
 def load_config() -> dict[str, Any]:
     config = read_json(CONFIG_PATH, default_config())
     if not config.get("screens"):
@@ -48,6 +115,9 @@ def load_config() -> dict[str, Any]:
         ensure_default_widgets(screen)
         dedupe_widgets(screen)
         screen.setdefault("selected_classes", ["5", "6", "7", "8"])
+        screen.setdefault("mobile_mode", False)
+        screen["mobile_mode"] = bool(screen.get("mobile_mode", False))
+        screen["mobile_appearance"] = sanitize_mobile_appearance(screen.get("mobile_appearance"))
         screen.setdefault("background_image", "")
         screen.setdefault("background_rotate_enabled", False)
         screen.setdefault("background_rotate_interval_sec", 3600)
@@ -89,6 +159,7 @@ def load_config() -> dict[str, Any]:
         screen["enable_feedback"] = bool(screen.get("enable_feedback", False))
         screen.setdefault("bell_schedule_template", "standard")
         screen.setdefault("weekday_bell_templates", {})
+    _sync_booking_public_colors(config["screens"])
     config["templateSystem"]["version"] = 2
     config["templateSystem"]["grid"] = {"cols": GRID_COLS, "rows": GRID_ROWS}
     config["audio_stream"] = sanitize_audio_stream(config.get("audio_stream"))
@@ -164,6 +235,7 @@ def sanitize_config(config: dict[str, Any]) -> dict[str, Any]:
         screen.setdefault("mobile_mode", False)
         screen.setdefault("mobile_widget_ids", [])
         screen["mobile_mode"] = bool(screen.get("mobile_mode", False))
+        screen["mobile_appearance"] = sanitize_mobile_appearance(screen.get("mobile_appearance"))
         if not isinstance(screen.get("mobile_widget_ids"), list):
             screen["mobile_widget_ids"] = []
         else:
@@ -246,6 +318,7 @@ def sanitize_config(config: dict[str, Any]) -> dict[str, Any]:
         cleaned_screens.append(screen)
 
     config["screens"] = cleaned_screens
+    _sync_booking_public_colors(config["screens"])
     config["audio_stream"] = sanitize_audio_stream(config.get("audio_stream"))
     loc = str(config.get("ui_locale") or "ru").strip().lower()
     config["ui_locale"] = loc if loc in ("ru", "en") else "ru"

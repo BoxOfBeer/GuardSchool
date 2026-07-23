@@ -13,7 +13,7 @@ import {
   bindSchemaValidation,
   renderSchemaSettingsFields,
   schemaExcludeKeysForType,
-} from "./widget-settings-form.js?v=1.02.054";
+} from "./widget-settings-form.js?v=1.02.057";
 
 /** Как на сервере gs_checkin._PLACE_ID_RE — только допустимые id мест. */
 const CHECKIN_PLACE_ID_RE = /^[a-zA-Z0-9_-]{1,64}$/;
@@ -409,6 +409,17 @@ function settingInputs(widget, index) {
         <input type="file" accept="image/*" data-checkin-pwa-icon-upload="${index}" hidden>
       </div>
       <div class="hint">${escapeHtml(t("w.pwaIconHint"))}</div>
+    </div>`);
+  }
+  if (widget.type === "booking_manager") {
+    parts.push(`<div class="widget-schema-fields booking-public-colors">
+      <p class="hint widget-schema-fields-title">Оформление кнопок виджета «Запись»</p>
+      <p class="hint">Применяется к публичному виджету «Запись» с таким же идентификатором модуля.</p>
+      ${widgetInput("Основные кнопки", widget.settings.public_action_color || "#2563eb", `widget:${index}:settings.public_action_color`, "color", "standard-input")}
+      ${widgetInput("Текст на кнопках", widget.settings.public_action_text_color || "#ffffff", `widget:${index}:settings.public_action_text_color`, "color", "standard-input")}
+      ${widgetInput("Свободное время", widget.settings.public_free_color || "#16a34a", `widget:${index}:settings.public_free_color`, "color", "standard-input")}
+      ${widgetInput("Занятое время", widget.settings.public_booked_color || "#b91c1c", `widget:${index}:settings.public_booked_color`, "color", "standard-input")}
+      ${widgetInput("Запрошена отмена", widget.settings.public_cancel_color || "#ca8a04", `widget:${index}:settings.public_cancel_color`, "color", "standard-input")}
     </div>`);
   }
   parts.push(

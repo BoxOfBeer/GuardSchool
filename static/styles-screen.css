@@ -52,24 +52,40 @@ body.screen-body {
 }
 
 /* Mobile screen: no fixed aspect ratio, vertical scroll list. */
-.tv-screen.gs-mobile-screen {
+.tv-screen.gs-mobile-screen,
+.screen-preview.gs-mobile-screen {
   aspect-ratio: auto;
   border-radius: 0;
   overflow: auto;
+  background: var(--gs-mobile-background, #172554);
+  color: var(--gs-mobile-text, #f8fafc);
+  font-size: var(--gs-mobile-font-size, 16px);
 }
 
-.gs-mobile-list {
+.gs-mobile-screen .gs-mobile-list {
   position: relative;
   z-index: 2;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--gs-mobile-card-gap, 10px);
   padding: 12px;
   min-height: 100vh;
 }
 
-.gs-mobile-widget {
+.gs-mobile-screen .gs-mobile-widget {
   min-height: auto;
+  border-radius: var(--gs-mobile-card-radius, 12px);
+  background: var(--gs-mobile-card, #13234b) !important;
+  color: var(--gs-mobile-text, #f8fafc);
+}
+
+.gs-mobile-screen .gs-mobile-widget .bk-muted,
+.gs-mobile-screen .gs-mobile-widget .widget-meta {
+  color: var(--gs-mobile-muted, #cbd5e1);
+}
+
+.gs-mobile-screen .gs-mobile-widget a {
+  color: var(--gs-mobile-accent, #38bdf8);
 }
 
 /* Device settings (floating gear) */

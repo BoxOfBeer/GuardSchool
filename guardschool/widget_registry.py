@@ -411,6 +411,22 @@ def _apply_builtin_type_defaults(widget: dict[str, Any]) -> None:
             piu = ""
         widget["settings"]["pwa_icon_url"] = piu[:512]
         widget["settings"]["pwa_title"] = str(widget["settings"].get("pwa_title") or "").strip()[:64]
+        if wtype == "booking_manager":
+            color_defaults = {
+                "public_action_color": "#2563eb",
+                "public_action_text_color": "#ffffff",
+                "public_free_color": "#16a34a",
+                "public_booked_color": "#b91c1c",
+                "public_cancel_color": "#ca8a04",
+            }
+            for key, fallback in color_defaults.items():
+                value = str(widget["settings"].get(key) or "").strip().lower()
+                valid = (
+                    len(value) == 7
+                    and value.startswith("#")
+                    and all(ch in "0123456789abcdef" for ch in value[1:])
+                )
+                widget["settings"][key] = value if valid else fallback
     widget["settings"].setdefault("backdrop", True)
 
 

@@ -46,6 +46,17 @@ def default_screen(name: str, slug: str) -> dict[str, Any]:
         "orientation": "landscape",  # landscape|portrait
         "poll_interval_sec": 10,
         "enable_feedback": False,
+        "mobile_mode": False,
+        "mobile_appearance": {
+            "background_color": "#172554",
+            "card_color": "#13234b",
+            "text_color": "#f8fafc",
+            "muted_color": "#cbd5e1",
+            "accent_color": "#38bdf8",
+            "font_size_px": 16,
+            "card_radius_px": 12,
+            "card_gap_px": 10,
+        },
         "background_image": "",
         "background_rotate_enabled": False,
         "background_rotate_interval_sec": 3600,

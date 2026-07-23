@@ -92,6 +92,63 @@ class SanitizeConfigTests(unittest.TestCase):
         cfg["pwa"] = {"title": "Приложение", "icon_url": "https://example.test/icon.png"}
         self.assertEqual(sanitize_config(cfg)["pwa"]["icon_url"], "")
 
+    def test_sanitize_mobile_appearance_defaults_and_bounds(self) -> None:
+        cfg = default_config()
+        screen = cfg["screens"][0]
+        screen["mobile_mode"] = True
+        screen["mobile_appearance"] = {
+            "background_color": "not-a-color",
+            "card_color": "#ABCDEF",
+            "font_size_px": 99,
+            "card_radius_px": -5,
+            "card_gap_px": "18",
+        }
+        out = sanitize_config(cfg)["screens"][0]
+        self.assertTrue(out["mobile_mode"])
+        self.assertEqual(out["mobile_appearance"]["background_color"], "#172554")
+        self.assertEqual(out["mobile_appearance"]["card_color"], "#abcdef")
+        self.assertEqual(out["mobile_appearance"]["font_size_px"], 30)
+        self.assertEqual(out["mobile_appearance"]["card_radius_px"], 0)
+        self.assertEqual(out["mobile_appearance"]["card_gap_px"], 18)
+
+    def test_booking_manager_colors_reach_public_widget_on_other_screen(self) -> None:
+        cfg = default_config()
+        manager = {
+            "id": "manager",
+            "type": "booking_manager",
+            "enabled": True,
+            "x": 0,
+            "y": 0,
+            "w": 12,
+            "h": 12,
+            "settings": {"module_id": "shared", "public_free_color": "#123456"},
+        }
+        public = {
+            "id": "public",
+            "type": "booking_public",
+            "enabled": True,
+            "x": 0,
+            "y": 0,
+            "w": 12,
+            "h": 12,
+            "settings": {"module_id": "shared"},
+        }
+        cfg["screens"][0]["widgets"].append(manager)
+        second = default_config()["screens"][0]
+        second["id"] = "second"
+        second["slug"] = "mobile"
+        second["widgets"].append(public)
+        cfg["screens"].append(second)
+        out = sanitize_config(cfg)
+        public_out = next(
+            widget
+            for screen in out["screens"]
+            for widget in screen["widgets"]
+            if widget["id"] == "public"
+        )
+        self.assertEqual(public_out["settings"]["public_free_color"], "#123456")
+        self.assertEqual(public_out["settings"]["public_booked_color"], "#b91c1c")
+
     def test_sanitize_carousel_drops_orphan_child_ids(self) -> None:
         cfg = default_config()
         screen = cfg["screens"][0]

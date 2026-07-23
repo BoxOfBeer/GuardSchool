@@ -130,7 +130,18 @@ _SCHEMAS: dict[str, dict[str, Any]] = {
         },
     ),
     "booking_public": _obj({"module_id": {"type": "string"}, "heading": {"type": "string"}, "backdrop": {"type": "boolean"}}),
-    "booking_manager": _obj({"module_id": {"type": "string"}, "heading": {"type": "string"}, "backdrop": {"type": "boolean"}}),
+    "booking_manager": _obj(
+        {
+            "module_id": {"type": "string"},
+            "heading": {"type": "string"},
+            "backdrop": {"type": "boolean"},
+            "public_action_color": {"type": "string"},
+            "public_action_text_color": {"type": "string"},
+            "public_free_color": {"type": "string"},
+            "public_booked_color": {"type": "string"},
+            "public_cancel_color": {"type": "string"},
+        }
+    ),
 }
 
 

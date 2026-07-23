@@ -1016,6 +1016,49 @@ button {
   align-items: stretch;
 }
 
+.mobile-style-settings {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(120px, 1fr));
+  gap: 10px 12px;
+  margin: 4px 0 2px;
+  padding: 12px;
+  border: 1px solid rgba(56, 189, 248, 0.38);
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.32);
+}
+
+.mobile-style-settings[hidden] {
+  display: none;
+}
+
+.mobile-style-settings legend {
+  padding: 0 7px;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.mobile-style-settings label {
+  display: grid;
+  gap: 5px;
+}
+
+.mobile-style-settings input[type="color"] {
+  width: 100%;
+  min-height: 36px;
+}
+
+.mobile-style-settings-hint {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+@media (max-width: 560px) {
+  .mobile-style-settings {
+    grid-template-columns: 1fr;
+  }
+}
+
 .editor-card-screen-main .screen-main-rows > .compact-field,
 .editor-card-screen-main .screen-main-rows > .schedule-selector-field {
   width: 100%;
