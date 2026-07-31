@@ -17,7 +17,37 @@
     </label>
     <button class="primary-btn" type="submit">Войти</button>
     <p id="login-message" class="message"></p>
+    <p id="login-ecosystem" class="login-ecosystem-note" hidden></p>
   </form>
   <script src="/static/auth.js?v=20260401-1"></script>
+  <script type="module">
+    const el = document.getElementById("login-ecosystem");
+    if (!el) {
+      /* нет блока в разметке */
+    } else {
+    const fallback =
+      "GuardSchool — часть экосистемы GuardDoc: несколько приложений (включая GuardNotes), общий портал доступа.";
+    const esc = (s) =>
+      String(s ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/"/g, "&quot;");
+    try {
+      const r = await fetch("/api/portal/cms", { credentials: "same-origin" });
+      if (!r.ok) throw new Error("cms");
+      const cms = await r.json();
+      const url = String(cms.meta?.portal_public_url || "").trim();
+      if (url) {
+        el.innerHTML = `${esc(fallback.replace(/\.$/, ""))} <a href="${esc(url)}">Портал экосистемы</a>.`;
+      } else {
+        el.textContent = fallback;
+      }
+      el.hidden = false;
+    } catch (_) {
+      el.textContent = fallback;
+      el.hidden = false;
+    }
+    }
+  </script>
 </body>
 </html>

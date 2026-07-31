@@ -1,45 +1,107 @@
+/* Загружается как модульный dependency до остальных импортов — window.GuardSchoolScreen всегда к моменту init. */
+import "./widgets/plugins-manifest.js";
+import "./widgets/runtime.js";
+import "./widgets/carousel-runtime.js";
+import "./tv-core-utils.js?v=1.02.044";
+import "./tv-schedule-table.js?v=1.02.044";
+import "./tv-screen-shell.js?v=1.02.060";
+import "./screen_widgets.js?v=1.02.044";
+
+const TV_WIDGET_PLUGIN_SCRIPTS = window.GUARD_SCHOOL_TV_WIDGET_PLUGINS || [];
+await Promise.all(TV_WIDGET_PLUGIN_SCRIPTS.map((f) => import(`./widgets/${f}`)));
+import {
+  setPreviewDeps,
+  fetchPreviewPayloadOnce,
+  renderPreview,
+  startDrag,
+  handlePointerMove,
+  stopDrag,
+} from "./admin/preview.js";
+import {
+  setAudioStreamDeps,
+  ensureAudioStreamConfig,
+  refreshBellSoundsForStream,
+  refreshPcPlayerFiles,
+  renderPcPlayerFileList,
+  renderBreakMusicPlayback,
+  updateStreamStatusBar,
+  syncAudioStreamFormFromState,
+  readAudioStreamFormIntoState,
+  bindAudioStreamFormOnce,
+  bindPcPlayerOnce,
+  bindSettingsSoundTestsOnce,
+} from "./admin/audio-stream.js";
+import {
+  enterStatsPanel,
+  leaveStatsPanel,
+  refreshFeedbackAdminPanel,
+  refreshFeedbackUnreadBadge,
+  bindFeedbackAdminPanelOnce,
+} from "./admin/stats.js";
+import {
+  setDataImportDeps,
+  uploadBackground,
+  uploadScheduleDated,
+  uploadFullSchedule,
+  uploadScheduleSample,
+  uploadHolidays,
+  uploadAnnouncements,
+  uploadMarquee,
+  exportWeeklyScheduleZip,
+  importWeeklyScheduleZip,
+  downloadWeeklyScheduleTemplateXlsx,
+  downloadImportExcelSample,
+  importBundle,
+} from "./admin/data-import.js";
+import {
+  setBellDeps,
+  renderBellTemplateOptions,
+  renderBellEditor,
+  addBellTemplate,
+  deleteBellTemplate,
+  addBellRow,
+  flushBellEditorFromDom,
+  saveBellEditorToState,
+} from "./admin/bells.js";
+import {
+  setWidgetDeps,
+  closeWidgetModal,
+  syncWidgetModal,
+  bindWidgetModalOnce,
+  renderWidgets,
+} from "./admin/widgets.js?v=1.02.060";
+import { renderHistory } from "./admin/history.js";
 import { state, elements, GRID } from "./admin/state.js";
 import { t, tf, getSectionTabs } from "./admin/i18n-helpers.js";
-import {
-  api,
-  apiDetailMessage,
-  mergeFetchOptions,
-  downloadFile,
-  downloadBinaryFile,
-} from "./admin/api-client.js";
+import { api, downloadFile } from "./admin/api-client.js";
 import { populateAdminTimezoneSelect } from "./admin/timezone.js";
 import { escapeHtml, escapeHtmlAttr } from "./admin/escape-html.js";
+import { MAX_WIDGET_IMAGE_UPLOAD_BYTES } from "./admin/upload-limits.js";
+import {
+  applyWidgetRegistry,
+  getPaletteTypesOrder,
+  getSingletonIds,
+  getWidgetTypeKeys,
+  isWidgetAvailableInPalette,
+} from "./admin/widget-registry.js";
+import {
+  applyCapabilitiesDiagnosticsVisibility,
+  applyCapabilityGates,
+  renderCapabilitiesOverview,
+  renderWidgetRegistryIssues,
+} from "./admin/capabilities-ui.js";
 
-const WIDGET_TYPE_KEYS = new Set([
-  "date",
-  "time",
-  "text",
-  "bell_status",
-  "bell_countdown",
-  "schedule",
-  "carousel",
-  "holidays",
-  "announcements",
-  "marquee",
-  "emergency",
-  "image",
-]);
+let feedbackUnreadBadgeTimer = null;
 
-/** Порядок чекбоксов «показывать в списке виджетов» в настройках программы. */
-const PALETTE_TYPES_ORDER = [
-  "date",
-  "time",
-  "text",
-  "bell_status",
-  "bell_countdown",
-  "schedule",
-  "carousel",
-  "holidays",
-  "announcements",
-  "marquee",
-  "emergency",
-  "image",
-];
+function scheduleFeedbackUnreadBadgeRefresh() {
+  const st = state.meta?.capabilities?.tenant_feedback?.status;
+  if (st && st !== "available") return;
+  refreshFeedbackUnreadBadge().catch(() => {});
+  if (feedbackUnreadBadgeTimer) window.clearInterval(feedbackUnreadBadgeTimer);
+  feedbackUnreadBadgeTimer = window.setInterval(() => {
+    refreshFeedbackUnreadBadge().catch(() => {});
+  }, 60000);
+}
 
 function ensureAdminPaletteHidden() {
   if (!state.config) return;
@@ -58,14 +120,88 @@ function isWidgetTypeHiddenInAdminPalette(wtype) {
 function setWidgetTypeHiddenInPalette(wtype, hidden) {
   ensureAdminPaletteHidden();
   const typ = String(wtype || "");
-  if (!WIDGET_TYPE_KEYS.has(typ)) return;
+  if (!getWidgetTypeKeys().has(typ)) return;
   let arr = [...state.config.admin_palette_hidden_types];
   const idx = arr.indexOf(typ);
   if (hidden && idx < 0) arr.push(typ);
   if (!hidden && idx >= 0) arr.splice(idx, 1);
-  arr = arr.filter((x) => WIDGET_TYPE_KEYS.has(x));
+  arr = arr.filter((x) => getWidgetTypeKeys().has(x));
   state.config.admin_palette_hidden_types = arr;
+  ensurePaletteWidgetInstancesOnSelectedScreen();
   renderWidgets();
+}
+
+function ensureGeneralPwaSettings() {
+  if (!state.config) return { title: "", icon_url: "" };
+  if (!state.config.pwa || typeof state.config.pwa !== "object" || Array.isArray(state.config.pwa)) {
+    state.config.pwa = { title: "", icon_url: "" };
+  }
+  state.config.pwa.title = String(state.config.pwa.title || "");
+  state.config.pwa.icon_url = String(state.config.pwa.icon_url || "");
+  return state.config.pwa;
+}
+
+function pwaFieldError(title, iconUrl) {
+  if (String(title || "").trim().length > 64) return t("programSettings.pwaErrorTitleLength");
+  const icon = String(iconUrl || "").trim();
+  if (icon && !icon.startsWith("/uploads/")) return t("programSettings.pwaErrorIconPath");
+  return "";
+}
+
+function updateGeneralPwaValidation() {
+  const out = elements.pwaDefaultValidation;
+  if (!out || !state.config) return;
+  const pwa = ensureGeneralPwaSettings();
+  const error = pwaFieldError(pwa.title, pwa.icon_url);
+  out.classList.toggle("is-valid", !error && Boolean(pwa.title.trim() && pwa.icon_url.trim()));
+  out.classList.toggle("is-warning", !error && !(pwa.title.trim() && pwa.icon_url.trim()));
+  if (error) out.textContent = error;
+  else if (pwa.title.trim() && pwa.icon_url.trim()) out.textContent = t("programSettings.pwaValid");
+  else out.textContent = t("programSettings.pwaTechnicalFallback");
+  elements.pwaDefaultTitle?.classList.toggle("pwa-settings-invalid", Boolean(pwaFieldError(pwa.title, "")));
+  elements.pwaDefaultIconUrl?.classList.toggle("pwa-settings-invalid", Boolean(pwaFieldError("", pwa.icon_url)));
+}
+
+function validatePwaSettingsBeforeSave() {
+  const general = ensureGeneralPwaSettings();
+  let error = pwaFieldError(general.title, general.icon_url);
+  let focusTarget = null;
+  if (error) {
+    focusTarget = error === t("programSettings.pwaErrorIconPath") ? elements.pwaDefaultIconUrl : elements.pwaDefaultTitle;
+  }
+  for (const screenCfg of state.config?.screens || []) {
+    for (const widget of screenCfg?.widgets || []) {
+      if (!["checkin_submit", "checkin_monitor", "booking_public", "booking_manager"].includes(String(widget?.type || ""))) continue;
+      const settings = widget?.settings && typeof widget.settings === "object" ? widget.settings : {};
+      const widgetError = pwaFieldError(settings.pwa_title, settings.pwa_icon_url);
+      if (!widgetError) continue;
+      const screenName = String(screenCfg?.name || screenCfg?.slug || "");
+      const widgetName = String(widget?.title || settings.heading || widget.type || "");
+      error = `${screenName} / ${widgetName}: ${widgetError}`;
+      break;
+    }
+    if (error) break;
+  }
+  updateGeneralPwaValidation();
+  if (!error) return true;
+  alert(`${t("programSettings.pwaValidationFailed")}\n${error}`);
+  focusTarget?.focus();
+  return false;
+}
+
+async function uploadGeneralPwaIcon(file) {
+  if (!file) return;
+  if (file.size > MAX_WIDGET_IMAGE_UPLOAD_BYTES) {
+    alert(t("w.widgetImageTooLarge"));
+    return;
+  }
+  const formData = new FormData();
+  formData.append("file", file);
+  const payload = await api("/api/admin/upload-widget-image", { method: "POST", body: formData });
+  const pwa = ensureGeneralPwaSettings();
+  pwa.icon_url = String(payload.path || "");
+  if (elements.pwaDefaultIconUrl) elements.pwaDefaultIconUrl.value = pwa.icon_url;
+  updateGeneralPwaValidation();
 }
 
 function syncProgramSettingsFieldsFromState() {
@@ -78,61 +214,85 @@ function syncProgramSettingsFieldsFromState() {
     const o = Number(state.config.clock_offset_minutes);
     elements.adminClockOffset.value = String(Number.isFinite(o) ? o : 0);
   }
-}
-
-function emergencyWidget() {
-  const screen = selectedScreen();
-  const w = screen?.widgets?.find((x) => x.type === "emergency");
-  return w || null;
-}
-
-function syncEmergencyModeCheckbox() {
-  const el = document.getElementById("admin-emergency-mode");
-  if (!el) return;
-  const w = emergencyWidget();
-  if (!w) {
-    el.disabled = true;
-    el.checked = false;
-    return;
+  const pwa = ensureGeneralPwaSettings();
+  if (elements.pwaDefaultTitle) elements.pwaDefaultTitle.value = pwa.title;
+  if (elements.pwaDefaultIconUrl) elements.pwaDefaultIconUrl.value = pwa.icon_url;
+  updateGeneralPwaValidation();
+  if (elements.cloudBaseUrl) elements.cloudBaseUrl.value = String(state.config.cloud_base_url || "");
+  if (elements.cloudSyncInterval) {
+    const ci = Number(state.config.cloud_sync_interval_minutes);
+    elements.cloudSyncInterval.value = String(Number.isFinite(ci) ? ci : 5);
   }
-  el.disabled = false;
-  el.checked = !!w.enabled;
+  if (elements.cloudSyncEnabled) elements.cloudSyncEnabled.checked = state.config.cloud_sync_enabled !== false;
+  if (elements.cloudSyncToken) elements.cloudSyncToken.value = String(state.config.cloud_sync_token || "");
+  if (elements.screenPrimaryBase) elements.screenPrimaryBase.value = String(state.config.screen_primary_base_url || "");
+  if (elements.screenFallbackBase) elements.screenFallbackBase.value = String(state.config.screen_fallback_base_url || "");
+  if (elements.screenFallbackEnabled) elements.screenFallbackEnabled.checked = Boolean(state.config.screen_fallback_enabled);
+  if (elements.screenPollTimeout) {
+    const pt = Number(state.config.screen_poll_timeout_sec);
+    elements.screenPollTimeout.value = String(Number.isFinite(pt) ? pt : 5);
+  }
+  if (elements.rssRefreshMinutes) {
+    const rm = Number(state.config.rss_refresh_minutes);
+    elements.rssRefreshMinutes.value = String(Number.isFinite(rm) ? rm : 45);
+  }
+  renderRssSourcesEditor();
 }
 
-function bindEmergencyModeOnce() {
-  if (bindEmergencyModeOnce._done) return;
-  bindEmergencyModeOnce._done = true;
-  const el = document.getElementById("admin-emergency-mode");
-  if (!el) return;
-  el.addEventListener("change", () => {
-    const w = emergencyWidget();
-    if (!w) return;
-    w.enabled = !!el.checked;
-    render();
+function renderRssSourcesEditor() {
+  const wrap = elements.rssSourcesList;
+  if (!wrap || !state.config) return;
+  if (!Array.isArray(state.config.rss_sources)) state.config.rss_sources = [];
+  wrap.innerHTML = state.config.rss_sources
+    .map((src, index) => {
+      const name = escapeHtmlAttr(String(src?.name || ""));
+      const rssUrl = escapeHtmlAttr(String(src?.rss_url || ""));
+      const enabled = src?.enabled !== false;
+      return `<div class="settings-row rss-source-row" data-rss-index="${index}">
+        <input type="text" class="standard-input" data-rss-key="name" value="${name}" placeholder="Название">
+        <input type="url" class="standard-input wide-input" data-rss-key="rss_url" value="${rssUrl}" placeholder="https://example.com/rss.xml">
+        <label class="toggle-label"><input type="checkbox" data-rss-key="enabled" ${enabled ? "checked" : ""}><span>Включено</span></label>
+        <button type="button" class="secondary-btn compact-btn" data-rss-remove="${index}">${escapeHtml(t("programSettings.rssRemove"))}</button>
+      </div>`;
+    })
+    .join("");
+  wrap.querySelectorAll("[data-rss-remove]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const i = Number(btn.getAttribute("data-rss-remove"));
+      if (!Number.isFinite(i)) return;
+      state.config.rss_sources.splice(i, 1);
+      renderRssSourcesEditor();
+    });
   });
-}
-
-function setProgramSettingsTab(tab) {
-  const root = elements.programSettingsPanel;
-  if (!root) return;
-  const allowed = new Set(["general", "tv", "changelog"]);
-  const t = allowed.has(tab) ? tab : "general";
-  root.querySelectorAll("[data-ps-tab]").forEach((btn) => {
-    const on = btn.getAttribute("data-ps-tab") === t;
-    btn.classList.toggle("active", on);
-    btn.setAttribute("aria-selected", on ? "true" : "false");
+  wrap.querySelectorAll(".rss-source-row").forEach((row) => {
+    const i = Number(row.getAttribute("data-rss-index"));
+    row.querySelectorAll("[data-rss-key]").forEach((input) => {
+      input.addEventListener("input", () => {
+        const key = input.getAttribute("data-rss-key");
+        if (!key) return;
+        const src = state.config.rss_sources[i] || { name: "", rss_url: "", enabled: true };
+        if (key === "enabled") src.enabled = Boolean(input.checked);
+        else src[key] = String(input.value || "").trim();
+        state.config.rss_sources[i] = src;
+      });
+      input.addEventListener("change", () => input.dispatchEvent(new Event("input")));
+    });
   });
-  root.querySelectorAll("[data-ps-pane]").forEach((pane) => {
-    pane.hidden = pane.getAttribute("data-ps-pane") !== t;
-  });
-  if (t === "changelog") renderHistory();
 }
 
 function renderProgramPaletteCheckboxes() {
   const wrap = elements.programSettingsPaletteWrap;
   if (!wrap || !state.config) return;
   ensureAdminPaletteHidden();
-  wrap.innerHTML = PALETTE_TYPES_ORDER.filter((typ) => WIDGET_TYPE_KEYS.has(typ))
+  const customHint =
+    state.meta?.deployment_mode === "local"
+      ? `<p class="hint program-settings-custom-widgets-hint">Сторонние виджеты не входят в официальный набор GuardSchool. Они могут быть полезны, но администрация проекта не гарантирует их работу, безопасность и совместимость с будущими версиями. Каталог: <code>custom_widgets/</code> или <code>GUARDSCHOOL_CUSTOM_WIDGETS_DIR</code>.</p>`
+      : "";
+  const caps = state.meta?.capabilities || {};
+  wrap.innerHTML =
+    customHint +
+    getPaletteTypesOrder()
+      .filter((typ) => getWidgetTypeKeys().has(typ) && isWidgetAvailableInPalette(typ, caps))
     .map((typ) => {
       const id = `palette-show-${typ}`;
       const checked = !isWidgetTypeHiddenInAdminPalette(typ);
@@ -150,22 +310,243 @@ function renderProgramPaletteCheckboxes() {
   });
 }
 
-function openProgramSettingsModal() {
-  if (!elements.programSettingsPanel) return;
-  closeWidgetModal();
-  state.programSettingsPanelActive = true;
-  state.audioStreamPanelActive = false;
+async function refreshAdminFooterStats() {
+  const elToday = document.getElementById("admin-footer-line-today");
+  const elMonth = document.getElementById("admin-footer-line-month");
+  const elTotal = document.getElementById("admin-footer-line-total");
+  if (!elToday || !elMonth || !elTotal) return;
+  if (state.meta?.demo_session) {
+    elToday.innerHTML = "";
+    elMonth.textContent = t("admin.footerDemo");
+    elTotal.innerHTML = "";
+    return;
+  }
+  try {
+    const data = await api("/api/admin/screen-watch");
+    const visits = (data && data.visits) || {};
+    const map =
+      visits.today_unique_by_device && typeof visits.today_unique_by_device === "object"
+        ? visits.today_unique_by_device
+        : {};
+    const todayN = Object.keys(map).reduce((acc, k) => acc + (Number(map[k]) || 0), 0);
+    const monthUsers = Number.isFinite(Number(visits.month_unique_users)) ? Number(visits.month_unique_users) : 0;
+    const totalConn = Number.isFinite(Number(visits.total_connections)) ? Number(visits.total_connections) : 0;
+    elToday.innerHTML = tf("admin.footerToday", { n: String(todayN) });
+    elMonth.innerHTML = tf("stats.monthUnique", { n: String(monthUsers) });
+    elTotal.innerHTML = tf("stats.totalConnections", { n: String(totalConn) });
+  } catch (e) {
+    elToday.innerHTML = "";
+    elMonth.textContent = tf("admin.footerError", { msg: String(e.message || e) });
+    elTotal.innerHTML = "";
+  }
+}
+
+async function refreshSyncStatusLine() {
+  const el = elements.syncStatusLine;
+  if (!el) return;
+  try {
+    const st = await api("/api/admin/sync-status");
+    if (st.saas_no_file_sync) {
+      const rev = st.data_revision || "—";
+      el.textContent = `Синхронизация: в облачном режиме файловая выгрузка не используется | ревизия данных: ${rev}`;
+      return;
+    }
+    const ss = st.sync_state || {};
+    const rev = st.data_revision || "—";
+    let msg = "";
+    if (ss.last_error) {
+      msg = `ошибка: ${String(ss.last_error).slice(0, 200)}`;
+    } else if (ss.last_ok_at) {
+      const d = new Date(Number(ss.last_ok_at) * 1000);
+      msg = `OK, ${d.toLocaleString()}`;
+    } else {
+      msg = "ещё не было успешной синхронизации";
+    }
+    el.textContent = `Синхронизация: ${msg} | ревизия данных: ${rev}`;
+  } catch (e) {
+    el.textContent = `Статус: ${e.message || String(e)}`;
+  }
+}
+
+let _tvLastCode = "";
+
+function renderTvLinks(code) {
+  const wrap = elements.tvLinksWrap;
+  if (!wrap) return;
+  const c = String(code || "").trim();
+  if (!state.config || !Array.isArray(state.config.screens)) {
+    wrap.innerHTML = "";
+    return;
+  }
+  const items = (state.config.screens || []).filter((s) => s && s.slug && s.is_active !== false);
+  if (!c) {
+    wrap.innerHTML = '<div class="hint">Ссылки появятся после генерации кода (кнопка «Сгенерировать код»).</div>';
+    return;
+  }
+  const base = window.location.origin.replace(/\/$/, "");
+  const links = items
+    .map((s) => {
+      const sl = String(s.slug || "").trim();
+      const name = String(s.name || sl).trim();
+      const url = `${base}/t/${encodeURIComponent(c)}/${encodeURIComponent(sl)}`;
+      return `<div style="margin: 6px 0"><div style="font-weight:700">${escapeHtml(name)}</div><a href="${escapeHtmlAttr(
+        url
+      )}" target="_blank" rel="noopener">${escapeHtml(url)}</a></div>`;
+    })
+    .join("");
+  wrap.innerHTML = links || '<div class="hint">Нет активных экранов.</div>';
+}
+
+async function refreshTvAccessUi() {
+  const head = elements.tvAccessHead;
+  const wrap = elements.tvAccessWrap;
+  const nonSaas = elements.tvNonSaasInfo;
+  const saasControls = elements.tvSaasControls;
+  if (!head || !wrap) return;
+  const saas = state.meta?.deployment_mode === "saas";
+  if (!saas) {
+    if (nonSaas) nonSaas.hidden = false;
+    if (saasControls) saasControls.hidden = true;
+    head.hidden = true;
+    wrap.hidden = true;
+    return;
+  }
+  if (nonSaas) nonSaas.hidden = true;
+  if (saasControls) saasControls.hidden = false;
+  head.hidden = false;
+  wrap.hidden = false;
+  if (elements.tvCodeOut) elements.tvCodeOut.textContent = "";
+  try {
+    const st = await api("/api/admin/tv-access");
+    const configured = Boolean(st.configured);
+    const code = String(st.code || "").trim();
+    const tslug = String(st.tenant_slug || "").trim();
+    state.tvPinBypassEnv = Boolean(st.pin_bypass_from_env);
+    if (code) _tvLastCode = code;
+    if (elements.tvPinBypassChk) {
+      elements.tvPinBypassChk.setAttribute("data-loading", "1");
+      elements.tvPinBypassChk.checked = Boolean(
+        st.pin_bypass_from_db || st.pin_bypass_from_config
+      );
+      elements.tvPinBypassChk.disabled = Boolean(st.pin_bypass_from_env);
+      elements.tvPinBypassChk.removeAttribute("data-loading");
+    }
+    if (elements.tvCodeOut) {
+      const head = tslug ? `${tf("admin.tv.tenantHead", { slug: tslug })}\n\n` : "";
+      const envHint = state.tvPinBypassEnv
+        ? "\n\nНа сервере задан GUARDSCHOOL_TV_PAIR_BYPASS_PIN — обход PIN включён в окружении; чекбокс ниже заблокирован.\n"
+        : "";
+      elements.tvCodeOut.textContent =
+        head +
+        envHint +
+        (code
+          ? tf("admin.tv.connectCodeActive", { code })
+          : configured
+            ? t("admin.tv.connectCodeHidden")
+            : t("admin.tv.connectCodeMissing"));
+    }
+  } catch (e) {
+    if (elements.tvCodeOut) elements.tvCodeOut.textContent = `Ошибка: ${e.message || String(e)}`;
+  }
+  renderTvLinks(_tvLastCode);
+}
+
+function getStoredProgramSettingsTab() {
+  try {
+    const t = sessionStorage.getItem(GS_ADMIN_PROGRAM_SETTINGS_TAB);
+    if (
+      t === "general" ||
+      t === "school_news" ||
+      t === "tv" ||
+      t === "feedback" ||
+      t === "changelog" ||
+      t === "emergency"
+    )
+      return t;
+  } catch (_) {}
+  return "general";
+}
+
+async function refreshProgramHistoryFromApi() {
+  try {
+    const hist = await api("/api/admin/history");
+    state.history = hist.history || [];
+    state.appVersion = hist.app_version || state.appVersion;
+  } catch (_) {}
+  renderHistory();
+}
+
+function setProgramSettingsTab(tab) {
+  const panel = elements.programSettingsPanel;
+  if (!panel) return;
+  try {
+    sessionStorage.setItem(GS_ADMIN_PROGRAM_SETTINGS_TAB, tab);
+  } catch (_) {}
+  panel.querySelectorAll("[data-ps-pane]").forEach((pane) => {
+    pane.hidden = pane.getAttribute("data-ps-pane") !== tab;
+  });
+  if (tab === "changelog") refreshProgramHistoryFromApi();
+  if (tab === "emergency") renderEmergencyTemplatesAdmin();
+  if (tab === "feedback") {
+    bindFeedbackAdminPanelOnce();
+    refreshFeedbackAdminPanel();
+  }
+  if (tab === "school_news") renderSchoolNewsList();
+  if (tab === "tv") refreshTvAccessUi().catch(() => {});
+}
+
+function closeAdminSettingsSubmenu() {
+  /* Подразделы настроек всегда видны в сайдбаре — закрывать нечего. */
+}
+
+/** Синхронизация DOM панели настроек (после restore сессии или при открытии). */
+function hydrateProgramSettingsPanelIfOpen() {
+  if (!state.programSettingsPanelActive || !elements.programSettingsPanel) return;
+  setProgramSettingsTab(getStoredProgramSettingsTab());
   syncProgramSettingsFieldsFromState();
   renderProgramPaletteCheckboxes();
-  setProgramSettingsTab("general");
+  if (state.meta?.deployment_mode !== "saas") {
+    applyCapabilityGates(state.meta?.capabilities, {
+      cloudBaseUrl: elements.cloudBaseUrl,
+      cloudSyncInterval: elements.cloudSyncInterval,
+      cloudSyncEnabled: elements.cloudSyncEnabled,
+      cloudSyncToken: elements.cloudSyncToken,
+      syncNowBtn: elements.syncNowBtn,
+      screenFallbackBase: elements.screenFallbackBase,
+      screenFallbackEnabled: elements.screenFallbackEnabled,
+    });
+  }
+  applyCapabilitiesDiagnosticsVisibility(state.meta);
+  renderCapabilitiesOverview(state.meta?.capabilities, elements.capabilitiesOverview, state.meta);
+  renderWidgetRegistryIssues(state.meta?.widget_registry, elements.widgetRegistryIssues, state.meta);
+  refreshSyncStatusLine().catch(() => {});
+  refreshTvAccessUi().catch(() => {});
   try {
     GuardSchoolI18n.applyDom(elements.programSettingsPanel);
   } catch (_) {}
+}
+
+/** @param {string} [initialTab] — вкладка панели настроек: general | tv | emergency | feedback | changelog */
+function openProgramSettingsModal(initialTab) {
+  if (!elements.programSettingsPanel) return;
+  closeWidgetModal();
+  closeAdminSettingsSubmenu();
+  state.programSettingsPanelActive = true;
+  state.audioStreamPanelActive = false;
+  state.statsPanelActive = false;
+  leaveStatsPanel();
+  if (initialTab && typeof initialTab === "string") {
+    try {
+      sessionStorage.setItem(GS_ADMIN_PROGRAM_SETTINGS_TAB, initialTab);
+    } catch (_) {}
+  }
+  hydrateProgramSettingsPanelIfOpen();
   render();
 }
 
 function closeProgramSettingsModal() {
   state.programSettingsPanelActive = false;
+  closeAdminSettingsSubmenu();
   render();
 }
 
@@ -174,39 +555,95 @@ function bindProgramSettingsModalOnce() {
   bindProgramSettingsModalOnce._done = true;
   elements.programSettingsOpenBtn?.addEventListener("click", (e) => {
     e.preventDefault();
-    if (state.programSettingsPanelActive) closeProgramSettingsModal();
-    else openProgramSettingsModal();
+    e.stopPropagation();
+    openProgramSettingsModal("general");
   });
-  document.addEventListener("click", (e) => {
-    if (e.target.closest("[data-close-program-settings]")) {
-      e.preventDefault();
-      closeProgramSettingsModal();
+  document.getElementById("admin-settings-submenu")?.addEventListener("click", (e) => {
+    const btn = e.target && e.target.closest ? e.target.closest("[data-admin-submenu]") : null;
+    if (!btn) return;
+    e.preventDefault();
+    const kind = btn.getAttribute("data-admin-submenu");
+    closeAdminSettingsSubmenu();
+    if (kind === "program") {
+      const tab = btn.getAttribute("data-ps-tab") || "general";
+      openProgramSettingsModal(tab);
+      return;
+    }
+    if (kind === "audio") {
+      closeWidgetModal();
+      state.programSettingsPanelActive = false;
+      state.statsPanelActive = false;
+      state.audioStreamPanelActive = true;
+      render();
+      return;
+    }
+    if (kind === "stats") {
+      if (state.meta?.demo_session) return;
+      closeWidgetModal();
+      state.programSettingsPanelActive = false;
+      state.audioStreamPanelActive = false;
+      state.statsPanelActive = true;
+      render();
     }
   });
-  elements.programSettingsPanel?.addEventListener("click", (e) => {
-    const b = e.target.closest("[data-ps-tab]");
-    if (!b || !elements.programSettingsPanel?.contains(b)) return;
-    e.preventDefault();
-    const t = b.getAttribute("data-ps-tab");
-    if (t) setProgramSettingsTab(t);
+  elements.tvRotateCodeBtn?.addEventListener("click", async () => {
+    try {
+      const r = await api("/api/admin/tv-access/rotate-code", { method: "POST" });
+      const code = String(r.code || "").trim();
+      const ip = String(r.initial_pin || "").trim();
+      _tvLastCode = code;
+      if (elements.tvCodeOut) {
+        const pinLine = ip ? `\n\n${tf("admin.tv.pinOnce", { pin: ip })}\n` : "";
+        const hint = r.pin_hint ? `\n${String(r.pin_hint)}` : "";
+        const ts = String(r.tenant_slug || "").trim();
+        const head = ts ? `${tf("admin.tv.tenantHead", { slug: ts })}\n\n` : "";
+        elements.tvCodeOut.textContent =
+          `${head}${tf("admin.tv.connectCodeRotated", { code })}${pinLine}${hint}`;
+      }
+      renderTvLinks(code);
+    } catch (e) {
+      alert(e.message || String(e));
+    }
   });
-}
 
-function widgetDisplayTitle(widget) {
-  if (!widget) return "";
-  const typ = widget.type;
-  if (typ === "carousel") {
-    const raw = String(widget.title || "").trim();
-    if (raw && !/^Карусель(\s|$)/.test(raw) && !/^Carousel(\s|$)/i.test(raw)) return raw;
-    const m = raw.match(/^(?:Карусель|Carousel)\s*(\d+)\s*$/i);
-    if (m) return tf("carousel.nameN", { n: Number(m[1]) });
-    return t("widget.type.carousel");
-  }
-  if (typ && WIDGET_TYPE_KEYS.has(typ)) {
-    const tr = t(`widget.type.${typ}`);
-    if (tr !== `widget.type.${typ}`) return tr;
-  }
-  return String(widget.title || typ || "");
+  elements.tvSetPinBtn?.addEventListener("click", async () => {
+    const pin = String(elements.tvPinInput?.value || "").trim();
+    if (!/^[0-9]{4,12}$/.test(pin)) {
+      alert("PIN должен быть 4–12 цифр.");
+      return;
+    }
+    try {
+      await api("/api/admin/tv-access/set-pin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pin }),
+      });
+      alert("PIN сохранён.");
+    } catch (e) {
+      alert(e.message || String(e));
+    }
+  });
+
+  elements.tvPinBypassChk?.addEventListener("change", async () => {
+    const el = elements.tvPinBypassChk;
+    if (!el || el.getAttribute("data-loading")) return;
+    if (state.tvPinBypassEnv) {
+      el.checked = !el.checked;
+      alert("Отключите GUARDSCHOOL_TV_PAIR_BYPASS_PIN на сервере — сейчас обход задаётся только переменной окружения.");
+      return;
+    }
+    const want = Boolean(el.checked);
+    try {
+      await api("/api/admin/tv-access/pin-bypass", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: want }),
+      });
+    } catch (e) {
+      el.checked = !want;
+      alert(e.message || String(e));
+    }
+  });
 }
 
 function getWeekdayOptions() {
@@ -221,8 +658,13 @@ function getCarouselAnimations() {
   return [
     { id: "slide", label: t("carousel.slide") },
     { id: "slideUp", label: t("carousel.slideUp") },
+    { id: "slideDown", label: t("carousel.slideDown") },
+    { id: "slideFromLeft", label: t("carousel.slideFromLeft") },
     { id: "fade", label: t("carousel.fade") },
     { id: "zoom", label: t("carousel.zoom") },
+    { id: "blurSoft", label: t("carousel.blurSoft") },
+    { id: "flipLight", label: t("carousel.flipLight") },
+    { id: "rotateIn", label: t("carousel.rotateIn") },
     { id: "random", label: t("carousel.random") },
   ];
 }
@@ -265,10 +707,6 @@ function selectedScreen() {
   return state.config.screens.find((screen) => screen.id === state.selectedScreenId);
 }
 
-function selectedBellTemplate() {
-  return state.bells.templates.find((item) => item.id === selectedScreen().bell_schedule_template) || state.bells.templates[0];
-}
-
 function createTemplateId() {
   return `tpl_${crypto.randomUUID().slice(0, 8)}`;
 }
@@ -294,6 +732,20 @@ function createDefaultScreen(index) {
     tv_text_outline_px: 2,
     tv_text_outline_color: "rgba(0,0,0,0.85)",
     selected_classes: ["5", "6", "7", "8"],
+    mobile_mode: false,
+    mobile_appearance: {
+      background_color: "#172554",
+      card_color: "#13234b",
+      text_color: "#f8fafc",
+      muted_color: "#cbd5e1",
+      accent_color: "#38bdf8",
+      font_size_px: 16,
+      card_radius_px: 12,
+      card_gap_px: 10,
+    },
+    enable_feedback: false,
+    /** Устарело: порядок ленты = порядок виджетов на экране; поле сохраняется для совместимости. */
+    mobile_widget_ids: [],
     bell_schedule_template: "standard",
     weekday_bell_templates: {},
     template: "default_schedule",
@@ -326,7 +778,7 @@ function createDefaultScreen(index) {
       {
         id: "bell_status",
         type: "bell_status",
-        title: "Звонки",
+        title: "Сигналы",
         enabled: true,
         x: 24, y: 10, w: 8, h: 3,
         settings: { fontSize: 18, titleFontSize: 18, color: "#ffffff", background: "rgba(15,23,42,0.55)", bold: false },
@@ -401,7 +853,38 @@ function createDefaultScreen(index) {
           fontSize: 22,
           color: "#ffffff",
           background: "rgba(15,23,42,0.7)",
+          charsPerMin: 180,
           speedSec: 18,
+          bold: false,
+        },
+      },
+      {
+        id: "school_news",
+        type: "school_news",
+        title: "Новости",
+        enabled: false,
+        x: 0, y: 13, w: 16, h: 11,
+        settings: {
+          fontSize: 18,
+          titleFontSize: 22,
+          color: "#ffffff",
+          background: "rgba(15,23,42,0.55)",
+          rotateSec: 12,
+          bold: false,
+        },
+      },
+      {
+        id: "rss_news",
+        type: "rss_news",
+        title: "RSS-лента",
+        enabled: false,
+        x: 24, y: 14, w: 8, h: 10,
+        settings: {
+          fontSize: 16,
+          titleFontSize: 18,
+          color: "#ffffff",
+          background: "rgba(15,23,42,0.55)",
+          rotateSec: 12,
           bold: false,
         },
       },
@@ -420,7 +903,7 @@ function createDefaultScreen(index) {
           color: "#ffffff",
           background: "#b91c1c",
           bold: true,
-          backdrop: false,
+          backdrop: true,
         },
       },
       {
@@ -442,6 +925,168 @@ function createDefaultScreen(index) {
       },
     ],
   };
+}
+
+function widgetStubFromDefaultTemplate(typ) {
+  const t = String(typ || "");
+  const tmpl = createDefaultScreen(1);
+  const found = tmpl.widgets.find((w) => w && w.type === t);
+  return found ? JSON.parse(JSON.stringify(found)) : null;
+}
+
+function screenHasSingletonId(sc, singletonId) {
+  return (sc.widgets || []).some((w) => w && String(w.id) === String(singletonId));
+}
+
+/** Для каждого типа из палитры программы создаёт экземпляр на текущем экране, если его ещё нет (в т.ч. новые типы после обновления). */
+function ensurePaletteWidgetInstancesOnSelectedScreen() {
+  const sc = selectedScreen();
+  if (!sc || !state.config) return;
+  if (!Array.isArray(sc.widgets)) sc.widgets = [];
+  const caps = state.meta?.capabilities || {};
+  for (const typ of getPaletteTypesOrder()) {
+    if (!getWidgetTypeKeys().has(typ)) continue;
+    if (!isWidgetAvailableInPalette(typ, caps)) continue;
+    if (isWidgetTypeHiddenInAdminPalette(typ)) continue;
+    const has = (sc.widgets || []).some((w) => w && String(w.type) === typ);
+    if (has) continue;
+    const w = createWidgetStubForPaletteType(typ);
+    if (!w) continue;
+    clampWidget(w);
+    sc.widgets.push(w);
+  }
+}
+
+function createWidgetStubForPaletteType(typ) {
+  const sc = selectedScreen();
+  if (!sc || !typ) return null;
+  const typeKey = String(typ);
+  const singletonIds = getSingletonIds();
+  if (singletonIds[typeKey]) {
+    const expectId = singletonIds[typeKey];
+    if (screenHasSingletonId(sc, expectId)) {
+      return null;
+    }
+    const w = widgetStubFromDefaultTemplate(typeKey);
+    if (w) {
+      w.id = expectId;
+      w.type = typeKey;
+      w.enabled = true;
+      return w;
+    }
+    if (typeKey === "bell_countdown") {
+      return {
+        id: "bell_countdown",
+        type: "bell_countdown",
+        title: t("widget.type.bell_countdown"),
+        enabled: true,
+        x: 24,
+        y: 13,
+        w: 8,
+        h: 3,
+        settings: {
+          fontSize: 18,
+          titleFontSize: 18,
+          color: "#ffffff",
+          background: "rgba(15,23,42,0.55)",
+          bold: false,
+          backdrop: true,
+        },
+      };
+    }
+    return null;
+  }
+  if (typeKey === "carousel") {
+    const n = (sc.widgets || []).filter((x) => x && x.type === "carousel").length + 1;
+    return {
+      id: createWidgetId("carousel"),
+      type: "carousel",
+      title: tf("carousel.nameN", { n }),
+      enabled: true,
+      x: 0,
+      y: 2,
+      w: 24,
+      h: 11,
+      settings: {
+        startDelaySec: 0,
+        animation: "slide",
+        childWidgetIds: [],
+        childSlideSec: {},
+        backdrop: true,
+      },
+    };
+  }
+  if (typeKey === "checkin_submit") {
+    return {
+      id: createWidgetId("widget"),
+      type: "checkin_submit",
+      title: t("widget.type.checkin_submit"),
+      enabled: true,
+      x: 0,
+      y: 18,
+      w: 12,
+      h: 8,
+      settings: {
+        places: [],
+        monitor_widget_id: "",
+        labels: {},
+        backdrop: true,
+        fontSize: 0,
+        bold: false,
+      },
+    };
+  }
+  if (typeKey === "checkin_monitor") {
+    return {
+      id: createWidgetId("widget"),
+      type: "checkin_monitor",
+      title: t("widget.type.checkin_monitor"),
+      enabled: true,
+      x: 12,
+      y: 18,
+      w: 14,
+      h: 8,
+      settings: {
+        places: [{ id: "place_a", title: "Место A" }],
+        panel_title: "Сводка мест",
+        events_screen_slug: "",
+        labels: {},
+        backdrop: true,
+        fontSize: 0,
+        bold: false,
+      },
+    };
+  }
+  if (typeKey === "booking_public" || typeKey === "booking_manager") {
+    const isPublic = typeKey === "booking_public";
+    return {
+      id: createWidgetId("widget"),
+      type: typeKey,
+      title: isPublic ? "Запись" : "Управление записями",
+      enabled: true,
+      x: isPublic ? 0 : 12,
+      y: 14,
+      w: 14,
+      h: 12,
+      settings: {
+        module_id: "booking-main",
+        heading: isPublic ? "Запись" : "Управление записями",
+        backdrop: true,
+        ...(isPublic
+          ? {}
+          : {
+              public_action_color: "#2563eb",
+              public_action_text_color: "#ffffff",
+              public_free_color: "#16a34a",
+              public_booked_color: "#b91c1c",
+              public_cancel_color: "#ca8a04",
+              manager_action_color: "#2563eb",
+              manager_action_text_color: "#ffffff",
+            }),
+      },
+    };
+  }
+  return null;
 }
 
 function widgetCollapseStorageKey(screenId, widgetId) {
@@ -477,7 +1122,11 @@ function compareClassNames(a, b) {
 }
 
 function availableClassOptions() {
-  const classNames = [...new Set((state.schedule || []).map((item) => item.class_name).filter(Boolean))].sort(compareClassNames);
+  const apiNames = state.scheduleClassOptions;
+  const fromDatedOnly = [...new Set((state.schedule || []).map((item) => item.class_name).filter(Boolean))];
+  const rawNames =
+    Array.isArray(apiNames) && apiNames.length > 0 ? [...apiNames] : fromDatedOnly;
+  const classNames = [...new Set(rawNames)].sort(compareClassNames);
   const gradeNames = [...new Set(classNames
     .map((item) => normalizeClass(item).match(/^(\d+)/)?.[1])
     .filter(Boolean))]
@@ -486,71 +1135,6 @@ function availableClassOptions() {
     ...gradeNames.map((grade) => ({ value: grade, label: `${grade} (вся параллель)` })),
     ...classNames.map((name) => ({ value: name, label: name })),
   ];
-}
-
-function widgetInput(label, value, onChange, type = "text", sizeClass = "standard-input") {
-  return `<label>${label}<input class="${sizeClass}" data-key="${onChange}" type="${type}" value="${value ?? ""}"></label>`;
-}
-
-function widgetTextarea(label, value, onChange, sizeClass = "wide-input") {
-  return `<label>${label}<textarea class="${sizeClass}" data-key="${onChange}" rows="4">${value ?? ""}</textarea></label>`;
-}
-
-function widgetToggle(label, checked, onChange) {
-  return `<label class="toggle-label"><input data-key="${onChange}" type="checkbox" ${checked ? "checked" : ""}> ${label}</label>`;
-}
-
-function availableCarouselChildren(currentWidget) {
-  const list = selectedScreen().widgets
-    .filter(
-      (widget) =>
-        widget.id !== currentWidget.id &&
-        widget.type !== "carousel" &&
-        widget.type !== "emergency" &&
-        widget.type !== "image"
-    )
-    .map((widget) => ({ id: widget.id, title: widget.title, type: widget.type }));
-  // Пустой слот: показать только фон, без виджета.
-  list.push({ id: "__blank__", title: t("carousel.blankChild"), type: "blank" });
-  return list;
-}
-
-function coerceWidgetImageSlots(widget) {
-  if (!widget || widget.type !== "image") return;
-  const s = widget.settings;
-  if (!Array.isArray(s.images)) {
-    const legacy = String(s.imageUrl || "").trim();
-    s.images = legacy ? [{ name: t("w.imageLegacy"), url: legacy }] : [{ name: tf("w.imageDefaultName", { n: 1 }), url: "" }];
-  }
-  if (s.images.length === 0) s.images.push({ name: tf("w.imageDefaultName", { n: 1 }), url: "" });
-  delete s.imageUrl;
-}
-
-function addWidgetImageSlot(widgetIndex) {
-  const w = selectedScreen().widgets[widgetIndex];
-  if (!w || w.type !== "image") return;
-  coerceWidgetImageSlots(w);
-  const n = w.settings.images.length + 1;
-  w.settings.images.push({ name: tf("w.imageDefaultName", { n }), url: "" });
-  render();
-  if (state.widgetModalWidgetId === w.id) syncWidgetModal();
-  renderPreview();
-}
-
-function removeWidgetImageSlot(widgetIndex, slotIndex) {
-  const w = selectedScreen().widgets[widgetIndex];
-  if (!w || w.type !== "image") return;
-  coerceWidgetImageSlots(w);
-  const i = Number(slotIndex);
-  if (!Number.isFinite(i) || i < 0 || i >= w.settings.images.length) return;
-  if (w.settings.images.length <= 1) {
-    w.settings.images[0] = { name: w.settings.images[0].name || tf("w.imageDefaultName", { n: 1 }), url: "" };
-  } else {
-    w.settings.images.splice(i, 1);
-  }
-  render();
-  if (state.widgetModalWidgetId === w.id) syncWidgetModal();
-  renderPreview();
 }
 
 function clampWidget(widget) {
@@ -567,459 +1151,581 @@ function clampWidget(widget) {
   widget.y = Math.max(0, Math.min(Number(widget.y || 0), GRID.rows - widget.h));
 }
 
-function ensureAudioStreamConfig() {
-  const d = {
-    enabled: false,
-    receiver_ip: "",
-    stream_port: 11990,
-    ping_host: "",
-    multicast_ip: "224.0.224.1",
-    multicast_ttl: 10,
-    base_port: 11990,
-    ffmpeg_path: "",
-    interface_note: "",
-    use_bell_schedule: true,
-    use_bell_sound_files: true,
-    volume_percent: 80,
-    source_screen_id: "",
-    send_via_multicast: false,
-    udp_bind_localaddr: false,
-    stream_profile: "mpegts_aac",
-    break_music_on_breaks: false,
-    break_music_volume_percent: 40,
-    bell_trigger_sec_window: 25,
-  };
-  state.config.audio_stream = { ...d, ...(state.config.audio_stream || {}) };
-  const s = state.config.audio_stream;
-  if (!s.receiver_ip && s.ping_host) s.receiver_ip = s.ping_host;
-  if (!s.ping_host && s.receiver_ip) s.ping_host = s.receiver_ip;
-  if (s.stream_port == null && s.base_port != null) s.stream_port = s.base_port;
+/** Как на сервере (app.py) и в screen_widgets: интервал ротации фона 60…86400 с. */
+function clampBackgroundRotateIntervalSec(n) {
+  if (!Number.isFinite(n)) return 3600;
+  return Math.max(60, Math.min(86400, Math.round(n)));
 }
 
-function refreshBellSoundsForStream() {
-  api("/api/admin/bell-sounds")
-    .then((r) => {
-      state.bellSoundFiles = r.files || [];
-    })
-    .catch(() => {});
-}
+const GS_ADMIN_SESSION_TOP = "gs_admin_top";
+const GS_ADMIN_SESSION_SCREEN = "gs_admin_screen_id";
+const GS_ADMIN_SESSION_SECTION = "gs_admin_section";
+const GS_ADMIN_PROGRAM_SETTINGS_TAB = "gs_admin_program_settings_tab";
 
-async function refreshPcPlayerFiles() {
-  let breaks = [];
+function restoreAdminUiFromSession() {
+  if (!state.config?.screens?.length) return;
   try {
-    const r = await api("/api/admin/break-music-files");
-    breaks = (r.files || []).map((x) => x && x.filename).filter(Boolean);
-  } catch (_) {
-    breaks = [];
-  }
-  const out = [];
-  breaks.forEach((fn) => {
-    const name = String(fn != null ? fn : "").trim();
-    if (!name) return;
-    out.push({ filename: name, label: name });
-  });
-  state.pcPlayerFiles = out;
-  if (state.pcPlayerSelectedIndex >= out.length) state.pcPlayerSelectedIndex = 0;
-  renderPcPlayerFileList();
-}
-
-function selectedPcPlayerItem() {
-  return state.pcPlayerFiles && state.pcPlayerFiles.length
-    ? state.pcPlayerFiles[Math.max(0, Math.min(state.pcPlayerFiles.length - 1, state.pcPlayerSelectedIndex))]
-    : null;
-}
-
-function renderPcPlayerFileList() {
-  const el = elements.pcPlayerFileList;
-  if (!el) return;
-  const items = state.pcPlayerFiles || [];
-  if (!items.length) {
-    el.innerHTML = `<div class="hint">${t("audio.noBreakFiles")}</div>`;
-    return;
-  }
-  el.innerHTML = "";
-  items.forEach((item, idx) => {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.className = `pc-player-file-item ${idx === state.pcPlayerSelectedIndex ? "active" : ""}`;
-    b.innerHTML = `<span class="pc-player-file-badge break">${escapeHtmlAttr(t("audio.badgeBreak"))}</span><span class="pc-player-file-name">${escapeHtmlAttr(item.label)}</span>`;
-    b.onclick = () => {
-      state.pcPlayerSelectedIndex = idx;
-      renderPcPlayerFileList();
-    };
-    el.appendChild(b);
-  });
-}
-
-async function pcPlayerPlaySelected() {
-  const item = selectedPcPlayerItem();
-  if (!item) return;
-  readAudioStreamFormIntoState();
-  const breakVol = Number(elements.audioStreamBreakMusicVol && elements.audioStreamBreakMusicVol.value);
-  const volBreak = Number.isFinite(breakVol) ? Math.max(0, Math.min(100, breakVol)) : 40;
-  if (elements.audioStreamStatusBar) elements.audioStreamStatusBar.textContent = t("audio.statusStarting");
-
-  try {
-    const fn = String(item.filename != null ? item.filename : "").trim();
-    if (!fn) {
-      if (elements.audioStreamStatusBar) elements.audioStreamStatusBar.textContent = t("audio.noFileName");
-      return;
+    if (state.meta?.demo_session) {
+      state.statsPanelActive = false;
+      if (sessionStorage.getItem(GS_ADMIN_SESSION_TOP) === "stats") {
+        sessionStorage.setItem(GS_ADMIN_SESSION_TOP, "screen");
+      }
     }
-    await api("/api/admin/break-music-preview", {
+    const sec = sessionStorage.getItem(GS_ADMIN_SESSION_SECTION);
+    if (sec === "history") state.activeSection = "screen";
+    else if (sec && ["screen", "widgets", "lessons", "bells", "preview"].includes(sec)) state.activeSection = sec;
+    else if (sec === "main") state.activeSection = "screen";
+    else if (sec === "schedule") state.activeSection = "lessons";
+    const top = sessionStorage.getItem(GS_ADMIN_SESSION_TOP);
+    const sid = sessionStorage.getItem(GS_ADMIN_SESSION_SCREEN);
+    if (top === "audio") {
+      state.audioStreamPanelActive = true;
+      state.statsPanelActive = false;
+      state.programSettingsPanelActive = false;
+    } else if (top === "stats" && !state.meta?.demo_session) {
+      state.statsPanelActive = true;
+      state.audioStreamPanelActive = false;
+      state.programSettingsPanelActive = false;
+    } else if (top === "program") {
+      state.audioStreamPanelActive = false;
+      state.statsPanelActive = false;
+      state.programSettingsPanelActive = true;
+      if (sid && state.config.screens.some((s) => s.id === sid)) {
+        state.selectedScreenId = sid;
+      }
+    } else {
+      state.audioStreamPanelActive = false;
+      state.statsPanelActive = false;
+      state.programSettingsPanelActive = false;
+      if (sid && state.config.screens.some((s) => s.id === sid)) {
+        state.selectedScreenId = sid;
+      }
+    }
+  } catch (_) {}
+}
+
+function finishTopBarSessionWidgets() {
+  syncEmergencyModeCheckbox();
+  bindEmergencyModeToggleOnce();
+  renderEmergencyTemplateBar();
+  persistAdminUiToSession();
+}
+
+function persistAdminUiToSession() {
+  try {
+    let top = "screen";
+    if (state.audioStreamPanelActive) top = "audio";
+    else if (state.programSettingsPanelActive) top = "program";
+    else if (state.statsPanelActive) top = "stats";
+    sessionStorage.setItem(GS_ADMIN_SESSION_TOP, top);
+    sessionStorage.setItem(GS_ADMIN_SESSION_SCREEN, state.selectedScreenId || "");
+    sessionStorage.setItem(GS_ADMIN_SESSION_SECTION, state.activeSection || "screen");
+  } catch (_) {}
+}
+
+function emergencyWidgetTemplate() {
+  return {
+    id: "emergency",
+    type: "emergency",
+    title: "Аварийный",
+    enabled: false,
+    x: 0,
+    y: 0,
+    w: GRID.cols,
+    h: GRID.rows,
+    settings: {
+      text: "ВНИМАНИЕ!\nСрочное сообщение.",
+      fontSize: 42,
+      color: "#ffffff",
+      background: "#b91c1c",
+      bold: true,
+      backdrop: true,
+      soundEnabled: false,
+      soundUrl: "",
+      imageUrl: "",
+      imageCaption: "",
+    },
+  };
+}
+
+/** Совпадает с _default_emergency_templates() на сервере (для «вернуть стандарт» в UI). */
+const CLIENT_EMERGENCY_DEFAULTS = [
+  {
+    id: "preset_fire",
+    title: "Пожар",
+    settings: {
+      text: "ПОЖАР!\nЭвакуация по сигналу. Следуйте указаниям персонала.",
+      fontSize: 44,
+      color: "#ffffff",
+      background: "#b91c1c",
+      bold: true,
+      backdrop: true,
+      soundEnabled: true,
+      soundUrl: "",
+      timer_seconds: 0,
+      byScreenName: {},
+    },
+  },
+  {
+    id: "preset_terror",
+    title: "Антитеррор",
+    settings: {
+      text: "ВНИМАНИЕ!\nРежим повышенной готовности.\nСохраняйте спокойствие, действуйте по указаниям.",
+      fontSize: 40,
+      color: "#f8fafc",
+      background: "#1e3a8a",
+      bold: true,
+      backdrop: true,
+      soundEnabled: false,
+      soundUrl: "",
+      timer_seconds: 0,
+      byScreenName: {},
+    },
+  },
+  {
+    id: "preset_bomb",
+    title: "Заминирование",
+    settings: {
+      text: "СООБЩЕНИЕ ОБ УГРОЗЕ\nОставайтесь на местах. Ожидайте указаний администрации.\nНе паникуйте.",
+      fontSize: 38,
+      color: "#fef3c7",
+      background: "#78350f",
+      bold: true,
+      backdrop: true,
+      soundEnabled: false,
+      soundUrl: "",
+      timer_seconds: 0,
+      byScreenName: {},
+    },
+  },
+  {
+    id: "preset_crisis",
+    title: "Чрезвычайная ситуация",
+    settings: {
+      text: "ЧРЕЗВЫЧАЙНАЯ СИТУАЦИЯ\nСледуйте плану действий персонала.",
+      fontSize: 40,
+      color: "#ffffff",
+      background: "#7f1d1d",
+      bold: true,
+      backdrop: true,
+      soundEnabled: true,
+      soundUrl: "",
+      timer_seconds: 0,
+      byScreenName: {},
+    },
+  },
+];
+
+function ensureEmergencyConfig() {
+  if (!state.config) return;
+  if (!Array.isArray(state.config.emergency_templates)) {
+    state.config.emergency_templates = JSON.parse(JSON.stringify(CLIENT_EMERGENCY_DEFAULTS));
+  }
+  if (typeof state.config.emergency_active_template_id !== "string") {
+    state.config.emergency_active_template_id = "";
+  }
+}
+
+async function persistConfigQuick() {
+  try {
+    readAudioStreamFormIntoState();
+    state.config.templateSystem.grid = GRID;
+    await api("/api/admin/config", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ filename: fn, volume_percent: volBreak }),
+      body: JSON.stringify(state.config),
     });
-    updateStreamStatusBar();
   } catch (e) {
-    if (elements.audioStreamStatusBar) elements.audioStreamStatusBar.textContent = String(e.message || e);
+    alert(String(e.message || e));
   }
+  render();
+  fetchPreviewPayloadOnce().catch(() => {});
 }
 
-function pcPlayerStep(delta) {
-  const n = state.pcPlayerFiles ? state.pcPlayerFiles.length : 0;
-  if (!n) return;
-  state.pcPlayerSelectedIndex = (state.pcPlayerSelectedIndex + delta + n) % n;
-  renderPcPlayerFileList();
-}
-
-function breakMusicVolumesFromForm() {
-  const rawB = elements.audioStreamVolume && elements.audioStreamVolume.value;
-  const rawBr = elements.audioStreamBreakMusicVol && elements.audioStreamBreakMusicVol.value;
-  const bell =
-    rawB !== undefined && rawB !== "" && Number.isFinite(Number(rawB))
-      ? Math.max(0, Math.min(100, Number(rawB)))
-      : null;
-  const br =
-    rawBr !== undefined && rawBr !== "" && Number.isFinite(Number(rawBr))
-      ? Math.max(0, Math.min(100, Number(rawBr)))
-      : null;
-  return { bell, br };
-}
-
-/** Порядок очереди с сервера + громкость из полей формы (или с сервера). */
-async function renderBreakMusicPlayback() {
-  const el = elements.breakMusicPlayerList;
-  if (!el) return;
-  try {
-    const r = await api("/api/admin/break-music-files");
-    const pb = r.playback;
-    if (!pb) {
-      el.innerHTML = `<p class="hint">${t("audio.queueEmpty")}</p>`;
-      return;
-    }
-    const vf = breakMusicVolumesFromForm();
-    const bellPct = vf.bell ?? pb.volume_bell_percent;
-    const breakPct = vf.br ?? pb.volume_break_percent;
-    const volLine = `<div class="break-music-vol-line"><strong>Громкость:</strong> звонки <strong>${bellPct}%</strong> · перемена <strong>${breakPct}%</strong> (ffmpeg <code>volume=${(breakPct / 100).toFixed(3)}</code> для фона)</div><p class="hint break-music-save-hint">Чтобы на ПК применились новые %, нажмите «Сохранить» вверху.</p>`;
-
-    const kindLine =
-      pb.play_kind && pb.play_kind !== "idle"
-        ? `<p class="hint break-music-kind">Сейчас в плеере ПК: <code>${escapeHtmlAttr(String(pb.play_kind))}</code></p>`
-        : "";
-
-    const modeBlock = `<p class="break-music-mode"><strong>${escapeHtmlAttr(pb.mode_label || "")}</strong></p><p class="hint break-music-note">${escapeHtmlAttr(pb.order_note || "")}</p>`;
-
-    const orows = pb.ordered_rows || [];
-    const rows =
-      orows.length > 0
-        ? orows
-            .map(
-              (row) =>
-                `<div class="break-music-row ${row.is_next ? "break-music-row-next" : ""}"><span class="break-music-idx">${row.i}.</span><span class="break-music-name">${escapeHtmlAttr(row.filename)}</span>${row.is_next ? '<span class="break-music-badge">следующий</span>' : ""}</div>`,
-            )
-            .join("")
-        : '<p class="hint">Нет строк очереди.</p>';
-
-    el.innerHTML = `${volLine}${kindLine}${modeBlock}<div class="break-music-order">${rows}</div>`;
-  } catch (_) {
-    el.innerHTML = `<p class="hint">${t("audio.queueLoadFail")}</p>`;
-  }
-}
-
-function updateStreamStatusBar() {
-  const el = elements.audioStreamStatusBar;
-  if (!el) return;
-  api("/api/admin/audio-stream-status")
-    .then((st) => {
-      const last = st.last;
-      const be = last && last.backend ? String(last.backend) : "";
-      const run = st.ffmpeg_process_running
-        ? `воспроизведение: да${be ? ` (${be})` : ""}`
-        : "воспроизведение: нет";
-      const pid = st.pid != null ? ` (PID ${st.pid})` : "";
-      const kind = st.play_kind && st.play_kind !== "idle" ? `\nРежим: ${st.play_kind}` : "";
-      const busy = st.stream_slot_busy ? "Занято" : "Свободно";
-      let tail = "";
-      if (last) {
-        if (last.finished === false) tail += "\nВоспроизведение…";
-        if (last.returncode != null) tail += `\nКод выхода: ${last.returncode}`;
-        if (last.ok === false && last.stderr) tail += `\n${String(last.stderr).slice(0, 400)}`;
-      }
-      let diag = "";
-      if (st.volume_bell_percent != null && st.volume_break_percent != null) {
-        diag += `\nГромкость (настройки): звонки ${st.volume_bell_percent}% | перемена ${st.volume_break_percent}%`;
-      }
-      if (st.pc_playback_backend_hint) {
-        diag += `\nПК: бэкенд ${st.pc_playback_backend_hint}`;
-      }
-      if (st.resolved_ffmpeg) diag += `\nffmpeg: ${st.resolved_ffmpeg}`;
-      if (!st.resolved_ffmpeg && st.resolved_ffplay) diag += `\nffplay: ${st.resolved_ffplay}`;
-      if (
-        st.pc_audio_enabled &&
-        !st.resolved_ffmpeg &&
-        !st.resolved_ffplay
-      ) {
-        diag +=
-          "\n⚠ Не найден ffmpeg/ffplay — расписание на Рупор с этого ПК не сыграет. Установите ffmpeg или укажите путь.";
-      }
-      el.textContent = `${run}${pid} (${busy})${kind}${tail}${diag}`;
-      if (state.audioStreamPanelActive) {
-        renderBreakMusicPlayback();
-      }
-    })
-    .catch((err) => {
-      el.textContent = tf("audio.statusUnavailable", { msg: String(err.message || err) });
-    });
-}
-
-function populateAudioStreamSourceScreenSelect() {
-  const sel = elements.audioStreamSourceScreen;
-  if (!sel || !state.config?.screens?.length) return;
-  const cur = (state.config.audio_stream && state.config.audio_stream.source_screen_id) || "";
-  sel.innerHTML = "";
-  const first = document.createElement("option");
-  first.value = "";
-  first.textContent = t("audio.firstScreenOption");
-  sel.appendChild(first);
-  state.config.screens.forEach((sc) => {
-    const o = document.createElement("option");
-    o.value = String(sc.id);
-    o.textContent = sc.name || sc.slug || sc.id;
-    sel.appendChild(o);
-  });
-  const exists = [...sel.options].some((opt) => opt.value === cur);
-  sel.value = exists ? cur : "";
-}
-
-function syncAudioStreamFormFromState() {
-  ensureAudioStreamConfig();
-  populateAudioStreamSourceScreenSelect();
-  const s = state.config.audio_stream;
-  if (elements.audioStreamEnabled) elements.audioStreamEnabled.checked = !!s.enabled;
-  if (elements.audioStreamFfmpegPath) elements.audioStreamFfmpegPath.value = s.ffmpeg_path || "";
-  if (elements.audioStreamUseBellSchedule) elements.audioStreamUseBellSchedule.checked = s.use_bell_schedule !== false;
-  if (elements.audioStreamUseBellFiles) elements.audioStreamUseBellFiles.checked = s.use_bell_sound_files !== false;
-  if (elements.audioStreamVolume) elements.audioStreamVolume.value = String(s.volume_percent ?? 80);
-  if (elements.audioStreamBreakMusic) elements.audioStreamBreakMusic.checked = !!s.break_music_on_breaks;
-  if (elements.audioStreamBreakMusicVol) elements.audioStreamBreakMusicVol.value = String(s.break_music_volume_percent ?? 40);
-  if (elements.audioStreamBellWindow) elements.audioStreamBellWindow.value = String(s.bell_trigger_sec_window ?? 25);
-}
-
-function readAudioStreamFormIntoState() {
-  ensureAudioStreamConfig();
-  const s = state.config.audio_stream;
-  s.enabled = !!(elements.audioStreamEnabled && elements.audioStreamEnabled.checked);
-  s.ffmpeg_path = (elements.audioStreamFfmpegPath && elements.audioStreamFfmpegPath.value.trim()) || "";
-  s.use_bell_schedule = !!(elements.audioStreamUseBellSchedule && elements.audioStreamUseBellSchedule.checked);
-  s.use_bell_sound_files = !!(elements.audioStreamUseBellFiles && elements.audioStreamUseBellFiles.checked);
-  s.volume_percent = Math.max(0, Math.min(100, Number(elements.audioStreamVolume && elements.audioStreamVolume.value) || s.volume_percent));
-  s.source_screen_id = (elements.audioStreamSourceScreen && elements.audioStreamSourceScreen.value) || "";
-  s.break_music_on_breaks = !!(elements.audioStreamBreakMusic && elements.audioStreamBreakMusic.checked);
-  s.break_music_volume_percent = Math.max(0, Math.min(100, Number(elements.audioStreamBreakMusicVol && elements.audioStreamBreakMusicVol.value) || s.break_music_volume_percent));
-  s.bell_trigger_sec_window = Math.max(5, Math.min(55, Number(elements.audioStreamBellWindow && elements.audioStreamBellWindow.value) || s.bell_trigger_sec_window));
-}
-
-let audioStreamFormWired = false;
-function bindAudioStreamFormOnce() {
-  if (audioStreamFormWired) return;
-  audioStreamFormWired = true;
-  const onChange = () => readAudioStreamFormIntoState();
-  [
-    elements.audioStreamEnabled,
-    elements.audioStreamFfmpegPath,
-    elements.audioStreamUseBellSchedule,
-    elements.audioStreamUseBellFiles,
-    elements.audioStreamVolume,
-    elements.audioStreamSourceScreen,
-    elements.audioStreamBreakMusic,
-    elements.audioStreamBreakMusicVol,
-    elements.audioStreamBellWindow,
-  ].forEach((el) => {
-    if (!el) return;
-    el.addEventListener(el.type === "checkbox" || el.tagName === "SELECT" ? "change" : "input", onChange);
-  });
-  [elements.audioStreamVolume, elements.audioStreamBreakMusicVol].forEach((el) => {
-    if (!el) return;
-    el.addEventListener("input", () => {
-      if (state.audioStreamPanelActive) renderBreakMusicPlayback();
-    });
-  });
-  if (elements.audioStreamStopBtn) {
-    elements.audioStreamStopBtn.addEventListener("click", async () => {
-      if (elements.audioStreamStatusBar) elements.audioStreamStatusBar.textContent = t("audio.statusStopping");
-      try {
-        await api("/api/admin/audio-stream-stop", { method: "POST" });
-        updateStreamStatusBar();
-      } catch (err) {
-        if (elements.audioStreamStatusBar) elements.audioStreamStatusBar.textContent = String(err.message || err);
-      }
-    });
-  }
-}
-
-let pcPlayerWired = false;
-function bindPcPlayerOnce() {
-  if (pcPlayerWired) return;
-  pcPlayerWired = true;
-  if (elements.pcPlayerPrev) elements.pcPlayerPrev.addEventListener("click", () => pcPlayerStep(-1));
-  if (elements.pcPlayerNext) elements.pcPlayerNext.addEventListener("click", () => pcPlayerStep(1));
-  if (elements.pcPlayerPlay) elements.pcPlayerPlay.addEventListener("click", () => pcPlayerPlaySelected());
-  if (elements.audioStreamBreakMusicVol) {
-    const sync = () => {
-      if (elements.pcPlayerVolDisplay) elements.pcPlayerVolDisplay.textContent = String(elements.audioStreamBreakMusicVol.value || "");
-    };
-    elements.audioStreamBreakMusicVol.addEventListener("input", sync);
-    sync();
-  }
-}
-
-let settingsSoundTestsWired = false;
-
-function pollFfplayIntoPre(base, preEl) {
-  const pollFfmpeg = async () => {
-    for (let i = 0; i < 40; i += 1) {
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-      try {
-        const st = await api("/api/admin/audio-stream-last-send");
-        const last = st.last;
-        if (!last || !last.finished) continue;
-        const rc = last.returncode;
-        const err = last.stderr || "";
-        const tail = `\n\n--- вывод (код ${rc === null || rc === undefined ? "?" : rc}) ---\n${err || "(пустой stderr)"}`;
-        if (preEl) preEl.textContent = base + tail;
-        return;
-      } catch (_) {
-        /* сеть */
-      }
-    }
-    if (preEl) {
-      preEl.textContent = `${base}\n\n${t("audio.statusTimeout")}`;
-    }
+function renderEmergencyTemplateBar() {
+  const wrap = document.getElementById("emergency-template-bar");
+  if (!wrap || !state.config) return;
+  const list = state.config.emergency_templates || [];
+  const cur = String(state.config.emergency_active_template_id || "").trim();
+  wrap.innerHTML = "";
+  // Важно: можно "снять" глобальный шаблон, вернувшись к индивидуальным настройкам emergency-виджета на экранах.
+  const clearBtn = document.createElement("button");
+  clearBtn.type = "button";
+  clearBtn.className = `emergency-template-btn${!cur ? " active" : ""}`;
+  clearBtn.textContent = t("emergencyTemplates.defaultBtn");
+  clearBtn.title = t("emergencyTemplates.defaultHint");
+  clearBtn.onclick = async () => {
+    state.config.emergency_active_template_id = "";
+    await persistConfigQuick();
   };
-  pollFfmpeg();
+  wrap.appendChild(clearBtn);
+  list.forEach((tpl) => {
+    const id = String(tpl.id || "").trim();
+    if (!id) return;
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = `emergency-template-btn${id === cur ? " active" : ""}`;
+    b.textContent = String(tpl.title || id);
+    b.title = String(tpl.title || id);
+    b.onclick = async () => {
+      // Повторный клик по активному — снимает шаблон.
+      state.config.emergency_active_template_id = id === cur ? "" : id;
+      await persistConfigQuick();
+    };
+    wrap.appendChild(b);
+  });
 }
 
-function bindSettingsSoundTestsOnce() {
-  if (settingsSoundTestsWired) return;
-  settingsSoundTestsWired = true;
-  const out = () => elements.settingsSoundTestResult;
+function tplByScreen(tpl) {
+  if (!tpl.settings) tpl.settings = {};
+  if (!tpl.settings.byScreenName || typeof tpl.settings.byScreenName !== "object") {
+    tpl.settings.byScreenName = {};
+  }
+  return tpl.settings.byScreenName;
+}
 
-  if (elements.settingsTestRuporBtn) {
-    elements.settingsTestRuporBtn.addEventListener("click", async () => {
-      readAudioStreamFormIntoState();
-      if (out()) out().textContent = t("audio.playbackStarting");
-      const testUrl = "/api/admin/pc-audio-test-play?use_first=1";
+function renderEmergencyTemplatesAdmin() {
+  const root = document.getElementById("emergency-templates-admin-root");
+  if (!root || !state.config) return;
+  const list = state.config.emergency_templates || [];
+  if (!list.length) {
+    root.innerHTML = `<p class="hint">${escapeHtml(t("emergencyTemplates.emptyHint"))}</p>
+      <button type="button" class="secondary-btn compact-btn" id="emergency-restore-empty">${escapeHtml(t("emergencyTemplates.restore"))}</button>`;
+    const rb = document.getElementById("emergency-restore-empty");
+    if (rb) rb.onclick = () => restoreEmergencyTemplatesDefaults();
+    return;
+  }
+  if (!state.emergencyTemplateEditorId || !list.some((x) => x.id === state.emergencyTemplateEditorId)) {
+    state.emergencyTemplateEditorId = list[0].id;
+  }
+  const sel = state.emergencyTemplateEditorId;
+  const tpl = list.find((x) => x.id === sel);
+  if (!tpl) return;
+  const s = tpl.settings || (tpl.settings = {});
+  const opts = list
+    .map((x) => `<option value="${escapeHtmlAttr(x.id)}" ${x.id === sel ? "selected" : ""}>${escapeHtml(x.title || x.id)}</option>`)
+    .join("");
+  const screens = state.config.screens || [];
+  const by = tplByScreen(tpl);
+  const rows = screens
+    .map((sc) => {
+      const nm = String(sc.name || sc.slug || "").trim() || "—";
+      const row = by[nm] || { imageUrl: "", caption: "" };
+      const iu = escapeHtmlAttr(String(row.imageUrl || ""));
+      const cap = escapeHtmlAttr(String(row.caption || ""));
+      return `<div class="emergency-screen-row" style="margin:10px 0;padding:10px;border:1px solid rgba(148,163,184,.25);border-radius:8px">
+        <div style="font-weight:600;margin-bottom:6px">${escapeHtml(nm)}</div>
+        <label class="settings-row"><span>${escapeHtml(t("emergencyTemplates.screenImage"))}</span>
+          <input type="text" class="standard-input wide-input" data-em-screen="${escapeHtmlAttr(nm)}" data-em-part="imageUrl" value="${iu}" placeholder="/uploads/…"></label>
+        <label class="settings-row"><span>${escapeHtml(t("emergencyTemplates.screenCaption"))}</span>
+          <input type="text" class="standard-input wide-input" data-em-screen="${escapeHtmlAttr(nm)}" data-em-part="caption" value="${cap}"></label>
+        <div class="compact-form-row"><label class="bell-file-upload"><span class="bell-file-upload-main">${escapeHtml(t("w.browse"))}</span>
+          <input type="file" accept="image/*" data-em-screen-upload="${escapeHtmlAttr(nm)}" hidden></label></div>
+      </div>`;
+    })
+    .join("");
+  const soundRo = state.meta?.saas_mode ? "readonly" : "";
+  root.innerHTML = `
+    <div class="emergency-editor-shell">
+      <div class="emergency-editor-toolbar">
+        <label class="settings-row emergency-editor-picker"><span>${escapeHtml(t("emergencyTemplates.pick"))}</span>
+          <select id="emergency-admin-pick" class="standard-input emergency-admin-pick-select">${opts}</select></label>
+        <div class="settings-row settings-btn-row emergency-editor-actions">
+          <button type="button" class="secondary-btn compact-btn" id="emergency-add-tpl">${escapeHtml(t("emergencyTemplates.add"))}</button>
+          <button type="button" class="secondary-btn compact-btn" id="emergency-del-tpl">${escapeHtml(t("emergencyTemplates.delete"))}</button>
+          <button type="button" class="secondary-btn compact-btn" id="emergency-restore-tpl">${escapeHtml(t("emergencyTemplates.restore"))}</button>
+        </div>
+      </div>
+      <label class="settings-row"><span>${escapeHtml(t("emergencyTemplates.templateTitle"))}</span>
+        <input type="text" id="emergency-f-title" class="standard-input wide-input" value="${escapeHtmlAttr(String(tpl.title || ""))}"></label>
+      <label class="settings-row"><span>${escapeHtml(t("w.textLines"))}</span>
+        <textarea id="emergency-f-text" class="wide-input" rows="5">${escapeHtml(String(s.text || ""))}</textarea></label>
+      <div class="settings-row emergency-editor-grid">
+        <label><span>${escapeHtml(t("w.fontSize"))}</span><input type="number" id="emergency-f-fs" class="standard-input" min="10" max="200" value="${Number(s.fontSize) || 42}"></label>
+        <label><span>${escapeHtml(t("w.color"))}</span><input type="color" id="emergency-f-color" value="${escapeHtmlAttr(/^#[0-9a-fA-F]{6}$/.test(String(s.color || "").trim()) ? String(s.color).trim() : "#ffffff")}"></label>
+        <label><span>${escapeHtml(t("w.blockBg"))}</span><input type="text" id="emergency-f-bg" class="standard-input" value="${escapeHtmlAttr(String(s.background || "#b91c1c"))}"></label>
+        <label><span>${escapeHtml(t("emergencyTemplates.timerSeconds"))}</span><input type="number" id="emergency-f-timer" class="standard-input" min="0" max="86400" step="1" value="${Math.max(0, Math.round(Number(s.timer_seconds) || 0))}" placeholder="${escapeHtmlAttr(t("emergencyTemplates.timerHint"))}"></label>
+        <label class="toggle-label"><input type="checkbox" id="emergency-f-bold" ${s.bold !== false ? "checked" : ""}> ${escapeHtml(t("w.bold"))}</label>
+        <label class="toggle-label"><input type="checkbox" id="emergency-f-backdrop" ${s.backdrop !== false ? "checked" : ""}> ${escapeHtml(t("w.backdrop"))}</label>
+        <label class="toggle-label"><input type="checkbox" id="emergency-f-sound" ${s.soundEnabled === true ? "checked" : ""}> ${escapeHtml(t("emergencyTemplates.globalSound"))}</label>
+      </div>
+      <p class="hint">${escapeHtml(t("emergencyTemplates.timerHintValues"))}</p>
+      <label class="settings-row"><span>${escapeHtml(t("w.emergencySoundFile"))}</span>
+        <input type="text" id="emergency-f-surl" class="standard-input wide-input" value="${escapeHtmlAttr(String(s.soundUrl || ""))}" ${soundRo}></label>
+      <div class="compact-form-row">${state.meta?.saas_mode ? "" : `<label class="bell-file-upload"><span class="bell-file-upload-main">${escapeHtml(t("w.browse"))}</span>
+        <input type="file" accept="audio/*" id="emergency-f-sound-file" hidden></label>`}</div>
+      <h4 class="settings-popover-subhead emergency-editor-subhead">${escapeHtml(t("emergencyTemplates.perScreenBlock"))}</h4>
+      ${rows || `<p class="hint">${escapeHtml(t("emergencyTemplates.noScreens"))}</p>`}
+      <div class="settings-row settings-btn-row emergency-editor-save-wrap">
+        <button type="button" class="primary-btn compact-btn" id="emergency-save-editor">${escapeHtml(t("emergencyTemplates.saveTemplate"))}</button>
+      </div>
+    </div>`;
+
+  document.getElementById("emergency-admin-pick").onchange = (e) => {
+    flushEmergencyEditorToState();
+    state.emergencyTemplateEditorId = String(e.target.value || "");
+    renderEmergencyTemplatesAdmin();
+  };
+  document.getElementById("emergency-add-tpl").onclick = () => {
+    flushEmergencyEditorToState();
+    const nid = `tpl_${Math.random().toString(16).slice(2, 10)}`;
+    list.push({
+      id: nid,
+      title: t("emergencyTemplates.newTitle"),
+      settings: {
+        text: t("emergencyTemplates.newText"),
+        fontSize: 40,
+        color: "#ffffff",
+        background: "#991b1b",
+        bold: true,
+        backdrop: true,
+        soundEnabled: false,
+        soundUrl: "",
+        timer_seconds: 0,
+        byScreenName: {},
+      },
+    });
+    state.emergencyTemplateEditorId = nid;
+    renderEmergencyTemplatesAdmin();
+  };
+  document.getElementById("emergency-del-tpl").onclick = () => {
+    if (!confirm(t("emergencyTemplates.confirmDelete"))) return;
+    flushEmergencyEditorToState();
+    const i = list.findIndex((x) => x.id === sel);
+    if (i >= 0) list.splice(i, 1);
+    if (state.config.emergency_active_template_id === sel) state.config.emergency_active_template_id = "";
+    state.emergencyTemplateEditorId = list[0]?.id || null;
+    renderEmergencyTemplatesAdmin();
+    renderEmergencyTemplateBar();
+  };
+  document.getElementById("emergency-restore-tpl").onclick = () => restoreEmergencyTemplatesDefaults();
+  document.getElementById("emergency-save-editor").onclick = async () => {
+    flushEmergencyEditorToState();
+    await persistConfigQuick();
+  };
+  root.querySelectorAll("[data-em-screen]").forEach((inp) => {
+    inp.addEventListener("change", () => {
+      const nm = inp.getAttribute("data-em-screen");
+      const part = inp.getAttribute("data-em-part");
+      if (!nm || !part) return;
+      const b = tplByScreen(tpl);
+      if (!b[nm]) b[nm] = { imageUrl: "", caption: "" };
+      b[nm][part] = String(inp.value || "").trim();
+    });
+  });
+  root.querySelectorAll("[data-em-screen-upload]").forEach((inp) => {
+    inp.addEventListener("change", async (ev) => {
+      const nm = inp.getAttribute("data-em-screen-upload");
+      const f = ev.target.files && ev.target.files[0];
+      if (!nm || !f || state.meta?.saas_mode) return;
+      if (f.size > MAX_WIDGET_IMAGE_UPLOAD_BYTES) {
+        alert(t("w.widgetImageTooLarge"));
+        ev.target.value = "";
+        return;
+      }
+      const formData = new FormData();
+      formData.append("file", f);
       try {
-        const response = await fetch(
-          testUrl,
-          mergeFetchOptions({
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ volume_percent: Number(elements.audioStreamVolume && elements.audioStreamVolume.value) || 80 }),
-          }),
-        );
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          if (response.status === 401) {
-            window.location.href = "/login";
-            return;
-          }
-          if (response.status === 404) {
-            if (out()) {
-              out().textContent =
-                "Сервер не знает этот API (404) — запущен старый процесс GuardSchool.\n\n"
-                + "Закройте все окна/службы, остановите python/uvicorn, запустите снова из папки с текущим проектом (где есть маршрут pc-audio-test-play в app.py).";
-            }
-            return;
-          }
-          throw new Error(apiDetailMessage(payload) || `Ошибка ${response.status}`);
-        }
-        const r = payload;
-        const base = r.detail || "Готово.";
-        if (out()) out().textContent = `${base}\n\n${t("audio.waitingFinish")}`;
-        pollFfplayIntoPre(base, elements.settingsSoundTestResult);
+        const payload = await api("/api/admin/upload-widget-image", { method: "POST", body: formData });
+        const b = tplByScreen(tpl);
+        if (!b[nm]) b[nm] = { imageUrl: "", caption: "" };
+        b[nm].imageUrl = payload.path || "";
+        ev.target.value = "";
+        renderEmergencyTemplatesAdmin();
       } catch (err) {
-        if (out()) out().textContent = String(err.message || err);
+        alert(String(err.message || err));
+      }
+    });
+  });
+  const sf = document.getElementById("emergency-f-sound-file");
+  if (sf) {
+    sf.addEventListener("change", async (ev) => {
+      const f = ev.target.files && ev.target.files[0];
+      if (!f) return;
+      const formData = new FormData();
+      formData.append("file", f);
+      try {
+        const payload = await api("/api/admin/upload-emergency-sound", { method: "POST", body: formData });
+        s.soundUrl = payload.url || "";
+        ev.target.value = "";
+        renderEmergencyTemplatesAdmin();
+      } catch (err) {
+        alert(String(err.message || err));
       }
     });
   }
+}
 
-  if (elements.settingsTestTvBtn) {
-    elements.settingsTestTvBtn.addEventListener("click", async () => {
-      try {
-        const r = await api("/api/admin/bell-sounds");
-        const files = r.files || [];
-        if (!files.length) {
-          if (out()) {
-            out().textContent =
-              "В uploads/bells нет файлов. Загрузите звук в разделе «Звонки».";
-          }
-          return;
-        }
-        const slug = selectedScreenSlug();
-        const screenUrl = `${window.location.origin}/screen/${encodeURIComponent(slug)}`;
-        const w = window.open(screenUrl, "_blank", "noopener,noreferrer");
-        let msg =
-          `Тест ТВ: откройте экран «${slug}» — звук по расписанию идёт там. В админке файл не играет (Рупор только «Тест Рупор»).\n${screenUrl}`;
-        if (!w) msg += "\n\nВкладка не открылась — разрешите всплывающие окна или скопируйте URL выше.";
-        if (out()) out().textContent = msg;
-      } catch (err) {
-        if (out()) out().textContent = String(err.message || err);
-      }
+function flushEmergencyEditorToState() {
+  const list = state.config?.emergency_templates;
+  if (!Array.isArray(list)) return;
+  const sel = state.emergencyTemplateEditorId;
+  const tpl = list.find((x) => x.id === sel);
+  if (!tpl) return;
+  const titleEl = document.getElementById("emergency-f-title");
+  const textEl = document.getElementById("emergency-f-text");
+  if (titleEl) tpl.title = String(titleEl.value || "").trim() || tpl.id;
+  if (textEl) {
+    if (!tpl.settings) tpl.settings = {};
+    tpl.settings.text = String(textEl.value || "");
+  }
+  const fs = document.getElementById("emergency-f-fs");
+  const col = document.getElementById("emergency-f-color");
+  const bg = document.getElementById("emergency-f-bg");
+  const bd = document.getElementById("emergency-f-bold");
+  const bk = document.getElementById("emergency-f-backdrop");
+  const snd = document.getElementById("emergency-f-sound");
+  const surl = document.getElementById("emergency-f-surl");
+  const timer = document.getElementById("emergency-f-timer");
+  if (!tpl.settings) tpl.settings = {};
+  if (fs) {
+    const n = Number(fs.value);
+    tpl.settings.fontSize = Number.isFinite(n) ? Math.max(10, Math.min(200, Math.round(n))) : 42;
+  }
+  if (col) {
+    const cv = String(col.value || "#ffffff").trim();
+    tpl.settings.color = /^#[0-9a-fA-F]{6}$/.test(cv) ? cv : "#ffffff";
+  }
+  if (bg) tpl.settings.background = String(bg.value || "").trim();
+  if (bd) tpl.settings.bold = Boolean(bd.checked);
+  if (bk) tpl.settings.backdrop = Boolean(bk.checked);
+  if (snd) tpl.settings.soundEnabled = Boolean(snd.checked);
+  if (surl) tpl.settings.soundUrl = String(surl.value || "").trim();
+  if (timer) {
+    const n = Number(timer.value);
+    tpl.settings.timer_seconds = Number.isFinite(n) ? Math.max(0, Math.min(86400, Math.round(n))) : 0;
+  }
+  const root = document.getElementById("emergency-templates-admin-root");
+  if (root) {
+    root.querySelectorAll("[data-em-screen]").forEach((inp) => {
+      const nm = inp.getAttribute("data-em-screen");
+      const part = inp.getAttribute("data-em-part");
+      if (!nm || !part) return;
+      const b = tplByScreen(tpl);
+      if (!b[nm]) b[nm] = { imageUrl: "", caption: "" };
+      b[nm][part] = String(inp.value || "").trim();
     });
   }
+}
+
+function restoreEmergencyTemplatesDefaults() {
+  if (!confirm(t("emergencyTemplates.confirmRestore"))) return;
+  state.config.emergency_templates = JSON.parse(JSON.stringify(CLIENT_EMERGENCY_DEFAULTS));
+  state.config.emergency_active_template_id = "";
+  state.emergencyTemplateEditorId = CLIENT_EMERGENCY_DEFAULTS[0].id;
+  renderEmergencyTemplatesAdmin();
+  renderEmergencyTemplateBar();
+  persistConfigQuick().catch(() => {});
+}
+
+function ensureEmergencyWidgetOnScreen(screen) {
+  const list = screen.widgets || (screen.widgets = []);
+  let w = list.find((x) => x.type === "emergency");
+  if (!w) {
+    list.push(JSON.parse(JSON.stringify(emergencyWidgetTemplate())));
+    w = list.find((x) => x.type === "emergency");
+  }
+  return w;
+}
+
+function syncEmergencyModeCheckbox() {
+  const el = document.getElementById("admin-emergency-mode");
+  if (!el || !state.config?.screens?.length) return;
+  const allOn = state.config.screens.every((sc) => {
+    const w = sc.widgets?.find((x) => x.type === "emergency");
+    return w && w.enabled !== false;
+  });
+  const anyOn = state.config.screens.some((sc) => {
+    const w = sc.widgets?.find((x) => x.type === "emergency");
+    return w && w.enabled !== false;
+  });
+  el.checked = allOn;
+  el.indeterminate = !allOn && anyOn;
+}
+
+function bindEmergencyModeToggleOnce() {
+  const el = document.getElementById("admin-emergency-mode");
+  if (!el || el.dataset.gsBoundEmergency === "1") return;
+  el.dataset.gsBoundEmergency = "1";
+  el.addEventListener("change", async () => {
+    if (!state.config?.screens?.length) return;
+    const on = Boolean(el.checked);
+    el.indeterminate = false;
+    state.config.screens.forEach((screen) => {
+      const w = ensureEmergencyWidgetOnScreen(screen);
+      if (w) {
+        w.enabled = on;
+        if (!w.settings) w.settings = {};
+      }
+    });
+    await persistConfigQuick();
+  });
 }
 
 function renderTabs() {
+  if (!elements.tabs || !state.config?.screens) return;
   elements.tabs.innerHTML = "";
-  const audioBtn = document.createElement("button");
-  audioBtn.type = "button";
-  audioBtn.className = `top-nav-btn ${state.audioStreamPanelActive ? "active" : ""}`;
-  audioBtn.textContent = t("tabs.pcAudio");
-  audioBtn.onclick = () => {
-    closeWidgetModal();
-    state.programSettingsPanelActive = false;
-    state.audioStreamPanelActive = true;
-    render();
-  };
-  elements.tabs.appendChild(audioBtn);
 
   state.config.screens.forEach((screen) => {
-    const button = document.createElement("button");
-    button.className = `top-nav-btn ${!state.audioStreamPanelActive && screen.id === state.selectedScreenId ? "active" : ""}`;
-    button.textContent = screen.name;
-    button.onclick = () => {
+    const row = document.createElement("div");
+    row.className = "admin-sidebar-screen-row";
+
+    const nameBtn = document.createElement("button");
+    nameBtn.type = "button";
+    nameBtn.className = `admin-sidebar-screen-btn${!state.audioStreamPanelActive && !state.statsPanelActive && !state.programSettingsPanelActive && screen.id === state.selectedScreenId ? " active" : ""}`;
+    nameBtn.textContent = screen.name || "";
+    nameBtn.onclick = () => {
       state.audioStreamPanelActive = false;
+      state.statsPanelActive = false;
       state.programSettingsPanelActive = false;
       closeWidgetModal();
+      closeAdminSettingsSubmenu();
       state.selectedScreenId = screen.id;
       render();
     };
-    elements.tabs.appendChild(button);
+
+    const slug = String(screen.slug || "").trim();
+    const openA = document.createElement("a");
+    openA.className = "admin-sidebar-screen-open";
+    openA.textContent = "\u2192";
+    openA.target = "_blank";
+    openA.rel = "noopener noreferrer";
+    openA.title = t("admin.openScreenNewTab");
+    if (slug) {
+      openA.href = new URL(`/screen/${encodeURIComponent(slug)}`, window.location.origin).href;
+    } else {
+      openA.href = "#";
+      openA.setAttribute("aria-disabled", "true");
+      openA.addEventListener("click", (ev) => {
+        ev.preventDefault();
+      });
+    }
+
+    row.appendChild(nameBtn);
+    row.appendChild(openA);
+    elements.tabs.appendChild(row);
   });
+
   const plus = document.createElement("button");
-  plus.className = "top-nav-btn";
+  plus.type = "button";
+  plus.className = "top-nav-btn admin-sidebar-add-btn";
   plus.textContent = t("tabs.addScreen");
   plus.onclick = addScreen;
   elements.tabs.appendChild(plus);
-}
 
-function renderBellTemplateOptions() {
-  const current = selectedScreen().bell_schedule_template;
-  elements.screenBellTemplate.innerHTML = state.bells.templates
-    .map((item) => `<option value="${item.id}" ${item.id === current ? "selected" : ""}>${item.name}</option>`)
-    .join("");
+  const wrapSettings = document.getElementById("admin-sidebar-settings");
+  const panelish = Boolean(
+    state.programSettingsPanelActive || state.audioStreamPanelActive || state.statsPanelActive,
+  );
+  if (wrapSettings) {
+    wrapSettings.classList.toggle("admin-sidebar-settings--active", panelish);
+  }
+  if (elements.programSettingsOpenBtn) {
+    elements.programSettingsOpenBtn.classList.toggle("active", panelish);
+  }
+
+  const statsItem = document.querySelector("#admin-settings-submenu [data-admin-submenu=\"stats\"]");
+  if (statsItem) statsItem.hidden = Boolean(state.meta?.demo_session);
 }
 
 function renderSectionTabs() {
@@ -1030,18 +1736,19 @@ function renderSectionTabs() {
     button.textContent = section.label;
     button.onclick = () => {
       state.activeSection = section.id;
-      if (section.id !== "main") closeWidgetModal();
+      if (section.id !== "widgets") closeWidgetModal();
       renderSectionVisibility();
       renderSectionTabs();
       if (section.id === "preview") {
         renderPreview();
         clearTimeout(window.__previewCfgDebounce);
         window.__previewCfgDebounce = setTimeout(() => fetchPreviewPayloadOnce(), 80);
-      } else if (section.id === "schedule") {
+      } else if (section.id === "bells") {
         renderBellEditor();
       } else {
         window.GuardSchoolScreen?.clearAllTimers();
       }
+      persistAdminUiToSession();
     };
     elements.sectionTabs.appendChild(button);
   });
@@ -1053,305 +1760,35 @@ function renderSectionVisibility() {
   });
 }
 
-function settingInputs(widget, index) {
-  const parts = [];
-  parts.push(widgetToggle(t("w.enabled"), widget.enabled, `widget:${index}:enabled`));
-  parts.push(widgetToggle(t("w.backdrop"), widget.settings.backdrop !== false, `widget:${index}:settings.backdrop`));
-  if (["date", "time", "text", "bell_status", "holidays", "announcements", "marquee", "emergency"].includes(widget.type)) {
-    parts.push(widgetInput(t("w.fontSize"), widget.settings.fontSize, `widget:${index}:settings.fontSize`, "number", "standard-input"));
-    parts.push(widgetInput(t("w.color"), widget.settings.color, `widget:${index}:settings.color`, "color", "standard-input"));
-    parts.push(widgetToggle(t("w.bold"), widget.settings.bold, `widget:${index}:settings.bold`));
-  }
-  if (["text", "bell_status", "bell_countdown", "holidays", "announcements", "marquee", "emergency"].includes(widget.type)) {
-    parts.push(widgetInput(t("w.blockBg"), widget.settings.background, `widget:${index}:settings.background`, "text", "wide-input"));
-  }
-  if (widget.type === "text") {
-    parts.push(widgetInput(t("w.text"), widget.settings.text, `widget:${index}:settings.text`, "text", "wide-input"));
-  }
-  if (widget.type === "emergency") {
-    parts.push(widgetTextarea(t("w.textLines"), widget.settings.text, `widget:${index}:settings.text`, "wide-input"));
-    parts.push(`<p class="hint">${t("w.emergencyHint")}</p>`);
-  }
-  if (widget.type === "image") {
-    coerceWidgetImageSlots(widget);
-    const imgs = widget.settings.images;
-    parts.push(widgetInput(t("w.opacity"), widget.settings.opacity, `widget:${index}:settings.opacity`, "number", "standard-input"));
-    parts.push(
-      widgetInput(
-        t("w.imageRotate"),
-        widget.settings.imagesRotateSec,
-        `widget:${index}:settings.imagesRotateSec`,
-        "number",
-        "standard-input"
-      )
-    );
-    const fit = widget.settings.objectFit === "cover" ? "cover" : "contain";
-    parts.push(`<label>${t("w.imageFit")}<select class="standard-input" data-key="widget:${index}:settings.objectFit"><option value="contain" ${fit === "contain" ? "selected" : ""}>${t("w.contain")}</option><option value="cover" ${fit === "cover" ? "selected" : ""}>${t("w.cover")}</option></select></label>`);
-    const slotRows = imgs
-      .map((row, i) => {
-        const nm = escapeHtmlAttr(String(row.name ?? ""));
-        const ur = escapeHtmlAttr(String(row.url ?? ""));
-        return `<div class="widget-image-slot" data-image-slot-row="${i}">
-          <div class="widget-image-slot-head"><span class="widget-image-slot-label">${tf("w.imageSlot", { n: i + 1 })}</span>
-            <button type="button" class="secondary-btn compact-btn" data-remove-image-slot="${index}:${i}" title="${escapeHtmlAttr(t("w.removeSlot"))}">${t("w.removeSlot")}</button>
-          </div>
-          <label>${t("w.imageName")}<input class="wide-input" data-key="widget:${index}:settings.images.${i}.name" type="text" value="${nm}"></label>
-          <label>${t("w.url")}<input class="wide-input" data-key="widget:${index}:settings.images.${i}.url" type="text" value="${ur}" placeholder="/uploads/widget_images/…"></label>
-          <div class="compact-form-row widget-image-upload-row">
-            <label class="bell-file-upload"><span class="bell-file-upload-main">${t("w.browse")}</span><span class="bell-file-upload-sub">${t("w.browseSub")}</span>
-              <input type="file" accept="image/*" data-widget-image-upload="${index}" data-widget-image-slot="${i}" hidden>
-            </label>
-          </div>
-        </div>`;
-      })
-      .join("");
-    parts.push(`<div class="widget-image-slots">${slotRows}</div>`);
-    parts.push(`<button type="button" class="secondary-btn compact-btn" data-add-image-slot="${index}">${t("w.addImage")}</button>`);
-    parts.push(`<p class="hint">${t("w.imageHint")}</p>`);
-  }
-  if (widget.type === "bell_status" || widget.type === "bell_countdown") {
-    parts.push(widgetInput(t("w.titleFont"), widget.settings.titleFontSize, `widget:${index}:settings.titleFontSize`, "number", "standard-input"));
-  }
-  if (widget.type === "holidays" || widget.type === "announcements") {
-    parts.push(widgetInput(t("w.titleFont"), widget.settings.titleFontSize, `widget:${index}:settings.titleFontSize`, "number", "standard-input"));
-  }
-  if (widget.type === "bell_countdown") {
-    parts.push(widgetInput(t("w.bodyFont"), widget.settings.fontSize, `widget:${index}:settings.fontSize`, "number", "standard-input"));
-    parts.push(widgetInput(t("w.color"), widget.settings.color, `widget:${index}:settings.color`, "color", "standard-input"));
-  }
-  if (widget.type === "schedule") {
-    parts.push(widgetInput(t("w.tableFont"), widget.settings.fontSize, `widget:${index}:settings.fontSize`, "number", "standard-input"));
-    parts.push(widgetInput(t("w.titleFont"), widget.settings.titleFontSize, `widget:${index}:settings.titleFontSize`, "number", "standard-input"));
-    parts.push(widgetInput(t("w.highlight"), widget.settings.highlightColor, `widget:${index}:settings.highlightColor`, "color", "standard-input"));
-    parts.push(widgetInput(t("w.sampleDiff"), widget.settings.sampleDiffColor, `widget:${index}:settings.sampleDiffColor`, "color", "standard-input"));
-    parts.push(widgetInput(t("w.headerColor"), widget.settings.headerColor, `widget:${index}:settings.headerColor`, "color", "standard-input"));
-    parts.push(widgetToggle(t("w.bold"), widget.settings.bold, `widget:${index}:settings.bold`));
-  }
-  if (widget.type === "carousel") {
-    const selectedIds = new Set(widget.settings.childWidgetIds || []);
-    const childOptions = availableCarouselChildren(widget).map((item) => `
-      <label class="toggle-label carousel-child-option">
-        <input data-key="widget:${index}:settings.childWidgetIds" data-value="${item.id}" type="checkbox" ${selectedIds.has(item.id) ? "checked" : ""}>
-        ${item.title}
-      </label>
-    `).join("");
-    const animationOptions = getCarouselAnimations()
-      .map((item) => `<option value="${item.id}" ${widget.settings.animation === item.id ? "selected" : ""}>${item.label}</option>`)
-      .join("");
-    const childMeta = Object.fromEntries(availableCarouselChildren(widget).map((item) => [item.id, item]));
-    const slideDurRows = (widget.settings.childWidgetIds || [])
-      .map((cid) => {
-        const meta = childMeta[cid] || { title: cid };
-        const val = (widget.settings.childSlideSec || {})[cid];
-        const shown = val != null && val !== "" ? val : "";
-        return widgetInput(tf("carousel.slideSec", { title: meta.title }), shown, `widget:${index}:settings.childSlideSec.${cid}`, "number", "standard-input");
-      })
-      .join("");
-    parts.push(widgetInput(t("carousel.delay"), widget.settings.startDelaySec, `widget:${index}:settings.startDelaySec`, "number", "standard-input"));
-    parts.push(`<div class="carousel-animation-row"><label>${t("carousel.animation")}<select class="standard-input" data-key="widget:${index}:settings.animation">${animationOptions}</select></label><button type="button" class="secondary-btn compact-btn" data-random-animation="${index}">${t("carousel.randomBtn")}</button></div>`);
-    parts.push(`<div class="carousel-children-box">${childOptions || `<div class="hint">${t("carousel.noChildren")}</div>`}</div>`);
-    if (slideDurRows) parts.push(`<div class="carousel-slide-durations hint">${t("carousel.slideDurHint")}</div>${slideDurRows}`);
-  }
-  if (widget.type === "holidays") {
-    parts.push(widgetInput(t("w.count"), widget.settings.count, `widget:${index}:settings.count`, "number", "standard-input"));
-  }
-  if (widget.type === "announcements") {
-    parts.push(widgetTextarea(t("w.linesManual"), widget.settings.items, `widget:${index}:settings.items`, "wide-input"));
-    parts.push(widgetToggle(t("w.useManual"), widget.settings.useManual, `widget:${index}:settings.useManual`));
-    parts.push(widgetInput(t("w.rotateExcel"), widget.settings.rotateSec, `widget:${index}:settings.rotateSec`, "number", "standard-input"));
-    parts.push(widgetToggle(t("w.advanceCarousel"), widget.settings.advanceOnShow, `widget:${index}:settings.advanceOnShow`));
-    parts.push(widgetToggle(t("w.randomOrder"), widget.settings.randomize !== false, `widget:${index}:settings.randomize`));
-  }
-  if (widget.type === "marquee") {
-    parts.push(widgetTextarea(t("w.linesManual"), widget.settings.items, `widget:${index}:settings.items`, "wide-input"));
-    parts.push(widgetToggle(t("w.useManual"), widget.settings.useManual, `widget:${index}:settings.useManual`));
-    parts.push(widgetInput(t("w.speedSec"), widget.settings.speedSec, `widget:${index}:settings.speedSec`, "number", "standard-input"));
-  }
-  return parts.join("");
-}
-
-function widgetEditorInnerHtml(widget, index) {
-  return `
-      <div class="inline-grid">
-        ${widgetInput("x", widget.x, `widget:${index}:x`, "number", "standard-input")}
-        ${widgetInput("y", widget.y, `widget:${index}:y`, "number", "standard-input")}
-        ${widgetInput("w", widget.w, `widget:${index}:w`, "number", "standard-input")}
-        ${widgetInput("h", widget.h, `widget:${index}:h`, "number", "standard-input")}
-      </div>
-      <div class="settings-grid">${settingInputs(widget, index)}</div>
-  `;
-}
-
-async function uploadWidgetImage(file, widgetIndex, slotIndex) {
-  const formData = new FormData();
-  formData.append("file", file);
-  const payload = await api("/api/admin/upload-widget-image", { method: "POST", body: formData });
-  const w = selectedScreen().widgets[widgetIndex];
-  if (!w || w.type !== "image") return;
-  coerceWidgetImageSlots(w);
-  const slot = Number(slotIndex);
-  const i = Number.isFinite(slot) && slot >= 0 ? slot : 0;
-  while (w.settings.images.length <= i) {
-    w.settings.images.push({ name: tf("w.imageDefaultName", { n: w.settings.images.length + 1 }), url: "" });
-  }
-  w.settings.images[i].url = payload.path;
-  render();
-  if (state.widgetModalWidgetId === w.id) syncWidgetModal();
-  renderPreview();
-}
-
-function bindWidgetEditorEvents(root, index) {
-  const screen = selectedScreen();
-  const widget = screen.widgets[index];
-  if (!widget || !root) return;
-  root.querySelectorAll("input").forEach((input) => {
-    input.addEventListener("change", (event) => {
-      if (event.target.dataset.widgetImageUpload != null) {
-        const f = event.target.files && event.target.files[0];
-        if (f) {
-          uploadWidgetImage(
-            f,
-            Number(event.target.dataset.widgetImageUpload),
-            Number(event.target.dataset.widgetImageSlot || 0)
-          );
-          event.target.value = "";
-        }
-        return;
-      }
-      let value = event.target.type === "checkbox" ? event.target.checked : event.target.value;
-      if (event.target.dataset.value) value = { checked: event.target.checked, value: event.target.dataset.value };
-      updateWidgetField(event.target.dataset.key, value);
-    });
-  });
-  root.querySelectorAll("select").forEach((select) => {
-    select.addEventListener("change", (event) => updateWidgetField(event.target.dataset.key, event.target.value));
-  });
-  root.querySelectorAll("textarea").forEach((textarea) => {
-    textarea.addEventListener("change", (event) => updateWidgetField(event.target.dataset.key, event.target.value));
-  });
-  root.querySelectorAll("[data-add-carousel]").forEach((button) => {
-    button.onclick = () => addCarousel(Number(button.dataset.addCarousel));
-  });
-  root.querySelectorAll("[data-remove-carousel]").forEach((button) => {
-    button.onclick = () => removeCarousel(Number(button.dataset.removeCarousel));
-  });
-  root.querySelectorAll("[data-random-animation]").forEach((button) => {
-    button.onclick = () => {
-      const w = selectedScreen().widgets[index];
-      if (w) w.settings.animation = "random";
-      render();
-      renderPreview();
-    };
-  });
-  root.querySelectorAll("[data-add-image-slot]").forEach((button) => {
-    button.onclick = () => addWidgetImageSlot(Number(button.dataset.addImageSlot));
-  });
-  root.querySelectorAll("[data-remove-image-slot]").forEach((button) => {
-    button.onclick = () => {
-      const raw = String(button.dataset.removeImageSlot || "");
-      const [wi, si] = raw.split(":");
-      removeWidgetImageSlot(Number(wi), Number(si));
-    };
-  });
-}
-
-function closeWidgetModal() {
-  state.widgetModalWidgetId = null;
-  const modal = elements.widgetEditorModal;
-  if (modal) {
-    modal.hidden = true;
-    modal.setAttribute("aria-hidden", "true");
-  }
-}
-
-function syncWidgetModal() {
-  const id = state.widgetModalWidgetId;
-  const modal = elements.widgetEditorModal;
-  const body = elements.widgetEditorModalBody;
-  const titleEl = elements.widgetEditorModalTitle;
-  if (!modal || !body || !titleEl) return;
-  if (!id) {
-    modal.hidden = true;
-    modal.setAttribute("aria-hidden", "true");
-    return;
-  }
-  const screen = selectedScreen();
-  const index = screen.widgets.findIndex((w) => w.id === id);
-  if (index < 0) {
-    closeWidgetModal();
-    return;
-  }
-  const widget = screen.widgets[index];
-  titleEl.textContent = `${widgetDisplayTitle(widget)} · ${widget.type}`;
-  body.innerHTML = widgetEditorInnerHtml(widget, index);
-  bindWidgetEditorEvents(body, index);
-  modal.hidden = false;
-  modal.setAttribute("aria-hidden", "false");
-}
-
-function openWidgetModal(widgetId) {
-  state.widgetModalWidgetId = widgetId;
-  syncWidgetModal();
-}
-
-function bindWidgetModalOnce() {
-  if (bindWidgetModalOnce._done) return;
-  bindWidgetModalOnce._done = true;
-  document.addEventListener("click", (e) => {
-    const openEl = e.target.closest("[data-open-widget-editor]");
-    if (openEl) {
-      e.preventDefault();
-      const id = openEl.getAttribute("data-open-widget-editor");
-      if (id) openWidgetModal(id);
-    }
-    if (e.target.closest("[data-close-widget-modal]")) {
-      e.preventDefault();
-      closeWidgetModal();
-    }
-  });
-  document.addEventListener("keydown", (e) => {
-    if (e.key !== "Escape") return;
-    if (state.widgetModalWidgetId) closeWidgetModal();
-    else if (state.programSettingsPanelActive) closeProgramSettingsModal();
-  });
-}
-
-function renderWidgets() {
-  const screen = selectedScreen();
-  elements.widgetList.innerHTML = "";
-  screen.widgets
-    .filter((widget) => !isWidgetTypeHiddenInAdminPalette(widget.type))
-    .forEach((widget) => {
-      const div = document.createElement("div");
-      div.className = "widget-item widget-item-compact";
-      const wid = escapeHtmlAttr(String(widget.id));
-      const w = Number(widget.w);
-      const h = Number(widget.h);
-      const wh = `${Number.isFinite(w) ? w : "?"}×${Number.isFinite(h) ? h : "?"}`;
-      div.innerHTML = `
-      <div class="widget-title-row">
-        <h3>${escapeHtmlAttr(widgetDisplayTitle(widget))}</h3>
-        <div class="widget-actions">
-          <button type="button" class="primary-btn compact-btn" data-open-widget-editor="${wid}">${t("widget.configure")}</button>
-        </div>
-      </div>
-      <div class="widget-item-meta"><span class="widget-item-type">${escapeHtmlAttr(String(widget.type))}</span> · ${tf("widget.gridMeta", { wh: escapeHtmlAttr(wh) })}</div>
-    `;
-      elements.widgetList.appendChild(div);
-    });
-}
-
 function renderForm() {
   const screen = selectedScreen();
+  // Сетка зависит от ориентации (для предпросмотра/drag/resize).
+  if (screen.orientation === "portrait") { GRID.cols = 26; GRID.rows = 32; } else { GRID.cols = 32; GRID.rows = 26; }
   elements.screenName.value = screen.name;
   elements.screenSlug.value = screen.slug;
+  if (elements.screenOrientation) elements.screenOrientation.value = screen.orientation === "portrait" ? "portrait" : "landscape";
+  if (elements.screenMobileMode) elements.screenMobileMode.checked = Boolean(screen.mobile_mode);
+  const mobileAppearance =
+    screen.mobile_appearance && typeof screen.mobile_appearance === "object"
+      ? screen.mobile_appearance
+      : {};
+  if (elements.screenMobileStyleSettings) elements.screenMobileStyleSettings.hidden = !Boolean(screen.mobile_mode);
+  if (elements.screenMobileBackgroundColor) elements.screenMobileBackgroundColor.value = mobileAppearance.background_color || "#172554";
+  if (elements.screenMobileCardColor) elements.screenMobileCardColor.value = mobileAppearance.card_color || "#13234b";
+  if (elements.screenMobileTextColor) elements.screenMobileTextColor.value = mobileAppearance.text_color || "#f8fafc";
+  if (elements.screenMobileMutedColor) elements.screenMobileMutedColor.value = mobileAppearance.muted_color || "#cbd5e1";
+  if (elements.screenMobileAccentColor) elements.screenMobileAccentColor.value = mobileAppearance.accent_color || "#38bdf8";
+  if (elements.screenMobileFontSize) elements.screenMobileFontSize.value = String(mobileAppearance.font_size_px || 16);
+  if (elements.screenMobileCardRadius) elements.screenMobileCardRadius.value = String(mobileAppearance.card_radius_px ?? 12);
+  if (elements.screenMobileCardGap) elements.screenMobileCardGap.value = String(mobileAppearance.card_gap_px ?? 10);
+  if (elements.screenEnableFeedback) elements.screenEnableFeedback.checked = Boolean(screen.enable_feedback);
   elements.screenIpNote.value = screen.ip_note;
   elements.screenPollInterval.value = screen.poll_interval_sec;
   elements.screenBackground.value = screen.background_image || "";
   if (elements.screenBgRotate) elements.screenBgRotate.checked = Boolean(screen.background_rotate_enabled);
   if (elements.screenBgRotateInterval) {
     const iv = Number(screen.background_rotate_interval_sec);
-    elements.screenBgRotateInterval.value = String(Number.isFinite(iv) ? iv : 3600);
+    elements.screenBgRotateInterval.value = String(clampBackgroundRotateIntervalSec(Number.isFinite(iv) ? iv : 3600));
   }
   if (elements.screenBgFolder) {
     elements.screenBgFolder.value = String(screen.background_rotate_folder || "");
@@ -1465,416 +1902,6 @@ async function renderBackgroundGallery() {
   return payload;
 }
 
-function renderWeekdayBellGrid() {
-  const screen = selectedScreen();
-  const mapping = screen.weekday_bell_templates || {};
-  const templateOptions = state.bells.templates
-    .map((item) => `<option value="${escapeHtmlAttr(String(item.id))}">${escapeHtml(String(item.name || ""))}</option>`)
-    .join("");
-  elements.bellWeekdayGrid.innerHTML = getWeekdayOptions().map((day) => `
-    <label title="${day.title || day.label}">
-      ${day.label}
-      <select class="standard-input" data-weekday="${day.id}">
-        <option value="">${t("weekday.defaultTemplate")}</option>
-        ${templateOptions}
-      </select>
-    </label>
-  `).join("");
-  elements.bellWeekdayGrid.querySelectorAll("[data-weekday]").forEach((select) => {
-    select.value = mapping[select.dataset.weekday] || "";
-    select.onchange = (event) => {
-      const weekday = event.target.dataset.weekday;
-      const value = event.target.value;
-      if (!screen.weekday_bell_templates) screen.weekday_bell_templates = {};
-      if (value) screen.weekday_bell_templates[weekday] = value;
-      else delete screen.weekday_bell_templates[weekday];
-    };
-  });
-}
-
-function renderHistory() {
-  if (!elements.historyList) return;
-  const loc = window.GuardSchoolI18n?.getLang?.() === "en" ? "en-US" : "ru-RU";
-  const verHint = state.appVersion
-    ? `<p class="hint history-app-ver">${t("history.currentVersion")} <strong>${escapeHtmlAttr(state.appVersion)}</strong></p>`
-    : "";
-  if (!state.history.length) {
-    elements.historyList.innerHTML = `${verHint}<div class="hint">${t("history.empty")}</div>`;
-    return;
-  }
-  elements.historyList.innerHTML =
-    verHint +
-    state.history
-      .map((item) => {
-        const rawTs = item.timestamp;
-        let ts = "—";
-        if (rawTs) {
-          const d = new Date(rawTs);
-          ts = Number.isNaN(d.getTime()) ? String(rawTs) : d.toLocaleString(loc);
-        }
-        const ver = item.version ? String(item.version).trim() : "";
-        const verBlock = ver
-          ? `<span class="history-ver" title="${escapeHtmlAttr(t("history.versionLabel"))}">${escapeHtmlAttr(ver)}</span>`
-          : `<span class="history-ver history-ver-na">${escapeHtmlAttr(t("history.noVersion"))}</span>`;
-        return `
-    <div class="history-item">
-      <div class="history-meta">${verBlock}<span class="history-time">${escapeHtmlAttr(ts)}</span></div>
-      <div class="history-msg">${escapeHtmlAttr(String(item.message || ""))}</div>
-    </div>`;
-      })
-      .join("");
-}
-
-function addCarousel(sourceIndex) {
-  const screen = selectedScreen();
-  const source = screen.widgets[sourceIndex];
-  const copy = JSON.parse(JSON.stringify(source));
-  copy.id = createWidgetId("carousel");
-  copy.title = tf("carousel.nameN", { n: screen.widgets.filter((item) => item.type === "carousel").length + 1 });
-  copy.x = Math.min(copy.x + 1, GRID.cols - copy.w);
-  copy.y = Math.min(copy.y + 1, GRID.rows - copy.h);
-  copy.settings.startDelaySec = Number(copy.settings.startDelaySec || 0) + 15;
-  screen.widgets.splice(sourceIndex + 1, 0, copy);
-  render();
-}
-
-function removeCarousel(sourceIndex) {
-  const screen = selectedScreen();
-  const carouselCount = screen.widgets.filter((item) => item.type === "carousel").length;
-  if (carouselCount <= 1) {
-    alert(t("alert.oneCarousel"));
-    return;
-  }
-  screen.widgets.splice(sourceIndex, 1);
-  render();
-}
-
-function bellSoundSelectOptions(selectedVal) {
-  const sel = selectedVal || "";
-  let html = `<option value="">${escapeHtmlAttr(t("weekday.defaultTemplate"))}</option><option value="-">${escapeHtmlAttr(t("bells.soundNone"))}</option>`;
-  (state.bellSoundFiles || []).forEach((f) => {
-    html += `<option value="${f.filename}"${f.filename === sel ? " selected" : ""}>${f.filename}</option>`;
-  });
-  return html;
-}
-
-function ensureBellSoundPanel() {
-  let panel = document.getElementById("bell-sound-panel");
-  if (panel) return panel;
-  const bellsCard = document.getElementById("bell-rows")?.closest(".card");
-  panel = document.createElement("div");
-  panel.id = "bell-sound-panel";
-  panel.className = "card-subsection";
-  const hint = bellsCard?.querySelector(".hint");
-  const rows = document.getElementById("bell-rows");
-  if (hint) {
-    hint.after(panel);
-  } else if (rows && bellsCard) {
-    bellsCard.insertBefore(panel, rows);
-  } else if (bellsCard) {
-    bellsCard.appendChild(panel);
-  }
-  return panel;
-}
-
-function renderBellSoundPanel() {
-  const panel = ensureBellSoundPanel();
-  if (!panel || !state.bells) return;
-  state.bells.sound_defaults = state.bells.sound_defaults || { start: null, end: null };
-  const sd = state.bells.sound_defaults;
-  const s0 = sd.start || "";
-  const s1 = sd.end || "";
-  panel.innerHTML = `
-    <h3>${t("bells.soundsTitle")}</h3>
-    <p class="hint bell-sound-intro">${t("bells.soundsIntro")}</p>
-    <div class="bell-upload-row">
-      <label class="bell-file-upload">
-        <span class="bell-file-upload-main">${t("bells.uploadBell")}</span>
-        <span class="bell-file-upload-sub">${t("bells.uploadFormats")}</span>
-        <input type="file" id="bell-sound-upload" accept=".mp3,.wav,.ogg,.m4a,.aac,audio/*" hidden>
-      </label>
-    </div>
-    <div class="compact-form-row bell-sound-defaults">
-      <label>${t("bells.defIntervalStart")}<select id="bell-def-start" class="standard-input">${bellSoundSelectOptions(s0)}</select></label>
-      <label>${t("bells.defIntervalEnd")}<select id="bell-def-end" class="standard-input">${bellSoundSelectOptions(s1)}</select></label>
-      <button type="button" class="secondary-btn" id="bell-apply-starts">${t("bells.applyAllStarts")}</button>
-      <button type="button" class="secondary-btn" id="bell-apply-ends">${t("bells.applyAllEnds")}</button>
-    </div>`;
-  panel.querySelector("#bell-def-start").value = s0;
-  panel.querySelector("#bell-def-end").value = s1;
-  panel.querySelector("#bell-def-start").onchange = (e) => {
-    state.bells.sound_defaults.start = e.target.value || null;
-  };
-  panel.querySelector("#bell-def-end").onchange = (e) => {
-    state.bells.sound_defaults.end = e.target.value || null;
-  };
-  panel.querySelector("#bell-apply-starts").onclick = () => {
-    const v = panel.querySelector("#bell-def-start").value;
-    selectedBellTemplate().entries.forEach((e) => {
-      if (v === "") delete e.sound_start;
-      else e.sound_start = v;
-    });
-    renderBellEditor();
-  };
-  panel.querySelector("#bell-apply-ends").onclick = () => {
-    const v = panel.querySelector("#bell-def-end").value;
-    selectedBellTemplate().entries.forEach((e) => {
-      if (v === "") delete e.sound_end;
-      else e.sound_end = v;
-    });
-    renderBellEditor();
-  };
-  panel.querySelector("#bell-sound-upload").onchange = async (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    const fd = new FormData();
-    fd.append("file", file);
-    const response = await fetch("/api/admin/upload-bell-sound", mergeFetchOptions({ method: "POST", body: fd }));
-    if (!response.ok) {
-      alert((await response.json().catch(() => ({}))).detail || t("bells.uploadError"));
-      return;
-    }
-    state.bellSoundFiles = (await api("/api/admin/bell-sounds")).files || [];
-    renderBellEditor();
-    event.target.value = "";
-  };
-}
-
-function buildBellRows(entries = []) {
-  elements.bellRows.innerHTML = "";
-  entries.forEach((entry, index) => {
-    const row = document.createElement("div");
-    row.className = "bell-row";
-    const lessonVal = escapeHtmlAttr(String(entry.lesson ?? ""));
-    const ss = entry.sound_start || "";
-    const se = entry.sound_end || "";
-    const startVal = escapeHtmlAttr(String(entry.start ?? ""));
-    const endVal = escapeHtmlAttr(String(entry.end ?? ""));
-    row.innerHTML = `
-      <label class="bell-field-lesson">${t("bells.lessonField")}<input class="standard-input bell-lesson-input" data-bell-index="${index}" data-key="lesson" type="text" autocomplete="off" value="${lessonVal}" placeholder="${escapeHtmlAttr(t("bells.lessonPlaceholder"))}"></label>
-      <label>${t("bells.soundStart")}<select data-bell-index="${index}" data-key="sound_start" class="standard-input bell-sound-select">${bellSoundSelectOptions(ss)}</select></label>
-      <label>${t("bells.soundEnd")}<select data-bell-index="${index}" data-key="sound_end" class="standard-input bell-sound-select">${bellSoundSelectOptions(se)}</select></label>
-      <label>${t("bells.timeStart")}<input class="standard-input" data-bell-index="${index}" data-key="start" type="time" value="${startVal}"></label>
-      <label>${t("bells.timeEnd")}<input class="standard-input" data-bell-index="${index}" data-key="end" type="time" value="${endVal}"></label>
-      <button type="button" class="secondary-btn" data-remove-bell="${index}">${t("bells.removeRow")}</button>
-    `;
-    elements.bellRows.appendChild(row);
-    row.querySelector('[data-key="sound_start"]').value = ss;
-    row.querySelector('[data-key="sound_end"]').value = se;
-  });
-  const syncBellField = (event) => {
-    const template = selectedBellTemplate();
-    const idx = Number(event.target.dataset.bellIndex);
-    const key = event.target.dataset.key;
-    template.entries[idx][key] = event.target.value;
-  };
-  elements.bellRows.querySelectorAll("input").forEach((input) => {
-    input.addEventListener("input", syncBellField);
-    input.addEventListener("change", syncBellField);
-  });
-  elements.bellRows.querySelectorAll("select").forEach((sel) => {
-    sel.onchange = (event) => {
-      const template = selectedBellTemplate();
-      const idx = Number(event.target.dataset.bellIndex);
-      const key = event.target.dataset.key;
-      const v = event.target.value;
-      if (v === "") delete template.entries[idx][key];
-      else template.entries[idx][key] = v;
-    };
-  });
-  elements.bellRows.querySelectorAll("[data-remove-bell]").forEach((button) => {
-    button.onclick = () => {
-      selectedBellTemplate().entries.splice(Number(button.dataset.removeBell), 1);
-      renderBellEditor();
-    };
-  });
-}
-
-function renderBellEditor() {
-  const template = selectedBellTemplate();
-  elements.bellTemplateName.value = template?.name || "";
-  if (elements.bellLastLesson) {
-    const ll = template?.last_lesson;
-    elements.bellLastLesson.value = ll != null && ll !== "" ? String(ll) : "";
-  }
-  elements.bellDateOverride.value = "";
-  renderWeekdayBellGrid();
-  renderBellSoundPanel();
-  buildBellRows(template.entries || []);
-  renderBellTemplateList();
-}
-
-function renderBellTemplateList() {
-  elements.bellTemplateList.innerHTML = "";
-  state.bells.templates.forEach((item) => {
-    const div = document.createElement("div");
-    div.className = "override-item";
-    div.innerHTML = `<span>${tf("bells.templateEntries", { name: escapeHtmlAttr(item.name), n: item.entries.length })}</span>`;
-    const button = document.createElement("button");
-    button.textContent = t("bells.pickTemplate");
-    button.className = "secondary-btn";
-    button.onclick = () => {
-      selectedScreen().bell_schedule_template = item.id;
-      render();
-    };
-    div.appendChild(button);
-    elements.bellTemplateList.appendChild(div);
-  });
-}
-
-function addBellTemplate() {
-  const template = {
-    id: createTemplateId(),
-    name: tf("bell.templateN", { n: state.bells.templates.length + 1 }),
-    entries: [
-      { lesson: "1", start: "08:30", end: "09:15" },
-      { lesson: "2", start: "09:25", end: "10:10" },
-    ],
-  };
-  state.bells.templates.push(template);
-  selectedScreen().bell_schedule_template = template.id;
-  render();
-}
-
-function deleteBellTemplate() {
-  if (state.bells.templates.length <= 1) {
-    alert(t("alert.oneBellTemplate"));
-    return;
-  }
-  const currentId = selectedBellTemplate().id;
-  state.bells.templates = state.bells.templates.filter((item) => item.id !== currentId);
-  Object.keys(state.bells.weekday_overrides).forEach((key) => {
-    if (state.bells.weekday_overrides[key] === currentId) delete state.bells.weekday_overrides[key];
-  });
-  state.bells.date_overrides = state.bells.date_overrides.filter((item) => item.template_id !== currentId);
-  const nextId = state.bells.templates[0].id;
-  state.config.screens.forEach((screen) => {
-    if (screen.bell_schedule_template === currentId) {
-      screen.bell_schedule_template = nextId;
-    }
-    Object.keys(screen.weekday_bell_templates || {}).forEach((key) => {
-      if (screen.weekday_bell_templates[key] === currentId) delete screen.weekday_bell_templates[key];
-    });
-  });
-  render();
-}
-
-async function fetchPreviewPayloadOnce() {
-  const screen = selectedScreen();
-  if (!screen || !window.GuardSchoolScreen) return;
-  try {
-    const res = await api("/api/admin/preview-payload", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ screen }),
-    });
-    state.previewCache = {
-      schedule: res.schedule,
-      holidays: res.holidays,
-      background_gallery: res.background_gallery || [],
-      announcements: res.announcements || [],
-      marquee: res.marquee || [],
-      pc_audio_preview: res.pc_audio_preview || null,
-      display: res.display || null,
-    };
-    state.previewCacheScreenId = screen.id;
-    if (state.activeSection === "preview") {
-      renderPreview();
-    }
-  } catch (e) {
-    state.previewCache = null;
-    if (state.activeSection === "preview") {
-      elements.preview.innerHTML = `<p class="hint">${tf("preview.errorDetail", { base: t("preview.error"), msg: escapeHtmlAttr(String(e.message || e)) })}</p>`;
-    }
-  }
-}
-
-function pointerToGrid(event, rect) {
-  return {
-    col: Math.max(0, Math.min(GRID.cols - 1, Math.floor(((event.clientX - rect.left) / rect.width) * GRID.cols))),
-    row: Math.max(0, Math.min(GRID.rows - 1, Math.floor(((event.clientY - rect.top) / rect.height) * GRID.rows))),
-  };
-}
-
-function startDrag(event, widgetIndex) {
-  const widget = selectedScreen().widgets[widgetIndex];
-  if (widget && widget.type === "emergency") return;
-  const rect = elements.preview.getBoundingClientRect();
-  const start = pointerToGrid(event, rect);
-  state.drag = {
-    widgetIndex,
-    mode: event.shiftKey ? "resize" : "move",
-    startCol: start.col,
-    startRow: start.row,
-    origin: { x: widget.x, y: widget.y, w: widget.w, h: widget.h },
-  };
-}
-
-function handlePointerMove(event) {
-  if (!state.drag) return;
-  const rect = elements.preview.getBoundingClientRect();
-  const point = pointerToGrid(event, rect);
-  const widget = selectedScreen().widgets[state.drag.widgetIndex];
-  if (state.drag.mode === "move") {
-    widget.x = state.drag.origin.x + (point.col - state.drag.startCol);
-    widget.y = state.drag.origin.y + (point.row - state.drag.startRow);
-  } else {
-    widget.w = state.drag.origin.w + (point.col - state.drag.startCol);
-    widget.h = state.drag.origin.h + (point.row - state.drag.startRow);
-  }
-  clampWidget(widget);
-  render();
-}
-
-function stopDrag() {
-  state.drag = null;
-  renderPreview();
-}
-
-function renderGridHighlight(preview) {
-  if (!state.drag) return;
-  const widget = selectedScreen().widgets[state.drag.widgetIndex];
-  const highlight = document.createElement("div");
-  highlight.className = "grid-highlight";
-  highlight.style.gridColumn = `${widget.x + 1} / span ${widget.w}`;
-  highlight.style.gridRow = `${widget.y + 1} / span ${widget.h}`;
-  preview.appendChild(highlight);
-}
-
-/** Сборка строк предпросмотра звука: i18n-события с бэкенда или fallback на legacy lines. */
-function formatPreviewPcAudioLines(soundDiag) {
-  if (!soundDiag) return [];
-  if (Array.isArray(soundDiag.events) && soundDiag.events.length) {
-    return soundDiag.events
-      .map((e) => {
-        if (!e || !e.key) return "";
-        const raw = e.params && typeof e.params === "object" ? { ...e.params } : {};
-        if (raw.enabled === true) raw.enabledLabel = t("common.on");
-        if (raw.enabled === false) raw.enabledLabel = t("common.off");
-        delete raw.enabled;
-        if ("useSchedule" in raw) {
-          raw.useScheduleLabel = raw.useSchedule ? t("common.yes") : t("common.no");
-          delete raw.useSchedule;
-        }
-        if ("useFiles" in raw) {
-          raw.useFilesLabel = raw.useFiles ? t("common.yes") : t("common.no");
-          delete raw.useFiles;
-        }
-        if ("breakMusic" in raw) {
-          raw.breakMusicLabel = raw.breakMusic ? t("common.yes") : t("common.no");
-          delete raw.breakMusic;
-        }
-        if (raw.bellKind === "start") raw.bellKindLabel = t("preview.pcAudio.bellStart");
-        if (raw.bellKind === "end") raw.bellKindLabel = t("preview.pcAudio.bellEnd");
-        delete raw.bellKind;
-        return tf(e.key, raw);
-      })
-      .filter(Boolean);
-  }
-  if (Array.isArray(soundDiag.lines) && soundDiag.lines.length) return soundDiag.lines;
-  return [];
-}
-
 function nextUniqueScreenSlug() {
   const n0 = state.config.screens.length + 1;
   for (let n = n0; n < n0 + 500; n += 1) {
@@ -1909,6 +1936,10 @@ function duplicateCurrentScreen() {
         w.settings.childSlideSec = ncs;
       }
     }
+    if (w.type === "checkin_submit" && w.settings && w.settings.monitor_widget_id) {
+      const mid = String(w.settings.monitor_widget_id || "").trim();
+      if (mid && idMap.has(mid)) w.settings.monitor_widget_id = idMap.get(mid);
+    }
   });
   const ns = JSON.parse(JSON.stringify(src));
   ns.id = crypto.randomUUID().slice(0, 8);
@@ -1926,132 +1957,67 @@ function duplicateCurrentScreen() {
   render();
 }
 
-function renderPreview() {
-  const G = window.GuardSchoolScreen;
-  const screen = selectedScreen();
-  if (!screen || !G) return;
-  if (state.activeSection !== "preview") {
-    G.clearAllTimers();
-    return;
-  }
-
-  if (state.previewCacheScreenId !== screen.id) {
-    state.previewCache = null;
-    state.previewCacheScreenId = screen.id;
-  }
-
-  if (!state.previewCache) {
-    const G0 = window.GuardSchoolScreen;
-    const u0 =
-      G0 && G0.resolveBackgroundImageUrl
-        ? G0.resolveBackgroundImageUrl(screen, [])
-        : screen.background_image || "";
-    elements.preview.style.background = u0 ? `url(${u0}) center/cover` : "";
-    elements.preview.innerHTML = `<p class="hint">${t("preview.loading")}</p>`;
-    fetchPreviewPayloadOnce();
-    return;
-  }
-
-  const { schedule, holidays, announcements, marquee, background_gallery: previewGallery, pc_audio_preview: soundDiag } = state.previewCache;
-  if (elements.previewSoundDiag) {
-    const diagLines = formatPreviewPcAudioLines(soundDiag);
-    if (diagLines.length) {
-      elements.previewSoundDiag.hidden = false;
-      elements.previewSoundDiag.textContent = [t("preview.soundDiag"), ...diagLines].join("\n");
-    } else {
-      elements.previewSoundDiag.hidden = true;
-      elements.previewSoundDiag.textContent = "";
-    }
-  }
-  (G.pruneStaleWidgetState || G.pruneStaleCarouselState)(screen);
-  G.clearAllTimers();
-
-  const gal = previewGallery || [];
-  const bgU = G.resolveBackgroundImageUrl ? G.resolveBackgroundImageUrl(screen, gal) : screen.background_image || "";
-  elements.preview.style.background = bgU ? `url(${bgU}) center/cover` : "";
-  if (G.applyTvTextOutline) G.applyTvTextOutline(elements.preview, screen);
-
-  const hiddenWidgetIds = G.widgetIdsHiddenByCarousel(screen);
-  const preview = document.createElement("div");
-  preview.className = "screen-grid";
-  if (state.drag) {
-    preview.classList.add("show-grid");
-  }
-  renderGridHighlight(preview);
-  const ordered = G.sortWidgetsForDom ? G.sortWidgetsForDom(screen) : screen.widgets;
-  ordered.forEach((widget) => {
-    if (widget.enabled === false) return;
-    if (hiddenWidgetIds.has(widget.id) && widget.type !== "carousel") return;
-    const index = screen.widgets.findIndex((w) => w.id === widget.id);
-    const item = document.createElement("div");
-    item.className = `screen-widget draggable ${state.drag?.widgetIndex === index ? "dragging" : ""}`;
-    if (widget.type === "emergency") {
-      item.classList.add("screen-widget--emergency");
-      item.style.gridColumn = "1 / -1";
-      item.style.gridRow = "1 / -1";
-    } else if (widget.type === "image") {
-      item.classList.add("screen-widget--image");
-      item.style.gridColumn = `${widget.x + 1} / span ${widget.w}`;
-      item.style.gridRow = `${widget.y + 1} / span ${widget.h}`;
-      item.style.zIndex = "0";
-    } else {
-      item.style.gridColumn = `${widget.x + 1} / span ${widget.w}`;
-      item.style.gridRow = `${widget.y + 1} / span ${widget.h}`;
-    }
-    if (widget.type === "text") item.style.background = widget.settings.background;
-    if (widget.type === "carousel") {
-      item.classList.add("carousel-widget");
-      const childWidgets = G.orderedCarouselChildWidgets
-        ? G.orderedCarouselChildWidgets(screen, widget)
-        : screen.widgets.filter((w) => (widget.settings.childWidgetIds || []).includes(w.id));
-      G.startCarousel(item, widget, childWidgets, schedule, screen, holidays, announcements || [], marquee || []);
-    } else {
-      item.innerHTML = G.renderWidgetHtml(widget, schedule, screen, holidays, announcements || [], marquee || []);
-    }
-    if (G.applyWidgetBackdropClass) G.applyWidgetBackdropClass(item, widget);
-    if (widget.type !== "emergency") item.onpointerdown = (event) => startDrag(event, index);
-    preview.appendChild(item);
-  });
-  elements.preview.innerHTML = "";
-  elements.preview.appendChild(preview);
-  const display =
-    state.previewCache?.display ||
-    ({
-      timezone: state.config?.timezone || "Europe/Moscow",
-      clock_offset_minutes: Number(state.config?.clock_offset_minutes) || 0,
-      ui_locale: state.config?.ui_locale || "ru",
-    });
-  window.__lastScreenPayload = {
-    screen,
-    schedule,
-    holidays,
-    announcements,
-    marquee,
-    display,
-    background_gallery: previewGallery,
-  };
-  G.updateAllClocks(elements.preview);
-
-  clearTimeout(window.__previewResyncTimer);
-  if (!document.hidden) {
-    window.__previewResyncTimer = setTimeout(fetchPreviewPayloadOnce, 5000);
+function ymdTodayInSchoolTz() {
+  const tz = (state.config && state.config.timezone) || "Europe/Moscow";
+  try {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: String(tz).trim() || "Europe/Moscow",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
+  } catch {
+    const d = new Date();
+    const p = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
   }
 }
 
+/** Удаляет ручные замены с датой раньше «сегодня» по часовому поясу школы. */
+function prunePastOverrides() {
+  const today = ymdTodayInSchoolTz();
+  const before = (state.overrides || []).length;
+  state.overrides = (state.overrides || []).filter((o) => o && String(o.date || "") >= today);
+  return state.overrides.length !== before;
+}
+
+let persistOverridesPruneTimer = null;
+function schedulePersistOverridesPruned() {
+  clearTimeout(persistOverridesPruneTimer);
+  persistOverridesPruneTimer = setTimeout(() => {
+    api("/api/admin/overrides", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(state.overrides),
+    }).catch(() => {});
+  }, 500);
+}
+
 function renderOverrides() {
+  if (prunePastOverrides()) schedulePersistOverridesPruned();
   elements.overrideList.innerHTML = "";
   state.overrides.forEach((item, index) => {
     const div = document.createElement("div");
     div.className = "override-item";
-    div.innerHTML = `<span>${tf("override.row", {
+    div.innerHTML = `<span class="override-row-text">${tf("override.row", {
       date: escapeHtmlAttr(String(item.date)),
       class: escapeHtmlAttr(String(item.class_name)),
       lesson: escapeHtmlAttr(String(item.lesson_index)),
       subject: escapeHtmlAttr(String(item.subject)),
     })}</span>`;
+
+    const color = document.createElement("input");
+    color.type = "color";
+    color.className = "override-color";
+    color.value = /^#[0-9a-fA-F]{6}$/.test(String(item.color || "")) ? String(item.color) : "#bbf7d0";
+    color.oninput = () => {
+      item.color = String(color.value || "").trim();
+    };
+    div.appendChild(color);
+
     const button = document.createElement("button");
-    button.textContent = t("override.delete");
-    button.className = "secondary-btn";
+    button.textContent = "×";
+    button.className = "compact-btn override-delete-btn";
     button.onclick = () => {
       state.overrides.splice(index, 1);
       renderOverrides();
@@ -2061,16 +2027,605 @@ function renderOverrides() {
   });
 }
 
+const GS_SCHOOL_NEWS_GALLERY_SLOTS = 4;
+/** Мягкий предел в браузере (сервер: до 5 МиБ self-host, 10 МиБ SaaS; см. GUARDSCHOOL_SCHOOL_NEWS_IMAGE_MAX_BYTES). */
+const GS_SCHOOL_NEWS_MAX_UPLOAD_BYTES = 12 * 1024 * 1024;
+let gsSchoolNewsHybridPreviewTimer = null;
+
+function schoolNewsDisplayAdminPreview(html) {
+  let s = String(html || "").trim();
+  if (s.length > 120000) s = s.slice(0, 120000);
+  s = s.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "");
+  s = s.replace(/<\/?script[^>]*>/gi, "");
+  s = s.replace(/<\s*iframe[^>]*>[\s\S]*?<\/iframe>/gi, "");
+  s = s.replace(/<\s*(?:object|embed)[^>]*>[\s\S]*?<\/(?:object|embed)>/gi, "");
+  s = s.replace(/\son[a-z]+\s*=\s*"[^"]*"/gi, "");
+  s = s.replace(/\son[a-z]+\s*=\s*'[^']*'/gi, "");
+  s = s.replace(/\sstyle\s*=\s*"[^"]*"/gi, "");
+  s = s.replace(/\sstyle\s*=\s*'[^']*'/gi, "");
+  s = s.replace(/href\s*=\s*"javascript:[^"]*"/gi, 'href="#"');
+  s = s.replace(/href\s*=\s*'javascript:[^']*'/gi, "href='#'");
+  return s.trim();
+}
+
+function ensureSchoolNewsGallerySlots() {
+  const root = elements.schoolNewsGallery;
+  if (!root || root.dataset.gsGalleryBuilt) return;
+  root.dataset.gsGalleryBuilt = "1";
+  root.innerHTML = Array.from({ length: GS_SCHOOL_NEWS_GALLERY_SLOTS }, (_, i) => {
+    const upDis = i === 0 ? " disabled" : "";
+    const dnDis = i === GS_SCHOOL_NEWS_GALLERY_SLOTS - 1 ? " disabled" : "";
+    return `<div class="school-news-gallery-slot" data-slot="${i}">
+      <div class="school-news-gallery-slot-head">
+        <span>Фото ${i + 1}</span>
+        <span class="school-news-gallery-order">
+          <button type="button" class="secondary-btn compact-btn"${upDis} data-gallery-move="${i}" data-dir="-1">↑</button>
+          <button type="button" class="secondary-btn compact-btn"${dnDis} data-gallery-move="${i}" data-dir="1">↓</button>
+        </span>
+      </div>
+      <input type="text" class="standard-input wide-input school-news-gallery-url" data-gallery-url="${i}" placeholder="/uploads/… или https://…">
+      <div class="school-news-gallery-actions">
+        <button type="button" class="secondary-btn compact-btn" data-gallery-pc="${i}">С ПК</button>
+        <button type="button" class="secondary-btn compact-btn" data-gallery-fetch="${i}">По ссылке</button>
+        <button type="button" class="secondary-btn compact-btn" data-gallery-clear="${i}">Очистить</button>
+      </div>
+      <input type="file" accept="image/*" class="school-news-gallery-file" data-gallery-file="${i}" hidden>
+      <div class="school-news-gallery-thumb-wrap"><img class="school-news-gallery-thumb" data-gallery-thumb="${i}" alt=""></div>
+    </div>`;
+  }).join("");
+}
+
+function schoolNewsGalleryUrlInputs() {
+  if (!elements.schoolNewsGallery) return [];
+  return Array.from(elements.schoolNewsGallery.querySelectorAll("[data-gallery-url]")).sort(
+    (a, b) => Number(a.getAttribute("data-gallery-url")) - Number(b.getAttribute("data-gallery-url")),
+  );
+}
+
+function getSchoolNewsGalleryUrls() {
+  ensureSchoolNewsGallerySlots();
+  return schoolNewsGalleryUrlInputs().map((el) => String(el.value || "").trim());
+}
+
+function setSchoolNewsGalleryUrls(urls) {
+  ensureSchoolNewsGallerySlots();
+  const inputs = schoolNewsGalleryUrlInputs();
+  for (let i = 0; i < GS_SCHOOL_NEWS_GALLERY_SLOTS; i++) {
+    if (inputs[i]) inputs[i].value = urls[i] ? String(urls[i]) : "";
+  }
+  refreshSchoolNewsGalleryThumbs();
+}
+
+function refreshSchoolNewsGalleryThumbs() {
+  schoolNewsGalleryUrlInputs().forEach((input) => {
+    const i = input.getAttribute("data-gallery-url");
+    const img = elements.schoolNewsGallery?.querySelector(`[data-gallery-thumb="${i}"]`);
+    if (!img) return;
+    const u = String(input.value || "").trim();
+    if (u) {
+      img.src = u;
+      img.removeAttribute("hidden");
+    } else {
+      img.removeAttribute("src");
+      img.setAttribute("hidden", "hidden");
+    }
+  });
+}
+
+function schoolNewsGallerySwap(slot, dir) {
+  const j = Number(slot) + Number(dir);
+  if (j < 0 || j >= GS_SCHOOL_NEWS_GALLERY_SLOTS) return;
+  const inputs = schoolNewsGalleryUrlInputs();
+  const a = inputs[slot];
+  const b = inputs[j];
+  if (!a || !b) return;
+  const t = a.value;
+  a.value = b.value;
+  b.value = t;
+  refreshSchoolNewsGalleryThumbs();
+  scheduleSchoolNewsHybridPreview();
+}
+
+function scheduleSchoolNewsHybridPreview() {
+  try {
+    if (gsSchoolNewsHybridPreviewTimer) clearTimeout(gsSchoolNewsHybridPreviewTimer);
+  } catch (_) {}
+  gsSchoolNewsHybridPreviewTimer = setTimeout(() => {
+    refreshSchoolNewsHybridPreview();
+    gsSchoolNewsHybridPreviewTimer = null;
+  }, 140);
+}
+
+function getSchoolNewsBodyHtmlForPreview() {
+  try {
+    const ed = window.tinymce && typeof window.tinymce.get === "function" ? window.tinymce.get("school-news-content") : null;
+    if (ed && typeof ed.getContent === "function") return String(ed.getContent() || "").trim();
+  } catch (_) {}
+  return getSchoolNewsRichEditorHtml() || String(elements.schoolNewsContent?.value || "").trim();
+}
+
+function getSchoolNewsLayoutFromForm() {
+  return {
+    image_width_percent: elements.schoolNewsImageWidth?.value,
+    image_max_height_px: elements.schoolNewsImageMaxHeight?.value,
+    single_image_text_wrap: elements.schoolNewsImageWrap?.checked,
+  };
+}
+
+function setSchoolNewsLayoutForm(row) {
+  const w = row?.image_width_percent ?? row?.imageWidthPercent ?? 32;
+  const h = row?.image_max_height_px ?? row?.imageMaxHeightPx ?? 200;
+  const wrap = row?.single_image_text_wrap ?? row?.singleImageTextWrap;
+  if (elements.schoolNewsImageWidth) elements.schoolNewsImageWidth.value = String(w);
+  if (elements.schoolNewsImageMaxHeight) elements.schoolNewsImageMaxHeight.value = String(h);
+  if (elements.schoolNewsImageWrap) elements.schoolNewsImageWrap.checked = wrap !== false;
+}
+
+function schoolNewsPreviewImageLayout() {
+  const H = window.GuardSchoolWidgets && window.GuardSchoolWidgets.helpers;
+  const settings = getSchoolNewsLayoutFromForm();
+  if (H && typeof H.schoolNewsImageLayoutSettings === "function") {
+    return H.schoolNewsImageLayoutSettings(settings);
+  }
+  return { widthPct: 32, maxHeightPx: 140, wrapSingle: true };
+}
+
+function refreshSchoolNewsHybridPreview() {
+  const box = elements.schoolNewsHybridPreview;
+  if (!box) return;
+  const title = escapeHtml(String(elements.schoolNewsTitle?.value || "").trim() || "Заголовок");
+  const dt = escapeHtml(String(elements.schoolNewsDate?.value || "").trim());
+  const cover = String(elements.schoolNewsCover?.value || "").trim();
+  const urls = getSchoolNewsGalleryUrls().filter(Boolean);
+  const bodyRaw = getSchoolNewsBodyHtmlForPreview();
+  const bodySafe = schoolNewsDisplayAdminPreview(bodyRaw);
+  const mediaUrls = [];
+  if (cover) mediaUrls.push(cover);
+  for (let hi = 0; hi < urls.length; hi++) mediaUrls.push(urls[hi]);
+  const imgLayout = schoolNewsPreviewImageLayout();
+  const useWrap = imgLayout.wrapSingle && mediaUrls.length === 1;
+  const sideImgStyle = `max-height:${imgLayout.maxHeightPx}px;`;
+  let mediaBlock = "";
+  if (mediaUrls.length) {
+    if (useWrap) {
+      mediaBlock = `<img class="sn-hp-float-img" style="width:${imgLayout.widthPct}%;max-height:${imgLayout.maxHeightPx}px;" src="${escapeHtmlAttr(mediaUrls[0])}" alt="">`;
+    } else {
+      const imgs = mediaUrls
+        .map((u) => `<img class="sn-hp-side-img" style="${sideImgStyle}" src="${escapeHtmlAttr(u)}" alt="">`)
+        .join("");
+      mediaBlock = `<div class="sn-hp-media" style="width:${imgLayout.widthPct}%;max-width:none;">${imgs}</div>`;
+    }
+  }
+  const bodyBlock = bodySafe
+    ? `<div class="sn-hp-body">${bodySafe}</div>`
+    : `<div class="sn-hp-body hint" style="opacity:.75">Текст новости (пусто)</div>`;
+  let rowClass = "sn-hp-row";
+  if (!mediaBlock) rowClass += " sn-hp-row--nomedia";
+  else if (useWrap) rowClass += " sn-hp-row--wrap";
+  const row = `<div class="${rowClass}">${mediaBlock}${bodyBlock}</div>`;
+  box.innerHTML = `<div class="sn-hp-title">${title}</div><div class="sn-hp-meta">${dt || "—"}</div>${row}`;
+}
+
+async function uploadSchoolNewsGalleryFromPc(slot, file) {
+  if (!file) return;
+  if (file.size > GS_SCHOOL_NEWS_MAX_UPLOAD_BYTES) {
+    alert("Файл слишком большой для загрузки (проверьте лимит сервера и nginx client_max_body_size).");
+    return;
+  }
+  const nid = ensureSchoolNewsId();
+  const fd = new FormData();
+  fd.append("file", file);
+  fd.append("news_id", nid);
+  const r = await api("/api/admin/school-news/gallery-upload", { method: "POST", body: fd });
+  const url = String(r.url || "");
+  const inputs = schoolNewsGalleryUrlInputs();
+  const el = inputs[Number(slot)] || null;
+  if (el) el.value = url;
+  refreshSchoolNewsGalleryThumbs();
+  scheduleSchoolNewsHybridPreview();
+}
+
+async function fetchSchoolNewsGalleryFromUrl(slot) {
+  const inputs = schoolNewsGalleryUrlInputs();
+  const el = inputs[Number(slot)] || null;
+  const u = String(el?.value || "").trim();
+  if (!/^https?:\/\//i.test(u)) {
+    alert("Вставьте в поле слота ссылку вида http(s)://… и нажмите «По ссылке».");
+    return;
+  }
+  const nid = ensureSchoolNewsId();
+  const r = await api("/api/admin/school-news/gallery-fetch", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url: u, news_id: nid }),
+  });
+  const url = String(r.url || "");
+  if (el) el.value = url;
+  refreshSchoolNewsGalleryThumbs();
+  scheduleSchoolNewsHybridPreview();
+}
+
+function bindSchoolNewsGalleryAndPreviewOnce() {
+  if (window.__gsSchoolNewsGalleryBind) return;
+  window.__gsSchoolNewsGalleryBind = true;
+  ensureSchoolNewsGallerySlots();
+  const root = elements.schoolNewsGallery;
+  if (root) {
+    root.addEventListener("click", (ev) => {
+      const t = ev.target && ev.target.closest ? ev.target.closest("[data-gallery-move],[data-gallery-pc],[data-gallery-fetch],[data-gallery-clear]") : null;
+      if (!t) return;
+      const mv = t.getAttribute("data-gallery-move");
+      if (mv != null) {
+        const dir = Number(t.getAttribute("data-dir") || "0");
+        schoolNewsGallerySwap(Number(mv), dir);
+        return;
+      }
+      const pc = t.getAttribute("data-gallery-pc");
+      if (pc != null) {
+        const inp = root.querySelector(`input.school-news-gallery-file[data-gallery-file="${pc}"]`);
+        inp?.click();
+        return;
+      }
+      const ft = t.getAttribute("data-gallery-fetch");
+      if (ft != null) {
+        fetchSchoolNewsGalleryFromUrl(Number(ft)).catch((e) => alert(e && e.message ? e.message : String(e)));
+        return;
+      }
+      const cl = t.getAttribute("data-gallery-clear");
+      if (cl != null) {
+        const inputs = schoolNewsGalleryUrlInputs();
+        const idx = Number(cl);
+        if (inputs[idx]) inputs[idx].value = "";
+        refreshSchoolNewsGalleryThumbs();
+        scheduleSchoolNewsHybridPreview();
+      }
+    });
+    root.addEventListener("change", (ev) => {
+      const fin = ev.target && ev.target.closest ? ev.target.closest("input.school-news-gallery-file") : null;
+      if (!fin || !fin.files || !fin.files[0]) return;
+      const slot = Number(fin.getAttribute("data-gallery-file"));
+      uploadSchoolNewsGalleryFromPc(slot, fin.files[0]).catch((e) => alert(e && e.message ? e.message : String(e)));
+      fin.value = "";
+    });
+    root.addEventListener("input", (ev) => {
+      if (ev.target && ev.target.classList && ev.target.classList.contains("school-news-gallery-url")) {
+        refreshSchoolNewsGalleryThumbs();
+        scheduleSchoolNewsHybridPreview();
+      }
+    });
+  }
+  if (elements.schoolNewsCover) {
+    elements.schoolNewsCover.addEventListener("input", () => scheduleSchoolNewsHybridPreview());
+  }
+  if (elements.schoolNewsTitle) {
+    elements.schoolNewsTitle.addEventListener("input", () => scheduleSchoolNewsHybridPreview());
+  }
+  if (elements.schoolNewsDate) {
+    elements.schoolNewsDate.addEventListener("input", () => scheduleSchoolNewsHybridPreview());
+  }
+  if (elements.schoolNewsImageWidth) {
+    elements.schoolNewsImageWidth.addEventListener("input", () => scheduleSchoolNewsHybridPreview());
+  }
+  if (elements.schoolNewsImageMaxHeight) {
+    elements.schoolNewsImageMaxHeight.addEventListener("input", () => scheduleSchoolNewsHybridPreview());
+  }
+  if (elements.schoolNewsImageWrap) {
+    elements.schoolNewsImageWrap.addEventListener("change", () => scheduleSchoolNewsHybridPreview());
+  }
+}
+
+function resetSchoolNewsForm() {
+  if (elements.schoolNewsId) elements.schoolNewsId.value = "";
+  if (elements.schoolNewsTitle) elements.schoolNewsTitle.value = "";
+  if (elements.schoolNewsDate) elements.schoolNewsDate.value = new Date().toISOString().slice(0, 10);
+  if (elements.schoolNewsCover) elements.schoolNewsCover.value = "";
+  if (elements.schoolNewsActive) elements.schoolNewsActive.checked = true;
+  setSchoolNewsLayoutForm({});
+  setSchoolNewsGalleryUrls([]);
+  setSchoolNewsEditorContent("");
+  state.editingSchoolNewsId = "";
+  scheduleSchoolNewsHybridPreview();
+}
+
+function getSchoolNewsEditorContent() {
+  try {
+    const ed = window.tinymce && typeof window.tinymce.get === "function" ? window.tinymce.get("school-news-content") : null;
+    if (ed && typeof ed.getContent === "function") return String(ed.getContent() || "").trim();
+  } catch (_) {}
+  return String(elements.schoolNewsContent?.value || "").trim();
+}
+
+function schoolNewsSanitizePreviewHtml(html) {
+  // Минимальная защита предпросмотра в админке (сервер тоже чистит при сохранении).
+  let s = String(html || "");
+  s = s.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "");
+  s = s.replace(/\son[a-z]+\s*=\s*"[^"]*"/gi, "");
+  s = s.replace(/\son[a-z]+\s*=\s*'[^']*'/gi, "");
+  return s;
+}
+
+function schoolNewsNormalizeEditorHtml(html) {
+  // Предпочитаем <p> блоки, чтобы текст не был "монолитом" после вставки.
+  const s = String(html || "").trim();
+  if (!s) return "";
+  // Если это уже похоже на HTML с блоками — оставляем.
+  if (/<p[\s>]/i.test(s) || /<ul[\s>]/i.test(s) || /<ol[\s>]/i.test(s) || /<br[\s/>]/i.test(s)) return s;
+  // Plain text -> paragraphs.
+  const src = s.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const blocks = src.split(/\n{2,}/g).map((b) => b.trim()).filter(Boolean);
+  const esc = (t) => escapeHtml(String(t || ""));
+  return blocks.map((b) => `<p>${esc(b).replace(/\n/g, "<br>")}</p>`).join("");
+}
+
+function setSchoolNewsEditorContent(html) {
+  const text = String(html || "");
+  try {
+    const ed = window.tinymce && typeof window.tinymce.get === "function" ? window.tinymce.get("school-news-content") : null;
+    if (ed && typeof ed.setContent === "function") {
+      ed.setContent(text);
+      return;
+    }
+  } catch (_) {}
+  const normalized = schoolNewsNormalizeEditorHtml(text);
+  if (elements.schoolNewsEditor) elements.schoolNewsEditor.innerHTML = schoolNewsSanitizePreviewHtml(normalized);
+  if (elements.schoolNewsContent) elements.schoolNewsContent.value = normalized;
+  scheduleSchoolNewsHybridPreview();
+}
+
+function getSchoolNewsRichEditorHtml() {
+  try {
+    const el = elements.schoolNewsEditor;
+    if (!el) return "";
+    const raw = el.innerHTML || "";
+    return schoolNewsSanitizePreviewHtml(raw).trim();
+  } catch (_) {
+    return "";
+  }
+}
+
+function syncSchoolNewsRichEditorToTextarea() {
+  if (!elements.schoolNewsContent) return;
+  const html = getSchoolNewsRichEditorHtml();
+  elements.schoolNewsContent.value = html;
+  scheduleSchoolNewsHybridPreview();
+}
+
+function gsRichExec(cmd) {
+  try {
+    document.execCommand(cmd, false, null);
+  } catch (_) {}
+}
+
+function ensureSchoolNewsRichEditor() {
+  if (!elements.schoolNewsEditorWrap || !elements.schoolNewsEditor) return;
+  if (window.__gsSchoolNewsRichInitDone) return;
+  window.__gsSchoolNewsRichInitDone = true;
+
+  const wrap = elements.schoolNewsEditorWrap;
+  const surface = elements.schoolNewsEditor;
+
+  wrap.addEventListener("click", (ev) => {
+    const btn = ev.target && ev.target.closest ? ev.target.closest("[data-gs-cmd],[data-gs-action]") : null;
+    if (!btn) return;
+    ev.preventDefault();
+    surface.focus();
+    const cmd = btn.getAttribute("data-gs-cmd");
+    const action = btn.getAttribute("data-gs-action");
+    if (cmd) {
+      gsRichExec(cmd);
+      syncSchoolNewsRichEditorToTextarea();
+      return;
+    }
+    if (action === "link") {
+      const url = window.prompt("Ссылка (https://...)", "https://");
+      if (!url) return;
+      try {
+        document.execCommand("createLink", false, String(url).trim());
+      } catch (_) {}
+      syncSchoolNewsRichEditorToTextarea();
+      return;
+    }
+    if (action === "unlink") {
+      gsRichExec("unlink");
+      syncSchoolNewsRichEditorToTextarea();
+      return;
+    }
+    if (action === "clear") {
+      gsRichExec("removeFormat");
+      gsRichExec("unlink");
+      syncSchoolNewsRichEditorToTextarea();
+    }
+  });
+
+  surface.addEventListener("input", () => {
+    syncSchoolNewsRichEditorToTextarea();
+  });
+
+  surface.addEventListener("paste", (ev) => {
+    try {
+      const dt = ev.clipboardData;
+      const html = dt ? dt.getData("text/html") : "";
+      const text = dt ? dt.getData("text/plain") : "";
+      // Если вставляют из Word/браузера — оставляем HTML; иначе plain text -> абзацы.
+      if (!html && text) {
+        ev.preventDefault();
+        const converted = schoolNewsNormalizeEditorHtml(text);
+        document.execCommand("insertHTML", false, converted);
+        syncSchoolNewsRichEditorToTextarea();
+      }
+    } catch (_) {}
+  });
+
+  // Инициализируем пустым абзацем, чтобы курсор/ввод на ТВ/старых браузерах был стабильнее.
+  if (!surface.innerHTML.trim()) surface.innerHTML = "<p><br></p>";
+  syncSchoolNewsRichEditorToTextarea();
+}
+
+async function ensureSchoolNewsTinyMce() {
+  if (!elements.schoolNewsContent) return;
+  if (window.__gsSchoolNewsEditorInitDone) return;
+  // Без ключа Tiny Cloud показывает баннер "A valid API key..." — не грузим редактор вообще.
+  const apiKey = String(state.config?.tinymce_api_key || "").trim();
+  if (!apiKey) {
+    window.__gsSchoolNewsEditorInitDone = true;
+    // Визуальный редактор без внешних зависимостей.
+    ensureSchoolNewsRichEditor();
+    return;
+  }
+  const setupEditor = async () => {
+    if (!window.tinymce || typeof window.tinymce.init !== "function") return;
+    if (window.tinymce.get("school-news-content")) {
+      window.__gsSchoolNewsEditorInitDone = true;
+      return;
+    }
+    await window.tinymce.init({
+      selector: "#school-news-content",
+      menubar: false,
+      height: 520,
+      plugins: "lists link image table code autoresize",
+      toolbar: "undo redo | styles | bold italic underline | alignleft aligncenter alignright | bullist numlist | link image table | code",
+      branding: false,
+      promotion: false,
+      convert_urls: false,
+      content_style: "body { font-family: Inter, Arial, sans-serif; font-size: 14px; }",
+      init_instance_callback(ed) {
+        try {
+          if (!ed || ed.id !== "school-news-content") return;
+          ed.on("keyup change Undo Redo SetContent", () => scheduleSchoolNewsHybridPreview());
+        } catch (_) {}
+      },
+    });
+    window.__gsSchoolNewsEditorInitDone = true;
+  };
+  try {
+    await setupEditor();
+    if (window.__gsSchoolNewsEditorInitDone) return;
+    if (!window.__gsTinyScriptLoading) {
+      window.__gsTinyScriptLoading = new Promise((resolve, reject) => {
+        const s = document.createElement("script");
+        s.src = `https://cdn.tiny.cloud/1/${encodeURIComponent(apiKey)}/tinymce/6/tinymce.min.js`;
+        s.referrerPolicy = "origin";
+        s.onload = resolve;
+        s.onerror = reject;
+        document.head.appendChild(s);
+      });
+    }
+    await window.__gsTinyScriptLoading;
+    await setupEditor();
+  } catch (_) {
+    // fallback: оставляем обычный textarea без блокировки работы формы
+  }
+}
+
+function ensureSchoolNewsId() {
+  let id = String(elements.schoolNewsId?.value || "").trim();
+  if (id) return id;
+  id = `news_${crypto.randomUUID().slice(0, 8)}`;
+  if (elements.schoolNewsId) elements.schoolNewsId.value = id;
+  state.editingSchoolNewsId = id;
+  return id;
+}
+
+async function uploadSchoolNewsCoverFromPc(file) {
+  if (!file) return;
+  if (file.size > GS_SCHOOL_NEWS_MAX_UPLOAD_BYTES) {
+    alert("Файл слишком большой для загрузки (проверьте лимит сервера и nginx client_max_body_size).");
+    return;
+  }
+  const nid = ensureSchoolNewsId();
+  const fd = new FormData();
+  fd.append("file", file);
+  fd.append("news_id", nid);
+  const r = await api("/api/admin/school-news/cover-upload", { method: "POST", body: fd });
+  if (elements.schoolNewsCover) elements.schoolNewsCover.value = String(r.url || "");
+  scheduleSchoolNewsHybridPreview();
+}
+
+async function fetchSchoolNewsCoverFromUrl(url) {
+  const u = String(url || "").trim();
+  if (!/^https?:\/\//i.test(u)) {
+    alert("Нужна ссылка вида http(s)://...");
+    return;
+  }
+  const nid = ensureSchoolNewsId();
+  const r = await api("/api/admin/school-news/cover-fetch", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url: u, news_id: nid }),
+  });
+  if (elements.schoolNewsCover) elements.schoolNewsCover.value = String(r.url || "");
+  scheduleSchoolNewsHybridPreview();
+}
+
+function renderSchoolNewsList() {
+  bindSchoolNewsGalleryAndPreviewOnce();
+  const root = elements.schoolNewsList;
+  if (!root) return;
+  const items = Array.isArray(state.schoolNews) ? state.schoolNews : [];
+  if (!items.length) {
+    root.innerHTML = '<div class="hint">Новостей пока нет.</div>';
+    return;
+  }
+  root.innerHTML = items
+    .map((row) => {
+      const id = escapeHtmlAttr(String(row.id || ""));
+      const title = escapeHtml(String(row.title || ""));
+      const dt = escapeHtml(String(row.created_at || ""));
+      const active = row.is_active !== false ? "✅" : "⛔";
+      return `<div class="override-item"><span class="override-row-text">${active} ${dt} — ${title}</span>
+        <div class="table-actions">
+          <button type="button" class="secondary-btn compact-btn" data-news-edit="${id}">Ред.</button>
+          <button type="button" class="danger-btn compact-btn" data-news-del="${id}">Удалить</button>
+        </div>
+      </div>`;
+    })
+    .join("");
+}
+
 function render() {
+  if (state.meta?.demo_session && state.statsPanelActive) {
+    state.statsPanelActive = false;
+    leaveStatsPanel();
+  }
   const tabPanel = document.getElementById("section-tabs-panel");
   const screenWrap = document.getElementById("screen-editor-wrap");
   const audioPanel = document.getElementById("audio-stream-panel");
+  const statsPanel = document.getElementById("stats-panel");
   const programPanel = elements.programSettingsPanel;
 
   renderTabs();
 
   if (state.programSettingsPanelActive) {
-    state.audioStreamPanelActive = false;
+    leaveStatsPanel();
+    clearInterval(window.__streamStatusInterval);
+    if (elements.deleteScreenBtn) {
+      elements.deleteScreenBtn.hidden = true;
+      elements.deleteScreenBtn.disabled = true;
+    }
+    if (elements.duplicateScreenBtn) elements.duplicateScreenBtn.hidden = true;
+    if (tabPanel) tabPanel.style.display = "none";
+    if (screenWrap) screenWrap.hidden = true;
+    if (statsPanel) statsPanel.hidden = true;
+    if (audioPanel) audioPanel.hidden = true;
+    if (programPanel) {
+      programPanel.hidden = false;
+      programPanel.setAttribute("aria-hidden", "false");
+    }
+    window.GuardSchoolScreen?.clearAllTimers();
+    const psTab = getStoredProgramSettingsTab();
+    if (psTab === "emergency") renderEmergencyTemplatesAdmin();
+    if (psTab === "school_news") renderSchoolNewsList();
+    finishTopBarSessionWidgets();
+    return;
+  }
+  if (programPanel) {
+    programPanel.hidden = true;
+    programPanel.setAttribute("aria-hidden", "true");
+  }
+
+  if (state.statsPanelActive) {
+    leaveStatsPanel();
+    clearInterval(window.__streamStatusInterval);
     if (elements.deleteScreenBtn) {
       elements.deleteScreenBtn.hidden = true;
       elements.deleteScreenBtn.disabled = true;
@@ -2079,22 +2634,13 @@ function render() {
     if (tabPanel) tabPanel.style.display = "none";
     if (screenWrap) screenWrap.hidden = true;
     if (audioPanel) audioPanel.hidden = true;
-    if (programPanel) {
-      programPanel.hidden = false;
-      programPanel.setAttribute("aria-hidden", "false");
-    }
-    syncEmergencyModeCheckbox();
-    renderHistory();
-    elements.programSettingsOpenBtn?.classList.add("active");
+    if (statsPanel) statsPanel.hidden = false;
+    enterStatsPanel();
     window.GuardSchoolScreen?.clearAllTimers();
+    finishTopBarSessionWidgets();
     return;
   }
-
-  if (programPanel) {
-    programPanel.hidden = true;
-    programPanel.setAttribute("aria-hidden", "true");
-  }
-  elements.programSettingsOpenBtn?.classList.remove("active");
+  leaveStatsPanel();
 
   if (state.audioStreamPanelActive) {
     if (elements.deleteScreenBtn) {
@@ -2104,6 +2650,7 @@ function render() {
     if (elements.duplicateScreenBtn) elements.duplicateScreenBtn.hidden = true;
     if (tabPanel) tabPanel.style.display = "none";
     if (screenWrap) screenWrap.hidden = true;
+    if (statsPanel) statsPanel.hidden = true;
     if (audioPanel) audioPanel.hidden = false;
     syncAudioStreamFormFromState();
     refreshBellSoundsForStream();
@@ -2114,23 +2661,27 @@ function render() {
     renderBreakMusicPlayback();
     renderPcPlayerFileList();
     window.GuardSchoolScreen?.clearAllTimers();
+    finishTopBarSessionWidgets();
     return;
   }
 
   clearInterval(window.__streamStatusInterval);
   if (tabPanel) tabPanel.style.display = "";
   if (screenWrap) screenWrap.hidden = false;
+  if (statsPanel) statsPanel.hidden = true;
   if (audioPanel) audioPanel.hidden = true;
 
   renderSectionTabs();
   renderSectionVisibility();
+  ensurePaletteWidgetInstancesOnSelectedScreen();
   renderForm();
   renderWidgets();
   if (state.widgetModalWidgetId) syncWidgetModal();
   renderPreview();
   renderOverrides();
+  renderSchoolNewsList();
   renderLessonImportStats();
-  if (state.activeSection === "schedule") {
+  if (state.activeSection === "bells") {
     renderBellEditor();
   }
   renderHistory();
@@ -2144,69 +2695,63 @@ function render() {
     elements.deleteScreenBtn.disabled = state.config.screens.length <= 1;
   }
   if (elements.duplicateScreenBtn) elements.duplicateScreenBtn.hidden = false;
-  syncEmergencyModeCheckbox();
-}
-
-function updateWidgetField(path, value) {
-  const [, indexRaw, fieldRaw] = path.match(/^widget:(\d+):(.+)$/);
-  const widget = selectedScreen().widgets[Number(indexRaw)];
-  if (fieldRaw.startsWith("settings.")) {
-    const key = fieldRaw.replace("settings.", "");
-    if (key === "childWidgetIds") {
-      const current = new Set(widget.settings.childWidgetIds || []);
-      if (value.checked) current.add(value.value);
-      else current.delete(value.value);
-      widget.settings.childWidgetIds = [...current];
-      const map = { ...(widget.settings.childSlideSec || {}) };
-      for (const id of Object.keys(map)) {
-        if (!current.has(id)) delete map[id];
-      }
-      widget.settings.childSlideSec = map;
-    } else if (key.startsWith("childSlideSec.")) {
-      const childId = key.slice("childSlideSec.".length);
-      if (!widget.settings.childSlideSec) widget.settings.childSlideSec = {};
-      const num = Number(value);
-      if (value === "" || value == null || !Number.isFinite(num)) {
-        delete widget.settings.childSlideSec[childId];
-      } else {
-        widget.settings.childSlideSec[childId] = num;
-      }
-    } else if (/^images\.\d+\.(name|url)$/.test(key)) {
-      const m = key.match(/^images\.(\d+)\.(name|url)$/);
-      const idx = Number(m[1]);
-      const sub = m[2];
-      if (!Array.isArray(widget.settings.images)) widget.settings.images = [];
-      while (widget.settings.images.length <= idx) {
-        widget.settings.images.push({ name: "", url: "" });
-      }
-      if (!widget.settings.images[idx] || typeof widget.settings.images[idx] !== "object") {
-        widget.settings.images[idx] = { name: "", url: "" };
-      }
-      widget.settings.images[idx][sub] = value;
-    } else if (["fontSize", "titleFontSize", "startDelaySec", "count", "speedSec", "rotateSec", "opacity", "imagesRotateSec"].includes(key)) {
-      const num = Number(value);
-      if (key === "opacity") {
-        widget.settings[key] = value === "" || !Number.isFinite(num) ? 85 : Math.max(0, Math.min(100, num));
-      } else if (key === "imagesRotateSec") {
-        widget.settings[key] = value === "" || !Number.isFinite(num) ? 0 : Math.max(0, Math.min(600, Math.round(num)));
-      } else {
-        widget.settings[key] = num;
-      }
-    }
-    else if (key === "backdrop" || key === "useManual" || key === "advanceOnShow" || key === "randomize") widget.settings[key] = Boolean(value);
-    else widget.settings[key] = value;
-  } else {
-    widget[fieldRaw] = fieldRaw === "enabled" ? Boolean(value) : Number(value);
-  }
-  clampWidget(widget);
-  render();
+  finishTopBarSessionWidgets();
 }
 
 function bindForm() {
   elements.screenName.oninput = (event) => { selectedScreen().name = event.target.value; renderTabs(); };
   elements.screenSlug.oninput = (event) => { selectedScreen().slug = event.target.value; };
+  if (elements.screenOrientation) {
+    elements.screenOrientation.onchange = (event) => {
+      selectedScreen().orientation = (event.target.value === "portrait" ? "portrait" : "landscape");
+      if (selectedScreen().orientation === "portrait") { GRID.cols = 26; GRID.rows = 32; } else { GRID.cols = 32; GRID.rows = 26; }
+      renderPreview();
+    };
+  }
+  if (elements.screenMobileMode) {
+    elements.screenMobileMode.onchange = () => {
+      selectedScreen().mobile_mode = Boolean(elements.screenMobileMode.checked);
+      if (elements.screenMobileStyleSettings) elements.screenMobileStyleSettings.hidden = !selectedScreen().mobile_mode;
+      renderPreview();
+    };
+  }
+  const bindMobileAppearance = (element, key, fallback, numeric = false) => {
+    if (!element) return;
+    element.oninput = () => {
+      const screen = selectedScreen();
+      if (!screen.mobile_appearance || typeof screen.mobile_appearance !== "object") screen.mobile_appearance = {};
+      const raw = numeric ? Number(element.value) : String(element.value || "");
+      screen.mobile_appearance[key] = numeric && !Number.isFinite(raw) ? fallback : raw;
+      renderPreview();
+    };
+  };
+  bindMobileAppearance(elements.screenMobileBackgroundColor, "background_color", "#172554");
+  bindMobileAppearance(elements.screenMobileCardColor, "card_color", "#13234b");
+  bindMobileAppearance(elements.screenMobileTextColor, "text_color", "#f8fafc");
+  bindMobileAppearance(elements.screenMobileMutedColor, "muted_color", "#cbd5e1");
+  bindMobileAppearance(elements.screenMobileAccentColor, "accent_color", "#38bdf8");
+  bindMobileAppearance(elements.screenMobileFontSize, "font_size_px", 16, true);
+  bindMobileAppearance(elements.screenMobileCardRadius, "card_radius_px", 12, true);
+  bindMobileAppearance(elements.screenMobileCardGap, "card_gap_px", 10, true);
+  if (elements.screenEnableFeedback) {
+    elements.screenEnableFeedback.onchange = () => {
+      selectedScreen().enable_feedback = Boolean(elements.screenEnableFeedback.checked);
+    };
+  }
   elements.screenIpNote.oninput = (event) => { selectedScreen().ip_note = event.target.value; };
   elements.screenPollInterval.oninput = (event) => { selectedScreen().poll_interval_sec = Number(event.target.value); };
+  if (elements.screenOpenTvBtn) {
+    elements.screenOpenTvBtn.onclick = () => {
+      const sc = selectedScreen();
+      if (!sc) return;
+      const slug = String(sc.slug || "").trim();
+      if (!slug) {
+        alert(t("alert.screenNoSlug"));
+        return;
+      }
+      window.open(new URL(`/screen/${encodeURIComponent(slug)}`, window.location.origin).href, "_blank", "noopener,noreferrer");
+    };
+  }
   if (elements.screenBgRotate) {
     elements.screenBgRotate.onchange = () => {
       selectedScreen().background_rotate_enabled = Boolean(elements.screenBgRotate.checked);
@@ -2217,6 +2762,13 @@ function bindForm() {
     elements.screenBgRotateInterval.oninput = (event) => {
       const n = Number(event.target.value);
       selectedScreen().background_rotate_interval_sec = Number.isFinite(n) ? n : 3600;
+      renderPreview();
+    };
+    elements.screenBgRotateInterval.onchange = () => {
+      const n = Number(elements.screenBgRotateInterval.value);
+      const c = clampBackgroundRotateIntervalSec(Number.isFinite(n) ? n : 3600);
+      selectedScreen().background_rotate_interval_sec = c;
+      elements.screenBgRotateInterval.value = String(c);
       renderPreview();
     };
   }
@@ -2270,11 +2822,13 @@ function bindForm() {
       renderPreview();
     };
   }
-  elements.screenBellTemplate.onchange = (event) => {
-    selectedScreen().bell_schedule_template = event.target.value;
-    renderBellEditor();
-    renderPreview();
-  };
+  if (elements.screenBellTemplate) {
+    elements.screenBellTemplate.onchange = (event) => {
+      selectedScreen().bell_schedule_template = event.target.value;
+      renderBellEditor();
+      renderPreview();
+    };
+  }
   if (elements.adminLocaleSelect) {
     elements.adminLocaleSelect.onchange = async () => {
       state.config.ui_locale = elements.adminLocaleSelect.value === "en" ? "en" : "ru";
@@ -2300,6 +2854,180 @@ function bindForm() {
       renderPreview();
     };
   }
+  if (elements.pwaDefaultTitle) {
+    elements.pwaDefaultTitle.oninput = (event) => {
+      ensureGeneralPwaSettings().title = String(event.target.value || "");
+      updateGeneralPwaValidation();
+    };
+  }
+  if (elements.pwaDefaultIconUrl) {
+    elements.pwaDefaultIconUrl.oninput = (event) => {
+      ensureGeneralPwaSettings().icon_url = String(event.target.value || "").trim();
+      updateGeneralPwaValidation();
+    };
+  }
+  if (elements.pwaDefaultIconBrowse && elements.pwaDefaultIconFile) {
+    elements.pwaDefaultIconBrowse.onclick = () => elements.pwaDefaultIconFile.click();
+    elements.pwaDefaultIconFile.onchange = async (event) => {
+      try {
+        await uploadGeneralPwaIcon(event.target.files?.[0]);
+      } catch (err) {
+        alert(err?.message || String(err));
+      } finally {
+        event.target.value = "";
+      }
+    };
+  }
+  if (elements.cloudBaseUrl) {
+    elements.cloudBaseUrl.oninput = (e) => {
+      state.config.cloud_base_url = String(e.target.value || "").trim();
+    };
+  }
+  if (elements.cloudSyncInterval) {
+    elements.cloudSyncInterval.oninput = (e) => {
+      const n = Number(e.target.value);
+      state.config.cloud_sync_interval_minutes = Number.isFinite(n) ? Math.max(1, Math.min(1440, Math.round(n))) : 5;
+    };
+  }
+  if (elements.cloudSyncEnabled) {
+    elements.cloudSyncEnabled.onchange = () => {
+      state.config.cloud_sync_enabled = Boolean(elements.cloudSyncEnabled.checked);
+    };
+  }
+  if (elements.cloudSyncToken) {
+    elements.cloudSyncToken.oninput = (e) => {
+      state.config.cloud_sync_token = String(e.target.value || "");
+    };
+  }
+  if (elements.screenPrimaryBase) {
+    elements.screenPrimaryBase.oninput = (e) => {
+      state.config.screen_primary_base_url = String(e.target.value || "").trim();
+    };
+  }
+  if (elements.screenFallbackBase) {
+    elements.screenFallbackBase.oninput = (e) => {
+      state.config.screen_fallback_base_url = String(e.target.value || "").trim();
+    };
+  }
+  if (elements.screenFallbackEnabled) {
+    elements.screenFallbackEnabled.onchange = () => {
+      state.config.screen_fallback_enabled = Boolean(elements.screenFallbackEnabled.checked);
+    };
+  }
+  if (elements.screenPollTimeout) {
+    elements.screenPollTimeout.oninput = (e) => {
+      const n = Number(e.target.value);
+      state.config.screen_poll_timeout_sec = Number.isFinite(n) ? Math.max(2, Math.min(60, Math.round(n))) : 5;
+    };
+  }
+  if (elements.rssRefreshMinutes) {
+    elements.rssRefreshMinutes.oninput = (e) => {
+      const n = Number(e.target.value);
+      state.config.rss_refresh_minutes = Number.isFinite(n) ? Math.max(30, Math.min(60, Math.round(n))) : 45;
+    };
+  }
+  if (elements.rssSourceAddBtn) {
+    elements.rssSourceAddBtn.onclick = () => {
+      if (!Array.isArray(state.config.rss_sources)) state.config.rss_sources = [];
+      state.config.rss_sources.push({ name: "", rss_url: "", enabled: true });
+      renderRssSourcesEditor();
+    };
+  }
+  if (elements.rssRefreshNowBtn) {
+    elements.rssRefreshNowBtn.onclick = async () => {
+      try {
+        const result = await api("/api/admin/rss-news/refresh", { method: "POST" });
+        const count = Number(result?.count || 0);
+        alert(`RSS обновлены. Новостей в кэше: ${count}.`);
+      } catch (e) {
+        alert(e.message || String(e));
+      }
+    };
+  }
+  if (elements.syncNowBtn) {
+    elements.syncNowBtn.onclick = async () => {
+      try {
+        const r = await api("/api/admin/sync-now", { method: "POST" });
+        alert(JSON.stringify(r, null, 2));
+        await refreshSyncStatusLine();
+      } catch (e) {
+        alert(e.message || String(e));
+      }
+    };
+  }
+  if (elements.schoolNewsResetBtn) {
+    elements.schoolNewsResetBtn.onclick = () => {
+      resetSchoolNewsForm();
+      renderSchoolNewsList();
+    };
+  }
+  if (elements.schoolNewsSaveBtn) {
+    elements.schoolNewsSaveBtn.onclick = async () => {
+      const payload = {
+        id: String(elements.schoolNewsId?.value || "").trim(),
+        title: String(elements.schoolNewsTitle?.value || "").trim(),
+        created_at: String(elements.schoolNewsDate?.value || "").trim(),
+        cover_image: String(elements.schoolNewsCover?.value || "").trim(),
+        gallery_images: getSchoolNewsGalleryUrls().filter(Boolean),
+        is_active: Boolean(elements.schoolNewsActive?.checked),
+        image_width_percent: Number(elements.schoolNewsImageWidth?.value || 32),
+        image_max_height_px: Number(elements.schoolNewsImageMaxHeight?.value || 200),
+        single_image_text_wrap: Boolean(elements.schoolNewsImageWrap?.checked),
+        content: getSchoolNewsEditorContent(),
+      };
+      if (!payload.title || !payload.content) {
+        alert("Укажите заголовок и текст новости.");
+        return;
+      }
+      try {
+        const r = await api("/api/admin/school-news", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        state.schoolNews = r.items || [];
+        resetSchoolNewsForm();
+        renderSchoolNewsList();
+      } catch (e) {
+        alert(e.message || String(e));
+      }
+    };
+  }
+  if (elements.schoolNewsList) {
+    elements.schoolNewsList.addEventListener("click", async (event) => {
+      const editBtn = event.target.closest("[data-news-edit]");
+      const delBtn = event.target.closest("[data-news-del]");
+      if (editBtn) {
+        const id = String(editBtn.getAttribute("data-news-edit") || "");
+        const row = (state.schoolNews || []).find((item) => String(item.id || "") === id);
+        if (!row) return;
+        bindSchoolNewsGalleryAndPreviewOnce();
+        elements.schoolNewsId.value = String(row.id || "");
+        elements.schoolNewsTitle.value = String(row.title || "");
+        elements.schoolNewsDate.value = String(row.created_at || "");
+        elements.schoolNewsCover.value = String(row.cover_image || "");
+        elements.schoolNewsActive.checked = row.is_active !== false;
+        const gal = Array.isArray(row.gallery_images) ? row.gallery_images : [];
+        setSchoolNewsGalleryUrls(gal);
+        setSchoolNewsLayoutForm(row);
+        setSchoolNewsEditorContent(String(row.content || ""));
+        scheduleSchoolNewsHybridPreview();
+        return;
+      }
+      if (delBtn) {
+        const id = String(delBtn.getAttribute("data-news-del") || "");
+        if (!id || !confirm("Удалить новость?")) return;
+        try {
+          const r = await api(`/api/admin/school-news/${encodeURIComponent(id)}`, { method: "DELETE" });
+          state.schoolNews = r.items || [];
+          resetSchoolNewsForm();
+          renderSchoolNewsList();
+        } catch (e) {
+          alert(e.message || String(e));
+        }
+      }
+    });
+  }
 }
 
 function addScreen() {
@@ -2307,17 +3035,10 @@ function addScreen() {
   const screen = createDefaultScreen(index);
   state.config.screens.push(screen);
   state.audioStreamPanelActive = false;
+  state.statsPanelActive = false;
   state.programSettingsPanelActive = false;
   closeWidgetModal();
   state.selectedScreenId = screen.id;
-  render();
-}
-
-async function uploadBackground(file) {
-  const formData = new FormData();
-  formData.append("file", file);
-  const payload = await api("/api/admin/upload-background", { method: "POST", body: formData });
-  selectedScreen().background_image = payload.path;
   render();
 }
 
@@ -2330,158 +3051,11 @@ function renderLessonImportStats() {
   el.textContent = tf("lesson.stats", { d, f, s });
 }
 
-async function uploadScheduleDated(file) {
-  const formData = new FormData();
-  formData.append("file", file);
-  const payload = await api("/api/admin/upload-schedule", { method: "POST", body: formData });
-  const snapshot = await api("/api/admin/schedule");
-  state.schedule = snapshot.schedule || [];
-  state.fullScheduleRows = snapshot.full_schedule_rows;
-  state.scheduleSampleRows = snapshot.schedule_sample_rows;
-  state.history = snapshot.history || [];
-  state.appVersion = snapshot.app_version || state.appVersion;
-  alert(tf("alert.uploadDated", { n: payload.rows }));
-  render();
-}
-
-async function uploadFullSchedule(file) {
-  const formData = new FormData();
-  formData.append("file", file);
-  const payload = await api("/api/admin/upload-full-schedule", { method: "POST", body: formData });
-  const snapshot = await api("/api/admin/schedule");
-  state.schedule = snapshot.schedule || [];
-  state.fullScheduleRows = snapshot.full_schedule_rows;
-  state.scheduleSampleRows = snapshot.schedule_sample_rows;
-  state.history = snapshot.history || [];
-  state.appVersion = snapshot.app_version || state.appVersion;
-  alert(tf("alert.uploadFull", { n: payload.rows }));
-  render();
-}
-
-async function uploadScheduleSample(file) {
-  const formData = new FormData();
-  formData.append("file", file);
-  const payload = await api("/api/admin/upload-schedule-sample", { method: "POST", body: formData });
-  const snapshot = await api("/api/admin/schedule");
-  state.schedule = snapshot.schedule || [];
-  state.fullScheduleRows = snapshot.full_schedule_rows;
-  state.scheduleSampleRows = snapshot.schedule_sample_rows;
-  state.history = snapshot.history || [];
-  state.appVersion = snapshot.app_version || state.appVersion;
-  alert(tf("alert.uploadSample", { n: payload.rows }));
-  render();
-}
-
-async function uploadHolidays(file) {
-  const formData = new FormData();
-  formData.append("file", file);
-  const payload = await api("/api/admin/upload-holidays", { method: "POST", body: formData });
-  const snapshot = await api("/api/admin/schedule");
-  state.schedule = snapshot.schedule || [];
-  state.overrides = snapshot.overrides || [];
-  state.announcements = snapshot.announcements || [];
-  alert(tf("alert.uploadHolidays", { n: payload.rows }));
-  render();
-}
-
-async function uploadAnnouncements(file) {
-  const formData = new FormData();
-  formData.append("file", file);
-  const payload = await api("/api/admin/upload-announcements", { method: "POST", body: formData });
-  const snapshot = await api("/api/admin/schedule");
-  state.announcements = snapshot.announcements || [];
-  alert(tf("alert.uploadAnnounce", { n: payload.rows }));
-  render();
-}
-
-async function uploadMarquee(file) {
-  const formData = new FormData();
-  formData.append("file", file);
-  const payload = await api("/api/admin/upload-marquee", { method: "POST", body: formData });
-  const snapshot = await api("/api/admin/schedule");
-  state.marquee = snapshot.marquee || [];
-  alert(tf("alert.uploadMarquee", { n: payload.rows }));
-  render();
-}
-
-async function exportWeeklyScheduleZip() {
-  const stamp = new Date().toISOString().slice(0, 19).replace(/[-:T]/g, "");
-  await downloadBinaryFile("/api/admin/export-weekly-schedule", `guardschool_weekly_schedule_${stamp}.zip`);
-}
-
-async function importWeeklyScheduleZip(file) {
-  const formData = new FormData();
-  formData.append("file", file);
-  const res = await api("/api/admin/import-weekly-schedule", { method: "POST", body: formData });
-  const snapshot = await api("/api/admin/schedule");
-  state.schedule = snapshot.schedule || [];
-  state.fullScheduleRows = snapshot.full_schedule_rows;
-  state.scheduleSampleRows = snapshot.schedule_sample_rows;
-  state.history = snapshot.history || [];
-  state.appVersion = snapshot.app_version || state.appVersion;
-  alert(tf("alert.importWeek", { full: res.full_schedule_rows ?? "—", sample: res.schedule_sample_rows ?? "—" }));
-  render();
-}
-
-async function downloadWeeklyScheduleTemplateXlsx() {
-  await downloadBinaryFile("/api/admin/weekly-schedule-template.xlsx", "full_schedule_sample.xlsx");
-}
-
-async function importBundle(file) {
-  const formData = new FormData();
-  formData.append("file", file);
-  await api("/api/admin/import", { method: "POST", body: formData });
-  alert(t("alert.importDone"));
-  window.location.reload();
-}
-
-function addBellRow() {
-  selectedBellTemplate().entries.push({
-    lesson: String(selectedBellTemplate().entries.length + 1),
-    start: "08:30",
-    end: "09:15",
-  });
-  renderBellEditor();
-}
-
-function flushBellEditorFromDom() {
-  if (!elements.bellRows || !state.bells) return;
-  const template = selectedBellTemplate();
-  if (!template?.entries?.length) return;
-  elements.bellRows.querySelectorAll("[data-bell-index][data-key]").forEach((el) => {
-    const idx = Number(el.dataset.bellIndex);
-    const key = el.dataset.key;
-    if (!Number.isFinite(idx) || idx < 0 || idx >= template.entries.length) return;
-    const v = el.value;
-    if (key === "sound_start" || key === "sound_end") {
-      if (v === "") delete template.entries[idx][key];
-      else template.entries[idx][key] = v;
-    } else {
-      template.entries[idx][key] = v;
-    }
-  });
-}
-
-function saveBellEditorToState() {
-  flushBellEditorFromDom();
-  const template = selectedBellTemplate();
-  template.name = elements.bellTemplateName.value.trim() || template.name;
-  if (elements.bellLastLesson) {
-    const raw = elements.bellLastLesson.value.trim();
-    if (raw === "") template.last_lesson = null;
-    else {
-      const n = Number(raw);
-      template.last_lesson = Number.isFinite(n) ? Math.max(1, Math.min(24, Math.round(n))) : null;
-    }
-  }
-  const dateOverride = elements.bellDateOverride.value;
-  if (dateOverride) {
-    state.bells.date_overrides = state.bells.date_overrides.filter((item) => item.date !== dateOverride);
-    state.bells.date_overrides.push({ date: dateOverride, template_id: template.id, name: `${template.name} (${dateOverride})`, entries: template.entries.map((item) => ({ ...item })) });
-  }
-}
-
 async function saveAll() {
+  if (!validatePwaSettingsBeforeSave()) return;
+  if (state.programSettingsPanelActive && getStoredProgramSettingsTab() === "emergency") {
+    flushEmergencyEditorToState();
+  }
   readAudioStreamFormIntoState();
   state.config.templateSystem.grid = GRID;
   if (!state.audioStreamPanelActive) saveBellEditorToState();
@@ -2511,8 +3085,11 @@ function addOverride() {
   const className = elements.overrideClass.value.trim();
   const lessonIndex = Number(elements.overrideLesson.value);
   const subject = elements.overrideSubject.value.trim();
+  const color = (document.getElementById("override-color")?.value || "").trim();
   if (!date || !className || !lessonIndex || !subject) return alert(t("alert.fillOverride"));
-  state.overrides.push({ date, class_name: className, class_key: className.toLowerCase(), lesson_index: lessonIndex, subject });
+  const o = { date, class_name: className, class_key: className.toLowerCase(), lesson_index: lessonIndex, subject };
+  if (/^#[0-9a-fA-F]{6}$/.test(color)) o.color = color;
+  state.overrides.push(o);
   renderOverrides();
 }
 
@@ -2523,23 +3100,67 @@ async function init() {
     api("/api/admin/schedule"),
     api("/api/admin/bell-sounds").catch(() => ({ files: [] })),
   ]);
+  state.meta = config?._meta || state.meta;
+  if (state.meta?.widget_registry) applyWidgetRegistry(state.meta.widget_registry);
+  if (config && typeof config === "object") delete config._meta;
   state.config = config;
+  ensureEmergencyConfig();
+  const demoBanner = document.getElementById("demo-session-banner");
+  if (demoBanner) {
+    if (state.meta?.demo_session) {
+      demoBanner.hidden = false;
+    } else {
+      demoBanner.hidden = true;
+    }
+  }
+  if (state.meta?.deployment_mode === "saas") {
+    // SaaS: синхронизация "с SaaS" не имеет смысла (облако и есть источник).
+    const hide = (el) => { if (el) el.closest?.(".settings-row")?.classList?.add("hidden") || (el.hidden = true); };
+    hide(elements.cloudBaseUrl);
+    hide(elements.cloudSyncInterval);
+    hide(elements.cloudSyncEnabled);
+    hide(elements.cloudSyncToken);
+    if (elements.syncStatusLine) elements.syncStatusLine.hidden = true;
+    if (elements.syncNowBtn) elements.syncNowBtn.hidden = true;
+  } else {
+    applyCapabilityGates(state.meta?.capabilities, {
+      cloudBaseUrl: elements.cloudBaseUrl,
+      cloudSyncInterval: elements.cloudSyncInterval,
+      cloudSyncEnabled: elements.cloudSyncEnabled,
+      cloudSyncToken: elements.cloudSyncToken,
+      syncNowBtn: elements.syncNowBtn,
+      screenFallbackBase: elements.screenFallbackBase,
+      screenFallbackEnabled: elements.screenFallbackEnabled,
+    });
+  }
+  applyCapabilitiesDiagnosticsVisibility(state.meta);
+  renderCapabilitiesOverview(state.meta?.capabilities, elements.capabilitiesOverview, state.meta);
+  renderWidgetRegistryIssues(state.meta?.widget_registry, elements.widgetRegistryIssues, state.meta);
+  const mig = state.meta?.widget_registry?.migration_warnings;
+  if (Array.isArray(mig) && mig.length) {
+    console.warn("[widget_registry]", mig.join("; "));
+  }
   ensureAdminPaletteHidden();
   ensureAudioStreamConfig();
   /* Иначе скрытые поля «Стрим» остаются пустыми до первого открытия вкладки — сохранение с ТВ затирало бы audio_stream */
   syncAudioStreamFormFromState();
   state.schedule = schedule.schedule || [];
+  state.scheduleClassOptions = schedule.schedule_class_options || [];
   state.fullScheduleRows = schedule.full_schedule_rows ?? 0;
   state.scheduleSampleRows = schedule.schedule_sample_rows ?? 0;
   state.overrides = schedule.overrides || [];
+  if (prunePastOverrides()) schedulePersistOverridesPruned();
   state.announcements = schedule.announcements || [];
+  state.schoolNews = schedule.school_news || [];
   state.marquee = schedule.marquee || [];
   state.bells = schedule.bells || { templates: [], weekday_overrides: {}, date_overrides: [], sound_defaults: { start: null, end: null } };
   state.bells.sound_defaults = state.bells.sound_defaults || { start: null, end: null };
   state.bellSoundFiles = sounds.files || [];
   state.history = schedule.history || [];
   state.appVersion = schedule.app_version || "";
+  state.schoolNews = schedule.school_news || [];
   state.selectedScreenId = config.screens[0].id;
+  restoreAdminUiFromSession();
   try {
     await GuardSchoolI18n.init(state.config.ui_locale || "ru");
     GuardSchoolI18n.applyDom(document);
@@ -2550,9 +3171,16 @@ async function init() {
   bindPcPlayerOnce();
   bindSettingsSoundTestsOnce();
   bindWidgetModalOnce();
-  bindEmergencyModeOnce();
   bindProgramSettingsModalOnce();
+  scheduleFeedbackUnreadBadgeRefresh();
+  await ensureSchoolNewsTinyMce();
+  resetSchoolNewsForm();
   render();
+  if (state.programSettingsPanelActive) hydrateProgramSettingsPanelIfOpen();
+  refreshAdminFooterStats().catch(() => {});
+  window.setInterval(() => {
+    refreshAdminFooterStats().catch(() => {});
+  }, 60000);
   setInterval(() => {
     if (window.GuardSchoolScreen && state.activeSection === "preview") {
       window.GuardSchoolScreen.updateAllClocks(elements.preview);
@@ -2568,12 +3196,16 @@ async function init() {
   }, 15000);
 }
 
-elements.saveConfigBtn.onclick = saveAll;
-elements.exportDataBtn.onclick = async () => {
-  await downloadFile("/api/admin/export", "gorniitv_export");
-};
-elements.importDataBtn.onclick = () => elements.importDataInput.click();
-elements.importDataInput.onchange = (event) => event.target.files[0] && importBundle(event.target.files[0]);
+if (elements.saveConfigTopBtn) elements.saveConfigTopBtn.onclick = saveAll;
+if (elements.exportDataBtn) {
+  elements.exportDataBtn.onclick = async () => {
+    await downloadFile("/api/admin/export", "gorniitv_export");
+  };
+}
+if (elements.importDataBtn && elements.importDataInput) {
+  elements.importDataBtn.onclick = () => elements.importDataInput.click();
+  elements.importDataInput.onchange = (event) => event.target.files[0] && importBundle(event.target.files[0]);
+}
 elements.deleteScreenBtn.onclick = deleteScreen;
 if (elements.duplicateScreenBtn) elements.duplicateScreenBtn.onclick = duplicateCurrentScreen;
 elements.addOverrideBtn.onclick = addOverride;
@@ -2589,8 +3221,12 @@ elements.saveBellTemplateBtn.onclick = async () => {
   renderBellEditor();
   alert(t("alert.bellsSaved"));
 };
-elements.backgroundInput.onchange = (event) => event.target.files[0] && uploadBackground(event.target.files[0]);
-elements.pickBackgroundBtn.onclick = () => elements.backgroundInput.click();
+if (elements.backgroundInput) {
+  elements.backgroundInput.onchange = (event) => event.target.files[0] && uploadBackground(event.target.files[0]);
+}
+if (elements.pickBackgroundBtn && elements.backgroundInput) {
+  elements.pickBackgroundBtn.onclick = () => elements.backgroundInput.click();
+}
 if (elements.scheduleInputDated) {
   elements.scheduleInputDated.onchange = (event) => {
     const f = event.target.files?.[0];
@@ -2649,10 +3285,78 @@ if (elements.weeklyScheduleTemplateBtn) {
   elements.weeklyScheduleTemplateBtn.onclick = () =>
     downloadWeeklyScheduleTemplateXlsx().catch((e) => alert(e.message || String(e)));
 }
-elements.logoutBtn.onclick = async () => {
+
+document.body.addEventListener("click", (ev) => {
+  const btn = ev.target && ev.target.closest && ev.target.closest("[data-import-excel-sample]");
+  if (!btn) return;
+  const kind = btn.getAttribute("data-import-excel-sample");
+  if (!kind) return;
+  ev.preventDefault();
+  downloadImportExcelSample(kind).catch((e) => alert(e.message || String(e)));
+});
+
+async function adminLogoutThenNavigate(href) {
   await api("/api/logout", { method: "POST" });
-  window.location.href = "/login";
-};
+  try {
+    sessionStorage.removeItem(GS_ADMIN_SESSION_TOP);
+    sessionStorage.removeItem(GS_ADMIN_SESSION_SCREEN);
+    sessionStorage.removeItem(GS_ADMIN_SESSION_SECTION);
+  } catch (_) {}
+  if (state.meta) state.meta.demo_session = false;
+  state.statsPanelActive = false;
+  state.audioStreamPanelActive = false;
+  state.programSettingsPanelActive = false;
+  window.location.href = href;
+}
+
+if (elements.logoutBtn) elements.logoutBtn.onclick = () => adminLogoutThenNavigate("/login");
+
+if (elements.schoolNewsCoverPickBtn && elements.schoolNewsCoverFile) {
+  elements.schoolNewsCoverPickBtn.onclick = () => elements.schoolNewsCoverFile.click();
+  elements.schoolNewsCoverFile.onchange = async (ev) => {
+    const f = ev.target.files?.[0];
+    try {
+      if (f) await uploadSchoolNewsCoverFromPc(f);
+    } catch (e) {
+      alert(String(e.message || e));
+    }
+    ev.target.value = "";
+  };
+}
+
+if (elements.schoolNewsCoverFetchBtn) {
+  elements.schoolNewsCoverFetchBtn.onclick = async () => {
+    try {
+      await fetchSchoolNewsCoverFromUrl(elements.schoolNewsCover?.value || "");
+    } catch (e) {
+      alert(String(e.message || e));
+    }
+  };
+}
+
+const demoLogoutBtn = document.getElementById("demo-session-logout-btn");
+if (demoLogoutBtn) {
+  demoLogoutBtn.onclick = () => {
+    const exitUrl = state.meta?.demo_exit_url;
+    const href =
+      typeof exitUrl === "string" && /^https?:\/\//i.test(exitUrl) ? exitUrl : "/login";
+    adminLogoutThenNavigate(href);
+  };
+}
+
+setPreviewDeps({ selectedScreen, clampWidget, render });
+setAudioStreamDeps({ selectedScreenSlug });
+setDataImportDeps({ selectedScreen, render });
+setBellDeps({ selectedScreen, render, getWeekdayOptions, createTemplateId });
+setWidgetDeps({
+  selectedScreen,
+  render,
+  renderPreview,
+  createWidgetId,
+  getCarouselAnimations,
+  isWidgetTypeHiddenInAdminPalette,
+  closeProgramSettingsModal,
+});
 
 window.addEventListener("pointermove", handlePointerMove);
 window.addEventListener("pointerup", stopDrag);

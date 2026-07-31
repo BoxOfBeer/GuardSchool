@@ -1,0 +1,3 @@
+# Скопируйте соседний __init__.py на сервер или задайте:
+#   export GUARDSCHOOL_LAYER_PATH=<корень GuardSchool>
+# чтобы использовать skeleton из community-репозитория.

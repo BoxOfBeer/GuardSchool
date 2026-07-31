@@ -1,0 +1,352 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GuardDoc — лицензии (провайдер)</title>
+    <link rel="stylesheet" href="/static/styles.css?v=1.02.001" />
+    <link rel="stylesheet" href="/static/portal_skin.css?v=2" />
+    <style>
+      .wrap {
+        max-width: 100%;
+        margin: 0 auto;
+        padding: 16px 16px 32px;
+      }
+      .row {
+        display: grid;
+        gap: 8px;
+        margin-top: 12px;
+      }
+      .toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        align-items: flex-end;
+        margin-top: 12px;
+      }
+      .grow {
+        flex: 1 1 220px;
+      }
+      .toolbar.inputs-row .grow {
+        flex: 1 1 260px;
+      }
+      .toolbar.inputs-row .grow.compact {
+        flex: 0 1 220px;
+      }
+      .table-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 14px;
+        font-size: 13px;
+      }
+      th,
+      td {
+        border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+        padding: 8px 6px;
+        text-align: left;
+        vertical-align: top;
+      }
+      th {
+        color: rgba(244, 247, 255, 0.85);
+        font-weight: 700;
+      }
+    </style>
+  </head>
+  <body class="portal-skin">
+    <div class="wrap">
+      <div class="portal-card">
+        <h2 style="margin: 0 0 8px; color: #fff">Лицензии (провайдер)</h2>
+        <div class="portal-hint">
+          Нужен токен <code>GUARDSCHOOL_PROVIDER_ADMIN_TOKEN</code> с сервера. Он хранится только в этом браузере
+          (sessionStorage) и отправляется как <code>Authorization: Bearer …</code> к API
+          <code>/api/provider/licenses</code>.
+        </div>
+
+        <div class="row">
+          <label class="portal-label" for="tok">Bearer токен провайдера</label>
+          <input id="tok" class="portal-field" type="password" autocomplete="off" placeholder="вставьте токен один раз" />
+          <button type="button" class="portal-btn primary" id="save-tok">Сохранить токен в браузере</button>
+        </div>
+
+        <div class="toolbar inputs-row">
+          <div class="grow compact">
+            <label class="portal-label" for="plan">План</label>
+            <select id="plan" class="portal-field">
+              <option value="free">free</option>
+              <option value="paid">paid</option>
+              <option value="saas_only">saas_only</option>
+            </select>
+          </div>
+          <div class="grow">
+            <label class="portal-label" for="years">Срок (лет), календарных от выдачи</label>
+            <input id="years" class="portal-field" inputmode="numeric" placeholder="например 1" />
+          </div>
+          <div class="grow">
+            <label class="portal-label" for="days">Срок (дней), пусто = без срока</label>
+            <input id="days" class="portal-field" inputmode="numeric" placeholder="если не заданы годы — 365" />
+          </div>
+          <div class="grow">
+            <label class="portal-label" for="notes">Заметка</label>
+            <input id="notes" class="portal-field" placeholder="школа / контакт" />
+          </div>
+          <button type="button" class="portal-btn primary" id="create">Создать лицензию</button>
+          <button type="button" class="portal-btn" id="reload">Обновить список</button>
+          <a class="portal-btn" href="/">Назад</a>
+        </div>
+
+        <div class="portal-out" id="out"></div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>key_hash</th>
+              <th>tenant</th>
+              <th>plan</th>
+              <th>status</th>
+              <th>issued</th>
+              <th>expires</th>
+              <th>notes</th>
+              <th>действия</th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <script type="module">
+      const KEY = "gs_provider_admin_bearer";
+      const tok = document.getElementById("tok");
+      const out = document.getElementById("out");
+      const rows = document.getElementById("rows");
+
+      try {
+        tok.value = sessionStorage.getItem(KEY) || "";
+      } catch (_) {}
+
+      function bearer() {
+        const v = String(tok.value || "").trim();
+        return v;
+      }
+
+      function show(msg) {
+        out.textContent = msg;
+      }
+
+      document.getElementById("save-tok").addEventListener("click", () => {
+        const v = bearer();
+        if (!v) return show("Вставьте токен.");
+        try {
+          sessionStorage.setItem(KEY, v);
+        } catch (_) {}
+        show("Сохранено в sessionStorage этого браузера.");
+      });
+
+      async function api(path, opts = {}) {
+        const b = bearer();
+        if (!b) throw new Error("Нет токена провайдера.");
+        const headers = { Authorization: `Bearer ${b}`, ...(opts.headers || {}) };
+        const r = await fetch(path, { ...opts, headers });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(`${r.status}: ${data.detail || JSON.stringify(data)}`);
+        return data;
+      }
+
+      function renderList(data) {
+        const items = data.licenses || [];
+        rows.innerHTML = items
+          .map((x) => {
+            const kh = String(x.key_hash || "");
+            const esc = (s) =>
+              String(s ?? "")
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;");
+            const issuedShort = x.issued_at ? String(x.issued_at).slice(0, 10) : "—";
+            const expShort = x.expires_at ? String(x.expires_at).slice(0, 10) : "—";
+            const iy = x.issued_year != null ? ` год выдачи: ${x.issued_year}` : "";
+            const ey = x.expires_year != null ? ` год оконч.: ${x.expires_year}` : "";
+            const licNo = x.license_no != null ? String(x.license_no) : "—";
+            const licKey = x.license_key ? String(x.license_key) : "";
+            const khShort = `${kh.slice(0, 12)}…`;
+            const khTitle = `hash: ${kh}${licNo !== "—" ? ` | № ${licNo}` : ""}${licKey ? " | key сохранён" : ""}`;
+            return `<tr>
+              <td title="${esc(khTitle)}">
+                <div><strong>№ ${esc(licNo)}</strong></div>
+                <div><code>${esc(khShort)}</code></div>
+                ${licKey ? `<div><code>${esc(licKey)}</code></div>` : ""}
+              </td>
+              <td>${esc(x.tenant_slug || "—")}</td>
+              <td>${esc(x.plan_id)}</td>
+              <td>${esc(x.status)}</td>
+              <td title="${esc(x.issued_at || "")}${iy}">${esc(issuedShort)}</td>
+              <td title="${esc(x.expires_at || "")}${ey}">${esc(expShort)}</td>
+              <td>${esc(x.notes || "")}</td>
+              <td>
+                <div class="table-actions">
+                  <button type="button" class="portal-btn" data-act="info" data-kh="${esc(kh)}">инфо</button>
+                  <button type="button" class="portal-btn" data-act="disable" data-kh="${esc(kh)}">off</button>
+                  <button type="button" class="portal-btn" data-act="active" data-kh="${esc(kh)}">on</button>
+                  <button type="button" class="portal-btn" data-act="revoke" data-kh="${esc(kh)}">revoke</button>
+                  <button type="button" class="portal-btn" data-act="patch-notes" data-kh="${esc(kh)}">заметка</button>
+                  <button type="button" class="portal-btn" data-act="patch-days" data-kh="${esc(kh)}">дни</button>
+                  <button type="button" class="portal-btn" data-act="y-issue-1" data-kh="${esc(kh)}" title="Продлить на 1 календарный год от даты выдачи">+1г⊕выдача</button>
+                  <button type="button" class="portal-btn" data-act="y-now-1" data-kh="${esc(kh)}" title="Окончание через 1 календарный год от сегодня">+1г⊕сейчас</button>
+                  <button type="button" class="portal-btn" data-act="patch-years-issue" data-kh="${esc(kh)}">лет⊕выдача</button>
+                  <button type="button" class="portal-btn" data-act="patch-plan" data-kh="${esc(kh)}">план</button>
+                  <button type="button" class="portal-btn" data-act="delete" data-kh="${esc(kh)}">удалить</button>
+                  <button type="button" class="portal-btn danger" data-act="purge" data-kh="${esc(kh)}" title="Лицензия + школа в БД + схема PostgreSQL + каталог tenants">полн. удаление</button>
+                </div>
+              </td>
+            </tr>`;
+          })
+          .join("");
+      }
+
+      async function reload() {
+        show("Загрузка…");
+        const data = await api("/api/provider/licenses");
+        renderList(data);
+        show(`Записей: ${(data.licenses || []).length}`);
+      }
+
+      document.getElementById("reload").addEventListener("click", () => reload().catch((e) => show(String(e.message || e))));
+
+      document.getElementById("create").addEventListener("click", async () => {
+        try {
+          const plan_id = String(document.getElementById("plan").value || "free");
+          const notes = String(document.getElementById("notes").value || "");
+          const yearsRaw = String(document.getElementById("years").value || "").trim();
+          const daysRaw = String(document.getElementById("days").value || "").trim();
+          const body = { plan_id, notes };
+          if (yearsRaw) {
+            const ny = Number(yearsRaw);
+            if (!Number.isFinite(ny) || ny <= 0) {
+              show("Укажите целое число лет > 0 или оставьте поле пустым.");
+              return;
+            }
+            body.expires_years = ny;
+          } else if (daysRaw) body.expires_days = Number(daysRaw);
+          const r = await api("/api/provider/licenses", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          });
+          show(`Создан ключ (сохраните!):\n\n${r.license_key}\n\n${JSON.stringify(r, null, 2)}`);
+          await reload();
+        } catch (e) {
+          show(String(e.message || e));
+        }
+      });
+
+      rows.addEventListener("click", async (e) => {
+        const btn = e.target.closest("button[data-act]");
+        if (!btn) return;
+        const kh = btn.getAttribute("data-kh");
+        const act = btn.getAttribute("data-act");
+        if (!kh) return;
+        try {
+          if (act === "info") {
+            const one = await api(`/api/provider/licenses/${encodeURIComponent(kh)}`);
+            show(JSON.stringify(one.license || one, null, 2));
+            return;
+          }
+          if (act === "active" || act === "disable") {
+            const status = act === "active" ? "active" : "disabled";
+            await api(`/api/provider/licenses/${encodeURIComponent(kh)}/status`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ status }),
+            });
+          } else if (act === "revoke") {
+            await api(`/api/provider/licenses/${encodeURIComponent(kh)}/status`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ status: "revoked" }),
+            });
+          } else if (act === "patch-notes") {
+            const n = prompt("Заметка к лицензии (можно пусто)", "");
+            if (n === null) return;
+            await api(`/api/provider/licenses/${encodeURIComponent(kh)}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ notes: n }),
+            });
+          } else if (act === "patch-days") {
+            const d = prompt("Срок в днях от сегодня (пусто = снять срок действия)", "");
+            if (d === null) return;
+            const body =
+              String(d).trim() === "" ? { expires_at: null } : { expires_days: Number(String(d).trim()) };
+            if (body.expires_days !== undefined && !Number.isFinite(body.expires_days)) {
+              show("Некорректное число дней.");
+              return;
+            }
+            await api(`/api/provider/licenses/${encodeURIComponent(kh)}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(body),
+            });
+          } else if (act === "y-issue-1") {
+            await api(`/api/provider/licenses/${encodeURIComponent(kh)}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ expires_years_from_issue: 1 }),
+            });
+          } else if (act === "y-now-1") {
+            await api(`/api/provider/licenses/${encodeURIComponent(kh)}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ expires_years_from_now: 1 }),
+            });
+          } else if (act === "patch-years-issue") {
+            const y = prompt("Календарных лет от даты выдачи лицензии (0 = снять срок)", "1");
+            if (y === null) return;
+            await api(`/api/provider/licenses/${encodeURIComponent(kh)}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ expires_years_from_issue: Number(String(y).trim()) }),
+            });
+          } else if (act === "patch-plan") {
+            const p = prompt("План: free | paid | saas_only", "free");
+            if (p === null) return;
+            const plan_id = String(p).trim() || "free";
+            await api(`/api/provider/licenses/${encodeURIComponent(kh)}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ plan_id }),
+            });
+          } else if (act === "delete") {
+            if (!confirm("Удалить только неиспользованную лицензию (без регистрации школы)?"))
+              return;
+            await api(`/api/provider/licenses/${encodeURIComponent(kh)}`, { method: "DELETE" });
+          } else if (act === "purge") {
+            if (
+              !confirm(
+                "ПОЛНОЕ удаление: лицензия, пользователь, тенант, схема PostgreSQL, TV-привязки и каталог tenants/<slug>. Без восстановления.",
+              )
+            )
+              return;
+            const v = prompt("Введите слово PURGE заглавными для подтверждения.");
+            if (v !== "PURGE") {
+              show("Отменено (нужно ввести PURGE).");
+              return;
+            }
+            const r = await api(`/api/provider/licenses/${encodeURIComponent(kh)}?purge=1`, { method: "DELETE" });
+            show(`Выполнено:\n${JSON.stringify(r, null, 2)}`);
+          } else return;
+          await reload();
+        } catch (err) {
+          show(String(err.message || err));
+        }
+      });
+
+      reload().catch((e) => show(String(e.message || e)));
+    </script>
+  </body>
+</html>

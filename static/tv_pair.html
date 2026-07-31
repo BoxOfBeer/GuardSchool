@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Cache-Control" content="no-store" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GuardSchool — подключение экрана</title>
+    <link rel="stylesheet" href="/static/styles.css?v=1.02.001" />
+    <link rel="stylesheet" href="/static/portal_skin.css?v=2" />
+    <link rel="manifest" href="" id="gs-manifest" />
+    <script>
+      // Делает /t/<code>/<screen> installable даже в браузерах без ES Modules.
+      (function () {
+        try {
+          var parts = String(window.location.pathname || "").split("/");
+          // ожидаем /t/<code>/<screen_slug>
+          var tIdx = -1;
+          for (var i = 0; i < parts.length; i++) {
+            if (parts[i] === "t") {
+              tIdx = i;
+              break;
+            }
+          }
+          if (tIdx < 0) return;
+          var code = parts[tIdx + 1] || "";
+          var slug = parts[tIdx + 2] || "";
+          if (!code || !slug) return;
+          try {
+            code = decodeURIComponent(code);
+          } catch (e) {}
+          try {
+            slug = decodeURIComponent(slug);
+          } catch (e) {}
+          code = String(code).trim().toLowerCase();
+          slug = String(slug).trim().toLowerCase();
+          if (!code || !slug) return;
+          var link = document.getElementById("gs-manifest");
+          if (!link) {
+            link = document.createElement("link");
+            link.rel = "manifest";
+            document.head.appendChild(link);
+          }
+          link.href = "/pwa/t/" + encodeURIComponent(code) + "/" + encodeURIComponent(slug) + ".webmanifest";
+        } catch (e) {}
+      })();
+    </script>
+    <style>
+      .wrap {
+        max-width: 520px;
+        margin: 0 auto;
+        padding: 24px 16px 60px;
+      }
+      h2 {
+        margin: 0 0 10px;
+        color: #fff;
+      }
+      .row {
+        display: grid;
+        gap: 6px;
+        margin-top: 10px;
+      }
+      .tv-go {
+        width: 100%;
+        margin-top: 12px;
+      }
+      .out {
+        display: none;
+      }
+    </style>
+  </head>
+  <body class="portal-skin">
+    <div class="wrap">
+      <div class="portal-card">
+        <h2>Подключение экрана</h2>
+        <div style="color: rgba(244, 247, 255, 0.9)">Введите PIN, который вам выдал администратор.</div>
+
+        <div class="row">
+          <label class="portal-label" for="pin">PIN</label>
+          <input id="pin" class="portal-field" inputmode="numeric" autocomplete="one-time-code" placeholder="4–12 цифр" />
+        </div>
+
+        <button type="button" class="portal-btn primary tv-go" id="go">Подключить</button>
+        <div class="portal-hint" id="meta"></div>
+        <div class="portal-out out" id="out"></div>
+      </div>
+    </div>
+    <script type="module" src="/static/tv_pair.js?v=1.02.022"></script>
+  </body>
+</html>
+

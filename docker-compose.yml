@@ -1,0 +1,14 @@
+services:
+  guardschool:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      GUARDSCHOOL_DEPLOYMENT_MODE: local
+      GUARDSCHOOL_DATA_DIR: /data
+    volumes:
+      - guardschool-data:/data
+    restart: unless-stopped
+
+volumes:
+  guardschool-data:

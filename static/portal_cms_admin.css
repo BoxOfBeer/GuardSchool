@@ -1,0 +1,89 @@
+/* Редактор контента портала в /ADM */
+.cms-editor-layout {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0;
+  align-items: start;
+}
+
+@media (min-width: 900px) {
+  .cms-editor-layout {
+    grid-template-columns: 200px minmax(0, 1fr);
+    gap: 20px;
+  }
+}
+
+.cms-editor-rail {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 0 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  margin-bottom: 8px;
+}
+
+@media (min-width: 900px) {
+  .cms-editor-rail {
+    position: sticky;
+    top: 8px;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    padding: 8px 12px 12px 0;
+    border-bottom: none;
+    border-right: 1px solid rgba(255, 255, 255, 0.1);
+    margin-bottom: 0;
+    max-height: calc(100vh - 24px);
+    overflow: auto;
+  }
+}
+
+.cms-editor-rail a {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(200, 216, 255, 0.95) !important;
+  text-decoration: none !important;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+}
+
+.cms-editor-rail a:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: #fff !important;
+}
+
+.cms-editor-main {
+  min-width: 0;
+}
+
+.cms-section-title {
+  scroll-margin-top: 12px;
+  margin: 22px 0 10px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  color: #fff !important;
+  font-size: 1.05rem;
+  font-weight: 800;
+}
+
+.cms-section-title:first-of-type {
+  border-top: none;
+  padding-top: 0;
+  margin-top: 14px;
+}
+
+.cms-monospace {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+}
+
+.cms-subhead {
+  margin: 16px 0 6px;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: rgba(200, 216, 255, 0.85);
+}

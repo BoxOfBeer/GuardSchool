@@ -1,0 +1,1234 @@
+/* Screen/TV stylesheet (separated from admin styles).
+   Source: extracted from previous working styles.css (tv-screen / preview / widgets / table / marquee / carousel). */
+
+:root {
+  --bg: #0f172a;
+  --card: #1e293b;
+  --card-2: #334155;
+  --text: #f8fafc;
+  --muted: #cbd5e1;
+  --accent: #38bdf8;
+  --danger: #ef4444;
+}
+
+* { box-sizing: border-box; }
+
+html { background: var(--bg); }
+
+body.screen-body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, "Segoe UI", Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.35;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Preview: same base typography/shadow as TV */
+.screen-preview {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: linear-gradient(135deg, #0f172a, #1d4ed8);
+  border-radius: 18px;
+  overflow: hidden;
+  position: relative;
+  font-family: system-ui, "Segoe UI", Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.35;
+  -webkit-font-smoothing: antialiased;
+  color: var(--text);
+  --gs-tv-text-shadow: none;
+}
+
+.tv-screen {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: linear-gradient(135deg, #0f172a, #1d4ed8);
+  border-radius: 18px;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Mobile screen: no fixed aspect ratio, vertical scroll list. */
+.tv-screen.gs-mobile-screen,
+.screen-preview.gs-mobile-screen {
+  aspect-ratio: auto;
+  border-radius: 0;
+  overflow: auto;
+  background: var(--gs-mobile-background, #172554);
+  color: var(--gs-mobile-text, #f8fafc);
+  font-size: var(--gs-mobile-font-size, 16px);
+}
+
+.gs-mobile-screen .gs-mobile-list {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gs-mobile-card-gap, 10px);
+  padding: 12px;
+  min-height: 100vh;
+}
+
+.gs-mobile-screen .gs-mobile-widget {
+  min-height: auto;
+  border-radius: var(--gs-mobile-card-radius, 12px);
+  background: var(--gs-mobile-card, #13234b) !important;
+  color: var(--gs-mobile-text, #f8fafc);
+}
+
+.gs-mobile-screen .gs-mobile-widget .bk-muted,
+.gs-mobile-screen .gs-mobile-widget .widget-meta {
+  color: var(--gs-mobile-muted, #cbd5e1);
+}
+
+.gs-mobile-screen .gs-mobile-widget a {
+  color: var(--gs-mobile-accent, #38bdf8);
+}
+
+/* Device settings (floating gear) */
+.gs-device-settings-btn {
+  position: fixed;
+  right: 14px;
+  bottom: 14px;
+  z-index: 9999;
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.72);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  color: #e2e8f0;
+  font-size: 26px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+}
+
+.gs-device-settings-btn:active { transform: scale(0.98); }
+
+.gs-device-settings-panel {
+  position: fixed;
+  right: 14px;
+  bottom: 82px;
+  z-index: 9999;
+  width: min(92vw, 420px);
+  max-height: min(78vh, 720px);
+  overflow: auto;
+  border-radius: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: rgba(2, 6, 23, 0.86);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  color: #f8fafc;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.45);
+  padding: 12px 12px 10px;
+}
+
+.gs-device-settings-panel[hidden] { display: none !important; }
+
+.gs-device-settings-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.gs-device-version-row {
+  margin-top: 4px;
+  margin-bottom: 6px;
+}
+
+.gs-device-version-lines {
+  font-size: 12px;
+  line-height: 1.45;
+  color: rgba(226, 232, 240, 0.88);
+  word-break: break-all;
+}
+
+.gs-device-version-line {
+  margin: 2px 0 0;
+}
+
+.gs-device-version-rev {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 11px;
+  color: rgba(148, 163, 184, 0.95);
+}
+
+.gs-device-version-muted {
+  color: rgba(148, 163, 184, 0.75);
+  font-style: italic;
+}
+
+.gs-device-version-stale {
+  margin-top: 6px;
+  color: #fcd34d;
+  font-weight: 600;
+}
+
+.gs-device-settings-title {
+  font-weight: 800;
+  font-size: 15px;
+}
+
+.gs-device-settings-close {
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: rgba(15, 23, 42, 0.65);
+  color: #e2e8f0;
+  border-radius: 12px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.gs-device-settings-row {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0;
+}
+
+.gs-device-settings-row label {
+  font-size: 13px;
+  color: rgba(226, 232, 240, 0.92);
+}
+
+.gs-device-settings-input {
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(15, 23, 42, 0.55);
+  color: #f8fafc;
+  padding: 10px 12px;
+  font-size: 15px;
+  outline: none;
+}
+
+.gs-device-settings-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.gs-device-btn-primary {
+  border: 0;
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-weight: 700;
+  background: linear-gradient(180deg, #d1fae5 0%, #a7f3d0 55%, #86efac 100%);
+  color: #064e3b;
+  cursor: pointer;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.35) inset;
+}
+
+.gs-device-btn-primary:hover {
+  filter: brightness(1.04);
+}
+
+.gs-device-btn-primary:active {
+  filter: brightness(0.97);
+}
+
+.gs-device-btn-secondary {
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: rgba(15, 23, 42, 0.55);
+  color: #e2e8f0;
+  cursor: pointer;
+}
+
+/* Панель ⚙ (#gs-device-settings-panel): кнопки примерно на 30% компактнее */
+#gs-device-settings-panel .gs-device-btn-primary,
+#gs-device-settings-panel .gs-device-btn-secondary {
+  padding: 7px 10px;
+  font-size: 12px;
+  font-weight: 650;
+  border-radius: 9px;
+}
+
+#gs-device-settings-panel .gs-device-settings-close {
+  padding: 5px 9px;
+  font-size: 12px;
+  border-radius: 9px;
+}
+
+#gs-device-settings-panel .gs-device-help {
+  width: 26px;
+  height: 26px;
+  font-size: 13px;
+}
+
+#gs-device-settings-panel .gs-device-settings-title {
+  font-size: 14px;
+}
+
+#gs-device-settings-panel .gs-device-settings-actions {
+  gap: 7px;
+  margin-top: 7px;
+}
+
+#gs-device-settings-panel .gs-device-settings-input {
+  padding: 8px 10px;
+  font-size: 14px;
+  border-radius: 10px;
+}
+
+.gs-device-settings-checks {
+  display: grid;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.gs-device-settings-checks .opt {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  font-size: 14px;
+}
+
+.gs-device-settings-checks input { margin-top: 2px; }
+
+.gs-device-settings-field-head {
+  font-size: 13px;
+  font-weight: 700;
+  color: rgba(226, 232, 240, 0.95);
+}
+
+.gs-device-classes-hint {
+  font-size: 12px;
+  line-height: 1.35;
+  color: rgba(148, 163, 184, 0.95);
+  margin: 0 0 6px;
+}
+
+.gs-device-field-head-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.gs-device-field-head-row .gs-device-settings-field-head {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+}
+
+.gs-device-inline-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.gs-device-inline-actions .gs-device-btn-primary {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.gs-device-pwa-install-status[hidden] {
+  display: none !important;
+}
+
+.gs-device-pwa-install-status {
+  padding: 8px 10px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 9px;
+  background: rgba(15, 23, 42, 0.42);
+  color: rgba(226, 232, 240, 0.94);
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  white-space: pre-line;
+}
+
+.gs-device-pwa-install-status[data-kind="error"] {
+  border-color: rgba(251, 191, 36, 0.45);
+  color: #fde68a;
+}
+
+.gs-device-help {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.65);
+  color: #94a3b8;
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1;
+  cursor: help;
+  padding: 0;
+}
+
+.gs-device-help:hover,
+.gs-device-help:focus-visible {
+  color: #e2e8f0;
+  border-color: rgba(56, 189, 248, 0.55);
+  outline: none;
+}
+
+.gs-device-help-popover[hidden] {
+  display: none !important;
+}
+
+.gs-device-help-popover {
+  position: fixed;
+  z-index: 10050;
+  box-sizing: border-box;
+  max-width: min(90vw, 380px);
+  max-height: min(42vh, 300px);
+  overflow-y: auto;
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.45;
+  font-weight: 500;
+  border-radius: 12px;
+  border: 1px solid rgba(56, 189, 248, 0.45);
+  background: rgba(15, 23, 42, 0.96);
+  color: #e2e8f0;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.5);
+  -webkit-overflow-scrolling: touch;
+}
+
+.gs-device-topic-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.gs-device-topic-row .opt {
+  flex: 1;
+  min-width: 0;
+}
+
+.gs-device-topic-row .gs-device-help {
+  margin-top: 1px;
+}
+
+.gs-device-push-master {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0 0 4px;
+}
+
+.gs-device-details {
+  margin-top: 8px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(15, 23, 42, 0.35);
+  padding: 6px 10px 10px;
+}
+
+.gs-device-details > summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: #cbd5e1;
+  list-style-position: outside;
+  padding: 4px 0;
+  text-decoration: underline;
+  text-decoration-color: rgba(148, 163, 184, 0.65);
+  text-underline-offset: 3px;
+}
+
+.gs-device-details[open] > summary {
+  margin-bottom: 6px;
+  color: #e2e8f0;
+  text-decoration-color: rgba(226, 232, 240, 0.55);
+}
+
+.gs-device-push-interval-row {
+  padding: 0;
+  margin: 12px 0 0;
+  gap: 6px;
+}
+
+#gs-device-classes-wrap {
+  max-height: 42vh;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.gs-device-url-hint-wrap {
+  margin-top: 8px;
+}
+
+.gs-device-url-hint {
+  font-size: 13px;
+  color: rgba(203, 213, 225, 0.95);
+}
+
+.gs-device-url-hint summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: #94a3b8;
+  text-decoration: underline;
+  text-decoration-color: rgba(148, 163, 184, 0.55);
+  text-underline-offset: 3px;
+}
+
+.gs-device-url-hint-body {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: rgba(148, 163, 184, 0.95);
+}
+
+.gs-device-url-hint-body code {
+  font-size: 11px;
+  word-break: break-all;
+}
+
+/* Слои фона ТВ: плавная смена картинки без мигания всего экрана */
+.gs-tv-bg-layer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-position: center center;
+  background-size: cover;
+  background-repeat: no-repeat;
+  border-radius: inherit;
+}
+
+.gs-tv-bg-over {
+  z-index: 1;
+}
+
+.tv-screen .screen-grid,
+.screen-preview .screen-grid {
+  position: relative;
+  z-index: 2;
+}
+
+.screen-grid {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  grid-template-columns: repeat(32, 1fr);
+  grid-template-rows: repeat(26, 1fr);
+  gap: 6px;
+  padding: 14px;
+}
+
+.screen-widget {
+  border-radius: 12px;
+  padding: 10px;
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  overflow: hidden;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* Расписание: таблица сама задаёт белый фон. Оболочка-«карточка» только мешает (пустая подложка ниже таблицы). */
+.tv-screen .screen-widget[data-widget-type="schedule"],
+.screen-preview .screen-widget[data-widget-type="schedule"] {
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  padding: 0;
+  /* Иначе общий overflow:hidden у .screen-widget обрезает второй блок («следующий учебный день»)
+     по высоте ячейки — на ТВ/мобильном WebKit заметнее, чем в десктопном Chrome. */
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Мобильная лента: тот же виджет вне сетки. */
+.gs-mobile-widget.screen-widget[data-widget-type="schedule"] {
+  overflow-x: hidden;
+  overflow-y: visible;
+  max-height: none;
+}
+
+.tv-screen .screen-widget[data-widget-type="schedule"] .screen-section-title,
+.screen-preview .screen-widget[data-widget-type="schedule"] .screen-section-title {
+  padding: 6px 10px 0;
+}
+
+.tv-screen .screen-widget[data-widget-type="schedule"] .schedule-table-wrap,
+.screen-preview .screen-widget[data-widget-type="schedule"] .schedule-table-wrap {
+  padding: 0 10px 10px;
+}
+
+.screen-widget.screen-widget--image {
+  z-index: 0;
+  padding: 4px;
+  background: transparent;
+}
+
+.screen-widget.screen-widget--image.no-backdrop {
+  background: transparent;
+}
+
+.screen-widget.screen-widget--emergency {
+  z-index: 40;
+  padding: 16px;
+  border-radius: 0;
+}
+
+.screen-widget--emergency .emergency-overlay-inner {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  line-height: 1.25;
+  box-sizing: border-box;
+  border-radius: 14px;
+  padding: 12px;
+  gap: 8px;
+}
+
+.screen-widget--emergency .emergency-overlay-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  max-width: 100%;
+  max-height: 100%;
+  overflow: auto;
+  gap: 6px;
+}
+
+.screen-widget--emergency .emergency-overlay-text {
+  max-width: 96%;
+  word-break: break-word;
+  text-shadow: var(--gs-tv-text-shadow, none);
+}
+
+.screen-widget--emergency .emergency-overlay-timer-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.screen-widget--emergency .emergency-overlay-timer-title {
+  font-size: 0.44em;
+  opacity: 0.95;
+}
+
+.screen-widget--emergency .emergency-overlay-timer {
+  font-size: 0.9em;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.05em;
+}
+
+.screen-widget.no-backdrop {
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.schedule-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--gs-sched-bg, rgba(248, 244, 232, 0.92)); /* почти белый/бежевый */
+  color: var(--gs-sched-text, #0f172a);
+  table-layout: fixed;
+}
+
+.schedule-table col.schedule-col-num {
+  width: 4.25em;
+}
+
+.schedule-table thead th:first-child {
+  white-space: nowrap;
+  text-align: center;
+  vertical-align: middle;
+  padding: 4px 8px;
+  box-sizing: border-box;
+}
+
+.schedule-table td.schedule-lesson-num {
+  background: var(--gs-sched-header, rgba(30, 58, 95, 0.92));
+  color: #ffffff;
+  font-weight: 700;
+  text-align: center;
+  vertical-align: middle;
+  white-space: nowrap;
+  padding: 4px 8px;
+  box-sizing: border-box;
+}
+
+.schedule-table th,
+.schedule-table td {
+  border: 1px solid var(--gs-sched-border, rgba(15, 23, 42, 0.12));
+  padding: 4px 5px;
+  vertical-align: top;
+  line-height: 1.15;
+  word-break: break-word;
+}
+
+.schedule-table td {
+  /* На части ТВ фон <table> не прокрашивает ячейки: задаём явно. */
+  background-color: var(--gs-sched-bg, rgba(248, 244, 232, 0.92)) !important;
+  color: var(--gs-sched-text, #0f172a) !important;
+}
+
+.schedule-table th {
+  background: var(--gs-sched-header, rgba(30, 58, 95, 0.92));
+  color: #ffffff;
+}
+
+/* Состояния ячеек */
+.schedule-past {
+  background-color: var(--gs-sched-past-bg, rgba(31, 41, 55, 0.55)) !important; /* тёмно-серый */
+  color: var(--gs-sched-past-text, rgba(241, 245, 249, 0.92)) !important;
+  text-decoration: line-through;
+}
+
+.schedule-current {
+  background-color: var(--gs-sched-current, rgba(191, 219, 254, 0.72)) !important; /* бледно-голубой */
+  color: #0f172a !important;
+  font-weight: 700;
+}
+
+.schedule-override {
+  background-color: var(--gs-sched-override, rgba(187, 247, 208, 0.72)) !important; /* бледно-салатовый по умолчанию */
+  color: #0f172a !important;
+  font-weight: 700;
+}
+
+.schedule-sample-diff {
+  background-color: var(--gs-sched-sample, rgba(254, 243, 199, 0.75)) !important;
+  color: #0f172a !important;
+}
+
+.screen-body { min-height: 100vh; }
+
+.tv-screen {
+  height: 100vh;
+  min-height: 100vh;
+  aspect-ratio: auto;
+  border-radius: 0;
+}
+
+.tv-screen,
+.screen-preview {
+  --gs-tv-text-shadow: none;
+}
+
+.tv-screen .screen-widget,
+.tv-screen .screen-widget *,
+.screen-preview .screen-widget,
+.screen-preview .screen-widget * {
+  text-shadow: var(--gs-tv-text-shadow);
+}
+
+.tv-screen .schedule-table,
+.tv-screen .schedule-table *,
+.screen-preview .schedule-table,
+.screen-preview .schedule-table * {
+  text-shadow: none;
+}
+
+.tv-screen .gs-checkin-submit,
+.tv-screen .gs-checkin-submit *,
+.tv-screen .gs-checkin-monitor,
+.tv-screen .gs-checkin-monitor * {
+  text-shadow: none;
+}
+
+.screen-preview .gs-checkin-submit,
+.screen-preview .gs-checkin-submit *,
+.screen-preview .gs-checkin-monitor,
+.screen-preview .gs-checkin-monitor * {
+  text-shadow: none;
+}
+
+.gs-checkin-table.gs-checkin-table--boxed {
+  border-collapse: collapse;
+  width: 100%;
+}
+.gs-checkin-table.gs-checkin-table--boxed th,
+.gs-checkin-table.gs-checkin-table--boxed td {
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  padding: 5px 8px;
+  text-align: left;
+  vertical-align: top;
+}
+.gs-checkin-col-date,
+.gs-checkin-col-time,
+.gs-checkin-col-confirm,
+.gs-checkin-actions-cell {
+  white-space: nowrap;
+  width: 1%;
+}
+.gs-checkin-table.gs-checkin-table--boxed th {
+  background: rgba(15, 23, 42, 0.35);
+  font-weight: 600;
+}
+.gs-checkin-actions-cell {
+  white-space: nowrap;
+  text-align: right;
+}
+
+.gs-checkin-submit.gs-checkin--font-fluid,
+.gs-checkin-monitor.gs-checkin--font-fluid {
+  line-height: 1.35;
+}
+.gs-checkin-submit.gs-checkin--font-fluid {
+  font-size: clamp(12px, 1.4vmin, 18px);
+}
+.gs-checkin-monitor.gs-checkin--font-fluid {
+  font-size: clamp(11px, 1.25vmin, 16px);
+}
+.gs-checkin-submit-title {
+  font-size: 1.06em;
+  font-weight: inherit;
+  letter-spacing: 0.02em;
+  opacity: 0.96;
+}
+.gs-checkin-recent {
+  font-size: 0.92em;
+  line-height: 1.38;
+  margin-top: 4px;
+}
+.gs-checkin-recent-heading {
+  font-weight: 600;
+  margin-top: 8px;
+  margin-bottom: 4px;
+  opacity: 0.92;
+}
+.gs-checkin-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+}
+.gs-checkin-toolbar-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.gs-checkin-period-label {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.gs-checkin-panel-heading {
+  font-weight: inherit;
+}
+.gs-checkin-range-label {
+  margin-bottom: 6px;
+  opacity: 0.85;
+  font-size: 0.94em;
+}
+.gs-checkin-section-title {
+  font-weight: 600;
+  margin: 8px 0 4px;
+  opacity: 0.95;
+}
+.gs-checkin-monitor-journal {
+  opacity: 0.96;
+}
+.gs-checkin-levels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 6px;
+}
+.gs-checkin-seg {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  background: rgba(15, 23, 42, 0.22);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.gs-checkin-seg:hover {
+  border-color: rgba(148, 163, 184, 0.65);
+  background: rgba(15, 23, 42, 0.32);
+}
+.gs-checkin-seg--ok {
+  background: rgba(22, 163, 74, 0.14);
+  border-color: rgba(34, 197, 94, 0.35);
+}
+.gs-checkin-seg--warn {
+  background: rgba(234, 179, 8, 0.13);
+  border-color: rgba(250, 204, 21, 0.35);
+}
+.gs-checkin-seg--alert {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(248, 113, 113, 0.35);
+}
+.gs-checkin-seg--ok:has(.gs-checkin-lv:checked) {
+  background: rgba(22, 163, 74, 0.32);
+  border-color: rgba(34, 197, 94, 0.85);
+  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.35);
+}
+.gs-checkin-seg--warn:has(.gs-checkin-lv:checked) {
+  background: rgba(234, 179, 8, 0.3);
+  border-color: rgba(250, 204, 21, 0.9);
+  box-shadow: 0 0 0 2px rgba(250, 204, 21, 0.3);
+}
+.gs-checkin-seg--alert:has(.gs-checkin-lv:checked) {
+  background: rgba(239, 68, 68, 0.28);
+  border-color: rgba(239, 68, 68, 0.9);
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.28);
+}
+
+.gs-checkin-send.primary-btn {
+  padding: 12px 18px;
+  font-size: 1.08em;
+  border-radius: 12px;
+  background: rgba(34, 197, 94, 0.22);
+  border: 1px solid rgba(34, 197, 94, 0.55);
+  color: rgba(240, 253, 244, 0.98);
+}
+.gs-checkin-send.primary-btn:hover {
+  background: rgba(34, 197, 94, 0.28);
+  border-color: rgba(34, 197, 94, 0.75);
+}
+.gs-checkin-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  border-radius: 8px;
+  font-size: 0.94em;
+  font-weight: 600;
+  line-height: 1.25;
+}
+.gs-checkin-badge--ok {
+  background: rgba(34, 197, 94, 0.22);
+  color: #bbf7d0;
+}
+.gs-checkin-badge--warn {
+  background: rgba(234, 179, 8, 0.22);
+  color: #fde68a;
+}
+.gs-checkin-badge--alert {
+  background: rgba(248, 113, 113, 0.22);
+  color: #fecaca;
+}
+.gs-checkin-badge--none {
+  background: rgba(148, 163, 184, 0.2);
+  color: rgba(226, 232, 240, 0.92);
+}
+.gs-checkin-badge--muted {
+  background: rgba(148, 163, 184, 0.18);
+  color: rgba(226, 232, 240, 0.88);
+}
+.gs-checkin-confirm-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 8px;
+  background: rgba(34, 197, 94, 0.2);
+  color: #86efac;
+  font-weight: 600;
+  font-size: 0.9em;
+  white-space: nowrap;
+}
+.gs-checkin-confirm-pill--compact {
+  padding: 2px 8px;
+  justify-content: center;
+}
+.gs-checkin-confirm-icon {
+  font-weight: 700;
+}
+
+.screen-section-title {
+  margin: 0 0 6px;
+  font-size: 18px;
+}
+
+.schedule-widget-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1 1 auto;
+  justify-content: flex-start;
+  min-height: 0;
+  /* Не клипать «завтра» — прокрутка на уровне карточки расписания (см. .screen-widget[schedule]). */
+  overflow-x: hidden;
+  overflow-y: visible;
+}
+
+.schedule-section {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  gap: 6px;
+  min-height: 0;
+  margin: 0;
+  overflow: visible;
+}
+
+.schedule-table-wrap {
+  flex: 0 0 auto;
+  min-height: 0;
+  /* Не задавать overflow: hidden после overflow-y — иначе скролл таблицы отключается. */
+  overflow-x: hidden;
+  overflow-y: auto;
+  border-radius: 10px;
+  background: var(--gs-sched-bg, rgba(248, 244, 232, 0.92));
+}
+
+.gs-crash-banner {
+  position: fixed;
+  z-index: 999999;
+  left: 50%;
+  top: 10px;
+  transform: translateX(-50%);
+  max-width: min(1100px, 96vw);
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 14px;
+  line-height: 1.35;
+  background: rgba(15, 23, 42, 0.92);
+  color: #f8fafc;
+  border: 1px solid rgba(248, 113, 113, 0.55);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+  white-space: pre-wrap;
+}
+
+.gs-dev-log {
+  margin: 0 0 6px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  font-size: 12px;
+  line-height: 1.25;
+  color: #f8fafc;
+  background: rgba(15, 23, 42, 0.78);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  max-height: 140px;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
+.widget-meta {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.bell-status-box {
+  display: grid;
+  gap: 6px;
+  align-content: center;
+  justify-items: center;
+  text-align: center;
+}
+
+.info-widget-box {
+  display: grid;
+  gap: 6px;
+  height: 100%;
+  align-content: center;
+  justify-items: center;
+  text-align: center;
+}
+
+/* Новости школы: слева столбик фото (обложка + галерея), справа текст — без лишней вертикальной сетки 2×2 */
+.gs-school-news-card {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  padding: 10px;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.gs-school-news-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+  flex: 0 0 auto;
+}
+
+.gs-school-news-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.gs-school-news-date {
+  font-size: 12px;
+  opacity: 0.85;
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
+.gs-school-news-row {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 10px;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.gs-school-news-row--nomedia {
+  display: block;
+}
+
+.gs-school-news-row--wrap {
+  display: block;
+}
+
+.gs-school-news-row--wrap::after {
+  content: "";
+  display: table;
+  clear: both;
+}
+
+.gs-school-news-float-img {
+  float: left;
+  width: 32%;
+  height: auto;
+  max-height: 200px;
+  margin: 0 12px 8px 0;
+  object-fit: contain;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.gs-school-news-row--wrap .gs-school-news-body {
+  display: block;
+  width: auto;
+}
+
+.gs-school-news-media {
+  flex: 0 0 auto;
+  width: 32%;
+  max-width: 280px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.gs-school-news-side-img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 200px;
+  object-fit: contain;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.gs-school-news-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  line-height: 1.35;
+  white-space: normal;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.gs-school-news-row--nomedia .gs-school-news-body {
+  width: 100%;
+}
+
+.gs-school-news-foot {
+  margin-top: 6px;
+  font-size: 12px;
+  opacity: 0.85;
+  flex: 0 0 auto;
+}
+
+.marquee-box {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  padding: 0 14px 6px;
+  min-height: 34px;
+}
+
+.marquee-track {
+  display: inline-flex;
+  align-items: center;
+  gap: 48px;
+  min-width: max-content;
+  animation: marquee-scroll linear infinite;
+}
+
+.marquee-track span { display: inline-block; }
+
+.carousel-widget {
+  position: relative;
+  padding: 0;
+  overflow: hidden;
+}
+
+.carousel-slide {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  box-sizing: border-box;
+  padding: 10px;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  min-height: 0;
+  opacity: 0;
+  transform: translateX(100%);
+  transition: transform 0.6s ease, opacity 0.6s ease;
+}
+
+.carousel-slide.active {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.carousel-slide.enter-right { opacity: 0; transform: translateX(100%); }
+.carousel-slide.exit-left { opacity: 0; transform: translateX(-100%); }
+.carousel-slide.enter-slide { opacity: 0; transform: translateX(100%); }
+.carousel-slide.exit-slide { opacity: 0; transform: translateX(-100%); }
+.carousel-slide.enter-slideUp { opacity: 0; transform: translateY(100%); }
+.carousel-slide.exit-slideUp { opacity: 0; transform: translateY(-100%); }
+.carousel-slide.enter-fade { opacity: 0; transform: translateX(0); }
+.carousel-slide.exit-fade { opacity: 0; transform: translateX(0); }
+.carousel-slide.enter-zoom { opacity: 0; transform: scale(0.92); }
+.carousel-slide.exit-zoom { opacity: 0; transform: scale(1.08); }
+
+@keyframes marquee-scroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}

@@ -1,0 +1,36 @@
+name: open-core-release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Package open-core tarball
+        run: python tools/package_open_core_release.py --out dist --force
+      - name: Smoke tests on packaged tree
+        run: |
+          TREE=$(ls -d dist/guardschool-open-core-* | head -1)
+          export GUARDSCHOOL_DEPLOYMENT_MODE=local
+          export PYTHONPATH="$TREE"
+          python -c "from guardschool.app import app; assert app.title == 'GuardSchool'"
+          cd "$TREE"
+          python -m unittest tests.test_community_local_mode tests.test_community_commercial tests.test_routes_separation -q
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: guardschool-open-core
+          path: |
+            dist/guardschool-open-core-*.tar.gz
+            dist/guardschool-open-core-*.zip
+          if-no-files-found: error

@@ -4,7 +4,14 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>GuardSchool Screen</title>
-  <!-- Базовая тема до загрузки styles.css: иначе при обрыве/кэше ТВ рисуется «как сырой HTML» -->
+  <script>
+    try {
+      window.__GS_APP_VERSION = "__GS_ASSETS_VER__";
+    } catch (_) {}
+  </script>
+  __GS_PWA_MANIFEST_LINK__
+  <!-- Только анти-«белый экран» до styles.css. Виджеты и таблицу не трогаем — дубли с !important ломали
+       реальные стили (и inline из JS), когда основной CSS всё-таки подгружался. -->
   <style>
     :root {
       --bg: #0f172a;
@@ -17,7 +24,8 @@
       margin: 0;
       min-height: 100vh;
       background: var(--bg);
-      color: var(--text);
+      /* Явный hex: часть ТВ-браузеров даёт UA-серый, если color только через var(). */
+      color: #f8fafc;
       font-family: system-ui, "Segoe UI", Arial, sans-serif;
       font-size: 16px;
       line-height: 1.35;
@@ -27,56 +35,65 @@
       min-height: 100vh;
       box-sizing: border-box;
     }
-    /* Критичный фоллбек: если внешние стили не применились, не уходим в «серый» дефолт. */
-    .screen-widget,
-    .screen-widget * {
-      color: var(--text) !important;
-    }
-    .schedule-table,
-    .schedule-table th,
-    .schedule-table td {
-      color: #0f172a !important;
-      background: #ffffff !important;
-    }
-    .schedule-table th {
-      background: #1e3a5f !important;
-      color: #ffffff !important;
-    }
-    .schedule-table tbody,
-    .schedule-table tbody tr,
-    .schedule-table tbody td {
-      background: #ffffff !important;
-    }
-    .schedule-past { color: #64748b !important; }
-    .schedule-current { background: rgba(191, 219, 254, 0.9) !important; font-weight: 700; }
-    .schedule-override { background: #fecaca !important; font-weight: 700; }
     .gs-audio-hint {
       color: #e2e8f0;
       font-size: 15px;
     }
   </style>
-  <!-- ТВ-браузеры иногда ломают применение CSS при 304 Not Modified. Грузим статику с cache-bust параметром. -->
-  <link rel="stylesheet" href="/static/styles.css?tvts=20260411-v2" id="tv-styles">
+  <!--
+    Стили ТВ: по умолчанию /static/styles-tv.css (фрагмент styles.css между маркерами «styles-tv.css») — меньше парсеру ТВ.
+    Сравнить с полным файлом: ?gs_full_css=1 в URL экрана.
+    Пересборка (из корня репо, PowerShell):
+      $b='static/styles.css'; $o='static/styles-tv.css'; $u=[System.Text.UTF8Encoding]::new($false)
+      $a=[System.IO.File]::ReadAllLines($b,[System.Text.Encoding]::UTF8)
+      [System.IO.File]::WriteAllLines($o,$a[0..24]+$a[2148..2762],$u)
+  -->
+  <link rel="stylesheet" id="tv-styles" media="all" />
+  <script>
+    (function () {
+      try {
+        // ТВ: отдельный CSS экрана (админка использует /static/styles.css).
+        window.__GS_TV_CSS_BASE = "/static/styles-screen.css";
+        var el = document.getElementById("tv-styles");
+        if (!el) return;
+        el.rel = "stylesheet";
+        var ts = Date.now();
+        el.href = window.__GS_TV_CSS_BASE + "?v=__GS_ASSETS_VER__&tvts=" + ts;
+      } catch (_) {}
+    })();
+  </script>
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
 </head>
 <body class="screen-body">
   <div id="gs-audio-hint" class="gs-audio-hint" role="status">
-    Коснитесь экрана или нажмите любую клавишу один раз — чтобы браузер разрешил звук звонков.
+    Коснитесь экрана или нажмите любую клавишу один раз — чтобы браузер разрешил звук сигналов.
   </div>
+  <div id="gs-crash-banner" class="gs-crash-banner" role="status" hidden></div>
   <div id="screen-root" class="tv-screen"></div>
+  <script src="/static/widgets/plugins-manifest.js?v=__GS_ASSETS_VER__"></script>
   <script>
     (function () {
       try {
         var ts = Date.now();
-        var s1 = document.createElement("script");
-        s1.src = "/static/screen_widgets.js?tvts=" + ts;
-        s1.defer = true;
-        document.body.appendChild(s1);
+        var widgetScripts = ["/static/tv-locales.js", "/static/widgets/runtime.js", "/static/widgets/carousel-runtime.js", "/static/tv-core-utils.js", "/static/tv-schedule-table.js", "/static/tv-screen-shell.js", "/static/screen_widgets.js"];
+        var plugins = window.GUARD_SCHOOL_TV_WIDGET_PLUGINS || [];
+        for (var pi = 0; pi < plugins.length; pi++) {
+          widgetScripts.push("/static/widgets/" + plugins[pi]);
+        }
+        for (var wi = 0; wi < widgetScripts.length; wi++) {
+          var sw = document.createElement("script");
+          sw.src = widgetScripts[wi] + "?v=__GS_ASSETS_VER__&tvts=" + ts;
+          // Динамические classic-script по умолчанию async: после разбиения ядра
+          // screen_widgets мог выполниться раньше tv-screen-shell. async=false
+          // сохраняет порядок вставки и не блокирует разбор уже готового body.
+          sw.async = false;
+          document.body.appendChild(sw);
+        }
         var s2 = document.createElement("script");
-        s2.src = "/static/screen.js?tvts=" + ts;
-        s2.defer = true;
+        s2.src = "/static/screen.js?v=__GS_ASSETS_VER__&tvts=" + ts;
+        s2.async = false;
         document.body.appendChild(s2);
       } catch (_) {}
     })();

@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GuardDoc — ADM</title>
+    <link rel="stylesheet" href="/static/styles.css?v=1.02.001" />
+    <link rel="stylesheet" href="/static/portal_skin.css?v=4" />
+    <link rel="stylesheet" href="/static/portal_adm.css?v=1" />
+  </head>
+  <body class="portal-skin">
+    <main class="adm-login-shell">
+      <section class="adm-login-card">
+        <div class="adm-login-brand">
+          <span class="adm-brand-mark" aria-hidden="true">G</span>
+          <div class="adm-brand-copy"><strong>GuardDoc</strong><span>Панель управления</span></div>
+        </div>
+        <h1>Служебный вход</h1>
+        <p>Управление лицензиями и содержимым публичного портала.</p>
+        <div class="adm-field">
+          <label for="user">Логин</label>
+          <input id="user" autocomplete="username" autofocus />
+        </div>
+        <div class="adm-field">
+          <label for="pass">Пароль</label>
+          <input id="pass" type="password" autocomplete="current-password" />
+        </div>
+        <div class="adm-login-actions">
+          <button type="button" class="adm-btn primary" id="go">Войти</button>
+          <a class="adm-btn" href="/">На портал</a>
+        </div>
+        <div class="adm-feedback" id="out" style="margin-top: 14px"></div>
+      </section>
+    </main>
+    <script type="module">
+      const out = document.getElementById("out");
+      document.getElementById("go").addEventListener("click", async () => {
+        const username = String(document.getElementById("user").value || "").trim();
+        const password = String(document.getElementById("pass").value || "");
+        out.classList.add("visible");
+        // Показываем статус, чтобы не было ощущения "пустой плашки"
+        out.textContent = "Входим…";
+        try {
+          const r = await fetch("/api/portal-adm/login", {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ username, password }),
+          });
+          const data = await r.json().catch(() => ({}));
+          if (!r.ok) throw new Error(data.detail || r.status);
+          // После установки cookie делаем замену локации (без сохранения в истории)
+          // чтобы UI сразу обновился (без ручного F5).
+          window.location.replace("/ADM");
+        } catch (e) {
+          out.textContent = String(e.message || e);
+        }
+      });
+    </script>
+  </body>
+</html>

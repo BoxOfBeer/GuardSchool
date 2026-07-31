@@ -1,0 +1,90 @@
+{
+  "description": "Полные реализации (_*_pg.py). В open-core: фасады, stubs, routes_saas_stubs / routes_commercial_stubs.",
+  "saas": {
+    "python_modules": [
+      "guardschool/_gs_push_pg.py",
+      "guardschool/_gs_feedback_pg.py",
+      "guardschool/_gs_cloud_sync_pg.py",
+      "guardschool/_gs_sync_http_pg.py",
+      "guardschool/_push_notify_pg.py",
+      "guardschool/_routes_push_pg.py",
+      "guardschool/_routes_feedback_pg.py",
+      "guardschool/_routes_cloud_sync_pg.py",
+      "guardschool/_routes_cloud_status_pg.py",
+      "guardschool/_app_saas_lifecycle_pg.py",
+      "guardschool/_app_saas_portal_pg.py",
+      "guardschool/_app_pwa_manifest_pg.py",
+      "guardschool/_routes_tv_pg.py"
+    ],
+    "facades_in_open_core": [
+      "guardschool/gs_push.py",
+      "guardschool/gs_feedback.py",
+      "guardschool/gs_cloud_sync.py",
+      "guardschool/gs_sync_http.py",
+      "guardschool/push_notify.py",
+      "guardschool/_gs_push_stub.py",
+      "guardschool/_gs_feedback_stub.py",
+      "guardschool/_gs_cloud_sync_stub.py",
+      "guardschool/_gs_sync_http_stub.py",
+      "guardschool/_push_notify_stub.py",
+      "guardschool/app_lifecycle.py",
+      "guardschool/app_saas_lifecycle.py",
+      "guardschool/_app_saas_lifecycle_stub.py",
+      "guardschool/app_saas_portal.py",
+      "guardschool/app_try_demo.py",
+      "guardschool/app_host_routing.py",
+      "guardschool/app_pwa_manifest.py",
+      "guardschool/_app_pwa_manifest_stub.py"
+    ],
+    "capabilities": [
+      "push_notifications",
+      "mobile_external",
+      "cloud_sync",
+      "cloud_status",
+      "tenant_feedback",
+      "remote_tv_pairing"
+    ]
+  },
+  "commercial": {
+    "python_modules": [
+      "guardschool/_saas_db_pg.py",
+      "guardschool/_provider_licenses_pg.py",
+      "guardschool/_provider_demo_pg.py",
+      "guardschool/_gs_saas_bootstrap_pg.py",
+      "guardschool/_gs_portal_cms_pg.py",
+      "guardschool/_routes_commercial_pg.py",
+      "guardschool/_app_portal_web_pg.py"
+    ],
+    "facades_in_open_core": [
+      "guardschool/saas_db.py",
+      "guardschool/_saas_db_stub.py",
+      "guardschool/provider_licenses.py",
+      "guardschool/_provider_licenses_stub.py",
+      "guardschool/provider_demo.py",
+      "guardschool/_provider_demo_stub.py",
+      "guardschool/gs_saas_bootstrap.py",
+      "guardschool/_gs_saas_bootstrap_stub.py",
+      "guardschool/gs_portal_cms.py",
+      "guardschool/_gs_portal_cms_stub.py",
+      "guardschool/app_portal_web.py",
+      "guardschool/_app_portal_web_stub.py"
+    ],
+    "note": "gs_saas_limits.py — лимиты по env, остаётся в open-core",
+    "capabilities": [
+      "license_check",
+      "registration",
+      "payment",
+      "tenant_provisioning",
+      "tariff_limits",
+      "production_portal"
+    ]
+  },
+  "layers_on_server": [
+    "layers/saas/__init__.py",
+    "layers/commercial/__init__.py"
+  ],
+  "env": {
+    "GUARDSCHOOL_LAYER_PATH": "каталог с layers/saas и layers/commercial",
+    "GUARDSCHOOL_PRIVATE_PYTHONPATH": "корень с пакетом guardschool_private/"
+  }
+}

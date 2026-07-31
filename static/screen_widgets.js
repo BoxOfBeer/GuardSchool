@@ -1,30 +1,57 @@
 (function (global) {
-  const carouselState = new Map();
+  "use strict";
+  const core = global.GuardSchoolTvCore || {};
+  const sched = global.GuardSchoolTvSchedule || {};
+  const shell = global.GuardSchoolTvShell || {};
+  const {
+    formatWidgetDateLine,
+    formatClockTimeString,
+    getDisplayFromPayload,
+    adjustedDateFromDisplay,
+    localeTagFromUi,
+    capitalizeFirst,
+    escapeHtml,
+    escapeHtmlAttr,
+    tvUiStrings,
+    resolveSchoolNewsMediaSrc,
+    schoolNewsImageSrcWithV,
+    sanitizeSchoolNewsDisplayHtml,
+    schoolNewsBodyFontPx,
+    checkinWidgetRootStyle,
+    checkinWidgetRootFluidClass,
+    capitalizeSubjectDisplay,
+    formatDateLabel,
+  } = core;
+  const {
+    buildScheduleTable,
+    buildBellStatus,
+    buildBellCountdown,
+    buildUpcomingHolidays,
+  } = sched;
+
   const marqueeState = new Map();
   // announcementsState: widgetId -> { contentKey, order, pos, lastIdx }
   const announcementsState = new Map();
-  const RANDOM_CAROUSEL_ANIMATIONS = ["slide", "slideUp", "fade", "zoom"];
+  // schoolNewsState: widgetId -> { contentKey, order, pos, lastIdx, currentIdx }
+  const schoolNewsState = new Map();
+
+  function carouselApi() {
+    return global.GuardSchoolWidgets && global.GuardSchoolWidgets.carousel;
+  }
 
   function clearCarouselTimeouts() {
-    for (const st of carouselState.values()) {
-      if (st.timerId) clearTimeout(st.timerId);
-      if (st.animTimeout) clearTimeout(st.animTimeout);
-      st.timerId = null;
-      st.animTimeout = null;
-    }
+    const c = carouselApi();
+    if (c && c.clearTimeouts) c.clearTimeouts();
   }
 
   /** Удалить состояние каруселей, которых уже нет в конфиге экрана. */
   function pruneStaleCarouselState(screen) {
-    const widgets = screen?.widgets || [];
-    const allowed = new Set(widgets.filter((w) => w.type === "carousel").map((w) => w.id));
-    for (const id of [...carouselState.keys()]) {
-      if (!allowed.has(id)) carouselState.delete(id);
-    }
+    const c = carouselApi();
+    if (c && c.prune) c.prune(screen);
   }
 
   function pruneStaleMarqueeState(screen) {
-    const widgets = screen?.widgets || [];
+    const widgets = (screen && screen.widgets) || [];
     const allowed = new Set(widgets.filter((w) => w.type === "marquee").map((w) => w.id));
     for (const id of [...marqueeState.keys()]) {
       if (!allowed.has(id)) marqueeState.delete(id);
@@ -38,271 +65,68 @@
 
   function clearAllTimers() {
     clearCarouselTimeouts();
-  }
-
-  function getDisplayFromPayload() {
     try {
-      const p = global.__lastScreenPayload;
-      return (p && p.display) || {};
-    } catch (_) {
-      return {};
-    }
-  }
-
-  function localeTagFromUi(uiLocale) {
-    return String(uiLocale || "ru").toLowerCase() === "en" ? "en-GB" : "ru-RU";
-  }
-
-  /** Подписи виджетов и служебные строки на ТВ — по display.ui_locale (без отдельного JSON). */
-  const TV_UI = {
-    ru: {
-      noData: "Нет данных",
-      lessonColumn: "Урок",
-      bells: "Звонки",
-      countdown: "До звонка",
-      events: "События",
-      announcements: "Объявления",
-      noAnnouncements: "Нет объявлений",
-      scheduleDefault: "Расписание",
-      nextSchoolDay: "Следующий учебный день:",
-      carouselBlank: "Пауза (фон)",
-      imageEmpty: "Нет изображения (добавьте файл или URL)",
-      imageAlt: "изображение",
-      carouselNoSlides: "Слайды не выбраны",
-    },
-    en: {
-      noData: "No data",
-      lessonColumn: "Lesson",
-      bells: "Bells",
-      countdown: "Countdown",
-      events: "Events",
-      announcements: "Announcements",
-      noAnnouncements: "No announcements",
-      scheduleDefault: "Schedule",
-      nextSchoolDay: "Next school day:",
-      carouselBlank: "Pause (background)",
-      imageEmpty: "No image (add a file or URL)",
-      imageAlt: "image",
-      carouselNoSlides: "No slides selected",
-    },
-  };
-
-  function tvUiStrings() {
-    const ui = String(getDisplayFromPayload().ui_locale || "ru").toLowerCase();
-    return TV_UI[ui === "en" ? "en" : "ru"];
-  }
-
-  function adjustedDateFromDisplay() {
-    const d = getDisplayFromPayload();
-    const off = Number(d.clock_offset_minutes || 0);
-    const ms = Number.isFinite(off) ? off * 60 * 1000 : 0;
-    return new Date(Date.now() + ms);
-  }
-
-  function formatDateLabel(isoDate) {
-    const value = new Date(`${isoDate}T00:00:00`);
-    const disp = getDisplayFromPayload();
-    const loc = localeTagFromUi(disp.ui_locale);
-    return value.toLocaleDateString(loc, { day: "2-digit", month: "2-digit", year: "numeric" });
-  }
-
-  function formatWidgetDateLine() {
-    const disp = getDisplayFromPayload();
-    const loc = localeTagFromUi(disp.ui_locale);
-    const tz = String(disp.timezone || "Europe/Moscow").trim() || "Europe/Moscow";
-    const inst = adjustedDateFromDisplay();
-    let line;
-    try {
-      line = inst.toLocaleDateString(loc, {
-        timeZone: tz,
-        weekday: "long",
-        day: "2-digit",
-        month: "long",
-        year: "numeric",
-      });
-    } catch (_) {
-      line = inst.toLocaleDateString(loc, { weekday: "long", day: "2-digit", month: "long", year: "numeric" });
-    }
-    const ui = String(disp.ui_locale || "ru").toLowerCase();
-    return ui === "en" ? line : capitalizeFirst(line);
-  }
-
-  function formatClockTimeString() {
-    const disp = getDisplayFromPayload();
-    const loc = localeTagFromUi(disp.ui_locale);
-    const tz = String(disp.timezone || "Europe/Moscow").trim() || "Europe/Moscow";
-    const inst = adjustedDateFromDisplay();
-    try {
-      return inst.toLocaleTimeString(loc, { timeZone: tz, hour: "2-digit", minute: "2-digit", second: "2-digit" });
-    } catch (_) {
-      return inst.toLocaleTimeString(loc, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-    }
-  }
-
-  function capitalizeFirst(value) {
-    if (!value) return value;
-    return value.charAt(0).toUpperCase() + value.slice(1);
-  }
-
-  function escapeHtml(s) {
-    return String(s ?? "")
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;");
-  }
-
-  function escapeHtmlAttr(s) {
-    return String(s ?? "")
-      .replace(/&/g, "&amp;")
-      .replace(/"/g, "&quot;")
-      .replace(/</g, "&lt;");
-  }
-
-  function buildScheduleTable(rows, title, settings) {
-    const L = tvUiStrings();
-    if (!rows.length) {
-      return `<section class="schedule-section"><h3 class="screen-section-title" style="font-size:${settings.titleFontSize || 20}px;${settings.bold ? "font-weight:700;" : ""}">${title}</h3><div style="${settings.bold ? "font-weight:700;" : ""}">${L.noData}</div></section>`;
-    }
-
-    const classHeaders = rows.map((item) => `<th>${item.class_name}</th>`).join("");
-    let maxByIndex = 0;
-    for (const row of rows) {
-      for (const les of row.lessons || []) {
-        const n = Number(les.index);
-        if (Number.isFinite(n) && n > maxByIndex) maxByIndex = n;
+      const prev = global.__gsCheckinMonitorTimers || [];
+      for (let i = 0; i < prev.length; i++) {
+        try {
+          global.clearInterval(prev[i]);
+        } catch (_) {}
       }
-    }
-    const maxByLength = Math.max(...rows.map((item) => (item.lessons || []).length));
-    const maxLessons = Math.max(maxByIndex, maxByLength, 1);
-    const body = Array.from({ length: maxLessons }, (_, idx) => idx + 1).map((lessonIndex) => {
-      const cells = rows.map((row) => {
-        const lesson = row.lessons.find((item) => item.index === lessonIndex);
-        if (!lesson) {
-          return "<td></td>";
-        }
-        const classes = [
-          lesson.is_override ? "schedule-override" : "",
-          lesson.is_sample_diff && !lesson.is_override ? "schedule-sample-diff" : "",
-          lesson.is_past ? "schedule-past" : "",
-          lesson.is_current ? "schedule-current" : "",
-        ].filter(Boolean).join(" ");
-        let inlineStyle = "";
-        if (lesson.is_override) {
-          inlineStyle = ` style="background:${settings.highlightColor || "#fecaca"};"`;
-        } else if (lesson.is_sample_diff) {
-          inlineStyle = ` style="background:${settings.sampleDiffColor || "#fee2e2"};"`;
-        }
-        return `<td class="${classes}"${inlineStyle}>${lesson.subject || ""}</td>`;
-      }).join("");
-      return `<tr><td class="schedule-lesson-num">${lessonIndex}</td>${cells}</tr>`;
-    }).join("");
-
-    const L = tvUiStrings();
-    const colgroup = `<colgroup><col class="schedule-col-num" />${rows.map(() => "<col />").join("")}</colgroup>`;
-
-    // Инлайн-стили: если ТВ «теряет» styles.css, таблица всё равно остаётся читаемой (белый фон + синяя шапка).
-    const tableStyle = `width:100%;border-collapse:collapse;background:rgba(255,255,255,0.92);color:#0f172a;table-layout:fixed;font-size:${settings.fontSize || 16}px;${settings.bold ? "font-weight:700;" : ""}`;
-    const thStyle = `background:${settings.headerColor || "#1e3a5f"};color:#ffffff;border:1px solid rgba(15,23,42,0.12);padding:4px 5px;line-height:1.15;`;
-    const tdStyle = `border:1px solid rgba(15,23,42,0.12);padding:4px 5px;vertical-align:top;line-height:1.15;word-break:break-word;`;
-    const numTdStyle = `background:${settings.headerColor || "#1e3a5f"};color:#ffffff;font-weight:700;text-align:center;vertical-align:middle;white-space:nowrap;padding:4px 8px;border:1px solid rgba(15,23,42,0.12);`;
-    const numThStyle = `background:${settings.headerColor || "#1e3a5f"};color:#ffffff;text-align:center;white-space:nowrap;padding:4px 8px;border:1px solid rgba(15,23,42,0.12);`;
-
-    const bodyStyled = Array.from({ length: maxLessons }, (_, idx) => idx + 1).map((lessonIndex) => {
-      const cells = rows.map((row) => {
-        const lesson = row.lessons.find((item) => item.index === lessonIndex);
-        if (!lesson) return `<td style="${tdStyle}"></td>`;
-        const classes = [
-          lesson.is_override ? "schedule-override" : "",
-          lesson.is_sample_diff && !lesson.is_override ? "schedule-sample-diff" : "",
-          lesson.is_past ? "schedule-past" : "",
-          lesson.is_current ? "schedule-current" : "",
-        ].filter(Boolean).join(" ");
-        let inlineStyle = tdStyle;
-        if (lesson.is_override) inlineStyle += `background:${settings.highlightColor || "#fecaca"};`;
-        else if (lesson.is_sample_diff) inlineStyle += `background:${settings.sampleDiffColor || "#fee2e2"};`;
-        return `<td class="${classes}" style="${inlineStyle}">${lesson.subject || ""}</td>`;
-      }).join("");
-      return `<tr><td class="schedule-lesson-num" style="${numTdStyle}">${lessonIndex}</td>${cells}</tr>`;
-    }).join("");
-
-    return `
-    <section class="schedule-section">
-      <h3 class="screen-section-title" style="font-size:${settings.titleFontSize || 20}px;${settings.bold ? "font-weight:700;" : ""}">${title}</h3>
-      <div class="schedule-table-wrap">
-        <table class="schedule-table" style="${tableStyle}">
-          ${colgroup}
-          <thead><tr><th style="${numThStyle}">${L.lessonColumn}</th>${rows.map((item) => `<th style="${thStyle}">${item.class_name}</th>`).join("")}</tr></thead>
-          <tbody>${bodyStyled}</tbody>
-        </table>
-      </div>
-    </section>
-  `;
+      global.__gsCheckinMonitorTimers = [];
+    } catch (_) {}
   }
 
-  function buildBellStatus(status, settings) {
-    const L = tvUiStrings();
-    return `
-    <div class="bell-status-box" style="background:${settings.background};color:${settings.color};">
-      <div style="font-size:${settings.titleFontSize || 18}px;${settings.bold ? "font-weight:700;" : ""}">${L.bells}</div>
-      <div style="font-size:${settings.fontSize || 18}px;${settings.bold ? "font-weight:700;" : ""}">${status.message}</div>
-      <div style="${settings.bold ? "font-weight:700;" : ""}">${status.template_name || ""}</div>
-    </div>
-  `;
+  function renderCheckinSubmitWidget(widget) {
+    const ws = widget.settings || {};
+    const title = escapeHtml(String(ws.labels && ws.labels.module_title ? ws.labels.module_title : "Оперативная отметка"));
+    const saveLbl = escapeHtml(String(ws.labels && ws.labels.save ? ws.labels.save : "Сохранить"));
+    const fluid = checkinWidgetRootFluidClass(ws);
+    const rootStyle = checkinWidgetRootStyle(ws);
+    return `<div class="gs-checkin-submit${fluid}" data-gs-checkin-role="submit" style="${rootStyle}">
+        <div class="gs-checkin-submit-title">${title}</div>
+        <label style="display:flex;flex-direction:column;gap:4px;"><span data-lbl="device">${escapeHtml(String(ws.labels && ws.labels.device_name ? ws.labels.device_name : "Имя"))}</span>
+          <input type="text" class="gs-checkin-device standard-input" maxlength="200" style="width:100%;box-sizing:border-box;" /></label>
+        <label style="display:flex;flex-direction:column;gap:4px;"><span data-lbl="place">${escapeHtml(String(ws.labels && ws.labels.place ? ws.labels.place : "Место"))}</span>
+          <select class="gs-checkin-place standard-input" style="width:100%;"></select></label>
+        <div class="gs-checkin-levels-wrap"><span data-lbl="state">${escapeHtml(String(ws.labels && ws.labels.state ? ws.labels.state : "Состояние"))}</span>
+          <div class="gs-checkin-levels"></div></div>
+        <label style="display:flex;flex-direction:column;gap:4px;"><span data-lbl="comment">${escapeHtml(String(ws.labels && ws.labels.comment ? ws.labels.comment : "Комментарий"))}</span>
+          <textarea class="gs-checkin-comment standard-input" rows="2" maxlength="4000" style="width:100%;resize:vertical;box-sizing:border-box;"></textarea></label>
+        <div class="gs-checkin-actions" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:4px;">
+          <button type="button" class="gs-checkin-send primary-btn">${escapeHtml(String(ws.labels && ws.labels.submit ? ws.labels.submit : "Отправить"))}</button>
+          <button type="button" class="gs-checkin-save secondary-btn compact-btn">${saveLbl}</button>
+        </div>
+        <div class="gs-checkin-recent"></div>
+        <div class="gs-checkin-status hint" style="min-height:1.2em;"></div>
+      </div>`;
   }
 
-  function buildBellCountdown(status, settings) {
-    const L = tvUiStrings();
-    return `
-    <div class="bell-status-box" style="background:${settings.background};color:${settings.color};">
-      <div style="font-size:${settings.titleFontSize || 18}px;${settings.bold ? "font-weight:700;" : ""}">${L.countdown}</div>
-      <div style="font-size:${settings.fontSize || 22}px;${settings.bold ? "font-weight:700;" : ""}">${status.countdown_text || L.noData}</div>
-    </div>
-  `;
+  function renderCheckinMonitorWidget(widget) {
+    const ws = widget.settings || {};
+    const pt = escapeHtml(String(ws.panel_title || "Сводка мест"));
+    const fluid = checkinWidgetRootFluidClass(ws);
+    const rootStyle = checkinWidgetRootStyle(ws);
+    return `<div class="gs-checkin-monitor${fluid}" data-gs-checkin-role="monitor" style="${rootStyle}">
+        <div class="gs-checkin-toolbar">
+          <strong class="gs-checkin-panel-heading">${pt}</strong>
+          <div class="gs-checkin-toolbar-actions">
+            <label class="gs-checkin-period-label"><span>Период</span>
+              <select class="gs-checkin-period standard-input">
+                <option value="day">День</option>
+                <option value="week">Неделя</option>
+                <option value="month">Месяц</option>
+              </select>
+            </label>
+            <button type="button" class="gs-checkin-confirm-all secondary-btn compact-btn">Подтвердить всех</button>
+            <button type="button" class="gs-checkin-export secondary-btn compact-btn">CSV</button>
+          </div>
+        </div>
+        <div class="gs-checkin-monitor-summary"></div>
+        <div class="gs-checkin-monitor-journal"></div>
+      </div>`;
   }
 
-  function holidayTargetDate(item, today) {
-    const kind = item && item.kind ? String(item.kind) : "once";
-    if (kind === "annual" && item && item.md) {
-      const md = String(item.md);
-      const parts = md.split("-");
-      if (parts.length === 2) {
-        const m = Number(parts[0]);
-        const d = Number(parts[1]);
-        if (Number.isFinite(m) && Number.isFinite(d)) {
-          const y = today.getFullYear();
-          const t0 = new Date(y, m - 1, d);
-          const startToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-          if (t0 >= startToday) return t0;
-          return new Date(y + 1, m - 1, d);
-        }
-      }
-    }
-    if (item && item.date) return new Date(`${item.date}T00:00:00`);
-    return new Date("9999-12-31T00:00:00");
-  }
-
-  function buildUpcomingHolidays(settings, holidaysData = []) {
-    const today = new Date();
-    const startToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-    const items = holidaysData
-      .map((item) => ({ ...item, target: holidayTargetDate(item, today) }))
-      .filter((item) => item.target >= startToday)
-      .sort((a, b) => a.target - b.target)
-      .slice(0, Math.max(1, Number(settings.count || 5)));
-    const loc = localeTagFromUi(getDisplayFromPayload().ui_locale);
-    const L = tvUiStrings();
-    const rows = items.length
-      ? items.map((item) => `<div>${item.target.toLocaleDateString(loc, { day: "2-digit", month: "2-digit" })} - ${item.name}${item.description ? `: ${item.description}` : ""}</div>`).join("")
-      : `<div>${L.noData}</div>`;
-    return `
-    <div class="info-widget-box" style="background:${settings.background};color:${settings.color};">
-      <div style="font-size:${settings.titleFontSize || 18}px;${settings.bold ? "font-weight:700;" : ""}">${L.events}</div>
-      <div style="font-size:${settings.fontSize || 16}px;${settings.bold ? "font-weight:700;" : ""}">${rows}</div>
-    </div>
-  `;
-  }
-
+  /** Как на сервере: первая буква предмета — заглавная (в т.ч. после BOM/пробелов); дублируем здесь, чтобы ТВ не зависел от перезапуска сервера и кэша. */
   function shuffleInPlace(arr) {
     for (let i = arr.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
@@ -347,7 +171,7 @@
       st.order = order;
       st.pos = 0;
     }
-    const idx = st.order[st.pos] ?? 0;
+    const idx = st.order[st.pos] != null ? st.order[st.pos] : 0;
     st.pos += 1;
     st.lastIdx = idx;
     announcementsState.set(widgetId, st);
@@ -365,6 +189,55 @@
     st.lastSlot = slot;
     st.currentIdx = idx;
     announcementsState.set(widgetId, st);
+    return idx;
+  }
+
+  function schoolNewsContentKey(rows) {
+    // Достаточно стабильный ключ: если поменялся набор/порядок новостей — перегенерим order.
+    // id+created_at достаточно, summary может быть длинным.
+    try {
+      return (rows || [])
+        .map(
+          (x) =>
+            `${String(x && x.id || "")}|${String(x && x.created_at || "")}|${(x && Array.isArray(x.gallery_images) ? x.gallery_images.map(String).join(",") : "").slice(0, 240)}`,
+        )
+        .join("\u0000");
+    } catch (_) {
+      return String((rows || []).length || 0);
+    }
+  }
+
+  function ensureSchoolNewsOrder(widgetId, rows) {
+    if (!widgetId) return null;
+    const key = schoolNewsContentKey(rows);
+    let st = schoolNewsState.get(widgetId);
+    if (!st || st.contentKey !== key || !Array.isArray(st.order) || st.order.length !== rows.length) {
+      const order = shuffleInPlace(Array.from({ length: rows.length }, (_, i) => i));
+      st = { contentKey: key, order, pos: 0, lastIdx: null, currentIdx: rows.length ? order[0] : 0 };
+      schoolNewsState.set(widgetId, st);
+    }
+    return st;
+  }
+
+  function nextSchoolNewsIndex(widgetId, rows) {
+    const st = ensureSchoolNewsOrder(widgetId, rows);
+    if (!st) return 0;
+    if (!rows.length) return 0;
+    if (st.pos >= st.order.length) {
+      const order = shuffleInPlace(Array.from({ length: rows.length }, (_, i) => i));
+      if (rows.length >= 2 && st.lastIdx != null && order[0] === st.lastIdx) {
+        const tmp = order[0];
+        order[0] = order[1];
+        order[1] = tmp;
+      }
+      st.order = order;
+      st.pos = 0;
+    }
+    const idx = st.order[st.pos] != null ? st.order[st.pos] : 0;
+    st.pos += 1;
+    st.lastIdx = idx;
+    st.currentIdx = idx;
+    schoolNewsState.set(widgetId, st);
     return idx;
   }
 
@@ -421,7 +294,16 @@
     const items = manual.length ? manual : (Array.isArray(marqueeData) ? marqueeData.map((x) => String(x).trim()).filter(Boolean) : []);
     const L = tvUiStrings();
     const text = items.length ? items.join("   •   ") : L.noAnnouncements;
-    const duration = Math.max(6, Number(settings.speedSec || 18));
+    const charCount = Math.max(1, text.length);
+    const cpmRaw = settings.charsPerMin;
+    let duration;
+    if (cpmRaw != null && cpmRaw !== "" && Number.isFinite(Number(cpmRaw)) && Number(cpmRaw) > 0) {
+      const cpm = Math.max(20, Math.min(900, Number(cpmRaw)));
+      /** Один цикл −50%…0 ≈ проход одной копии текста; T = 60·N/CPM даёт близкий к заданному поток знаков/мин при длине N. */
+      duration = Math.max(6, (60 * charCount) / cpm);
+    } else {
+      duration = Math.max(6, Number(settings.speedSec || 18));
+    }
     const durationMs = duration * 1000;
     const contentKey = `${duration}|${text}`;
     let st = marqueeState.get(widget.id);
@@ -441,15 +323,119 @@
   `;
   }
 
+  function schoolNewsImageLayoutSettings(source) {
+    const s = source || {};
+    let widthPct = Number(s.image_width_percent != null ? s.image_width_percent : s.imageWidthPercent);
+    if (!Number.isFinite(widthPct)) widthPct = 32;
+    widthPct = Math.max(15, Math.min(55, Math.round(widthPct)));
+    let maxHeightPx = Number(s.image_max_height_px != null ? s.image_max_height_px : s.imageMaxHeightPx);
+    if (!Number.isFinite(maxHeightPx)) maxHeightPx = 200;
+    maxHeightPx = Math.max(80, Math.min(400, Math.round(maxHeightPx)));
+    const wrapRaw = s.single_image_text_wrap != null ? s.single_image_text_wrap : s.singleImageTextWrap;
+    const wrapSingle = wrapRaw !== false;
+    return { widthPct, maxHeightPx, wrapSingle };
+  }
+
+  function buildSchoolNews(widget, schoolNews = [], screen = null, ctx = null) {
+    const L = tvUiStrings();
+    const settings = widget.settings || {};
+    const bodyFs = schoolNewsBodyFontPx(settings);
+    const emojiFont =
+      'system-ui,"Segoe UI",Roboto,sans-serif,"Apple Color Emoji","Segoe UI Emoji","Segoe UI Symbol","Noto Color Emoji"';
+    // Берём 3 последних активных — и ротируем их (а не весь список целиком).
+    const rowsAll = Array.isArray(schoolNews) ? schoolNews.filter((x) => x && x.is_active !== false) : [];
+    const rows = rowsAll.slice(0, 3);
+    if (!rows.length) {
+      return `<div class="info-widget-box" style="background:${settings.background};color:${settings.color};font-family:${emojiFont};"><div style="font-size:${settings.titleFontSize || 18}px;">${L.schoolNews}</div><div>${L.noSchoolNews}</div></div>`;
+    }
+    // Как «Объявления»: без таймера. Переключаем только при показе (карусель) в уникальном порядке.
+    const st = ensureSchoolNewsOrder(widget.id, rows);
+    const isCarouselShow = Boolean(ctx && ctx.mode === "carousel_show");
+    const pickIdx = isCarouselShow ? nextSchoolNewsIndex(widget.id, rows) : (st && Number.isFinite(st.currentIdx) ? st.currentIdx : 0);
+    const item = rows[pickIdx] || rows[0];
+    const title = escapeHtml(String(item.title || ""));
+    const rawBody = String(item.display_html != null && item.display_html !== "" ? item.display_html : item.content || "");
+    const bodyHtml = sanitizeSchoolNewsDisplayHtml(rawBody);
+    const summaryText = String(item.summary || "");
+    const summaryFallback = escapeHtml(summaryText).replace(/\n/g, "<br>");
+    const cover = String(item.cover_image || "").trim();
+    const galleryList = Array.isArray(item.gallery_images)
+      ? item.gallery_images.map((u) => String(u || "").trim()).filter(Boolean).slice(0, 4)
+      : [];
+    const mediaUrls = [];
+    if (cover) mediaUrls.push(cover);
+    for (let gi = 0; gi < galleryList.length; gi++) mediaUrls.push(galleryList[gi]);
+    const imgLayout = schoolNewsImageLayoutSettings(item);
+    const useWrap = imgLayout.wrapSingle && mediaUrls.length === 1;
+    const sideImgStyle = `max-height:${imgLayout.maxHeightPx}px;`;
+    let mediaBlock = "";
+    if (mediaUrls.length) {
+      if (useWrap) {
+        const src = schoolNewsImageSrcWithV(mediaUrls[0], item);
+        if (src) {
+          mediaBlock = `<img class="gs-school-news-float-img" style="width:${imgLayout.widthPct}%;max-height:${imgLayout.maxHeightPx}px;" src="${escapeHtmlAttr(src)}" alt="">`;
+        }
+      } else {
+        mediaBlock = `<div class="gs-school-news-media" style="width:${imgLayout.widthPct}%;max-width:none;">${mediaUrls
+          .map((raw) => {
+            const src = schoolNewsImageSrcWithV(raw, item);
+            return src
+              ? `<img class="gs-school-news-side-img" style="${sideImgStyle}" src="${escapeHtmlAttr(src)}" alt="">`
+              : "";
+          })
+          .join("")}</div>`;
+      }
+    }
+    const created = String(item.created_at || "").trim();
+    const createdLabel = created ? formatDateLabel(created) : "";
+    let rowClass = "gs-school-news-row";
+    if (!mediaBlock) rowClass += " gs-school-news-row--nomedia";
+    else if (useWrap) rowClass += " gs-school-news-row--wrap";
+    const bodyWeight = settings.bold ? "font-weight:600;" : "";
+    return `<article class="gs-school-news-card" style="background:${settings.background};color:${settings.color};font-family:${emojiFont};">
+      <div class="gs-school-news-head">
+        <div class="gs-school-news-title" style="font-size:${settings.titleFontSize || 20}px;${settings.bold ? "font-weight:700;" : ""}">${title || L.schoolNews}</div>
+        <div class="gs-school-news-date">${createdLabel}</div>
+      </div>
+      <div class="${rowClass}">
+        ${mediaBlock}
+        <div class="gs-school-news-body" style="font-size:${bodyFs}px;${bodyWeight}">${bodyHtml || summaryFallback || escapeHtml(L.noSchoolNews)}</div>
+      </div>
+      <div class="gs-school-news-foot">${rows.length > 1 ? `${Math.min(rows.length, (st && st.pos ? st.pos : 1))}/${rows.length}` : ""}</div>
+    </article>`;
+  }
+
+  function buildRssNews(widget, rssNews = []) {
+    const L = tvUiStrings();
+    const settings = widget.settings || {};
+    const bodyFs = schoolNewsBodyFontPx(settings);
+    const rows = Array.isArray(rssNews) ? rssNews : [];
+    if (!rows.length) {
+      return `<div class="info-widget-box" style="background:${settings.background};color:${settings.color};"><div style="font-size:${settings.titleFontSize || 18}px;">${L.rssNews}</div><div>${L.noRssNews}</div></div>`;
+    }
+    const sec = Math.max(10, Math.min(15, Number(settings.rotateSec || 12)));
+    const idx = Math.floor(Date.now() / (sec * 1000)) % rows.length;
+    const item = rows[idx] || {};
+    const title = escapeHtml(String(item.title || ""));
+    const summary = escapeHtml(String(item.summary || item.description || ""));
+    const url = String(item.url || "").trim();
+    return `<article style="background:${settings.background};color:${settings.color};padding:10px;border-radius:10px;height:100%;overflow:hidden;">
+      <div style="font-size:${settings.titleFontSize || 18}px;${settings.bold ? "font-weight:700;" : ""};margin-bottom:8px;">${title || L.rssNews}</div>
+      <div style="font-size:${bodyFs}px;line-height:1.3;">${summary || L.noRssNews}</div>
+      ${url ? `<div style="margin-top:8px;font-size:12px;opacity:.9;"><a href="${escapeHtmlAttr(url)}" style="color:${settings.color}" target="_blank" rel="noopener">Источник</a></div>` : ""}
+    </article>`;
+  }
+
   function widgetIdsHiddenByCarousel(screen) {
-    return new Set(screen.widgets
+    const sw = (screen && screen.widgets) || [];
+    return new Set(sw
       .filter((widget) => widget.type === "carousel" && widget.enabled !== false)
       .flatMap((widget) => (widget.settings.childWidgetIds || []).filter((id) => id !== "__blank__")));
   }
 
   /** Порядок в DOM: изображения снизу, остальные, аварийный поверх всех. */
   function sortWidgetsForDom(screen) {
-    const widgets = screen?.widgets || [];
+    const widgets = (screen && screen.widgets) || [];
     const hiddenIds = widgetIdsHiddenByCarousel(screen);
     const list = widgets
       .map((w, i) => ({ w, i }))
@@ -463,6 +449,23 @@
     return list.map((x) => x.w);
   }
 
+  /**
+   * Мобильная лента: порядок как в конфиге экрана (индекс в массиве widgets), без перестановки по типу/сетке.
+   * x,y,w,h не учитываются — только столбец «сверху вниз».
+   */
+  function sortWidgetsForMobileStack(screen) {
+    const widgets = (screen && screen.widgets) || [];
+    const hiddenIds = widgetIdsHiddenByCarousel(screen);
+    const out = [];
+    for (let i = 0; i < widgets.length; i++) {
+      const w = widgets[i];
+      if (!w || w.menu_only === true || w.type === "emergency") continue;
+      if (hiddenIds.has(w.id) && w.type !== "carousel") continue;
+      out.push(w);
+    }
+    return out;
+  }
+
   /** Дочерние виджеты карусели в порядке из `childWidgetIds`. */
   function orderedCarouselChildWidgets(screen, widget) {
     const ids = widget.settings.childWidgetIds || [];
@@ -473,320 +476,175 @@
           const L = tvUiStrings();
           return { id: "__blank__", type: "blank", title: L.carouselBlank, enabled: true, settings: {} };
         }
-        return byId.get(id);
+        const child = byId.get(id);
+        if (!child) return null;
+        if (registryKnownTypes && !registryKnown(child.type)) return null;
+        return child;
       })
       .filter(Boolean);
   }
 
-  function carouselSlideDurationMs(widget, childWidget) {
-    const map = widget.settings && widget.settings.childSlideSec;
-    const cid = childWidget ? String(childWidget.id) : "";
-    if (map && cid && map[cid] != null) {
-      const sec = Number(map[cid]);
-      if (Number.isFinite(sec) && sec > 0) return Math.max(3000, sec * 1000);
+  /** null = все типы из JS-рендера допустимы (до первого poll). */
+  let registryKnownTypes = null;
+
+  function setWidgetTypesAvailable(types) {
+    if (Array.isArray(types)) {
+      registryKnownTypes = new Set(types.map((t) => String(t)));
+    } else {
+      registryKnownTypes = null;
     }
-    const legacy = Number(widget.settings && widget.settings.intervalSec);
-    if (Number.isFinite(legacy) && legacy > 0) return Math.max(3000, legacy * 1000);
-    return Math.max(3000, 180 * 1000);
   }
 
-  function renderWidgetHtml(widget, schedule, screen, holidays = [], announcements = [], marquee = [], ctx = null) {
+  function registryKnown(widgetType) {
+    const t = String(widgetType || "");
+    if (!registryKnownTypes) return true;
+    return registryKnownTypes.has(t);
+  }
+
+  function tvSubst(template, vars) {
+    let s = String(template || "");
+    const v = vars || {};
+    for (const key of Object.keys(v)) {
+      s = s.split(`{{${key}}}`).join(String(v[key]));
+    }
+    return s;
+  }
+
+  function renderWidgetMissingPlaceholder(widget) {
+    const typ = escapeHtml(String((widget && widget.type) || "?"));
+    const L = tvUiStrings();
+    const msg = tvSubst(L.widgetMissing || "Виджет {{type}} отсутствует.", { type: typ });
+    return `<div class="widget-missing widget-meta">${msg}</div>`;
+  }
+
+  function renderWidgetErrorPlaceholder(widget, err) {
+    const typ = escapeHtml(String((widget && widget.type) || "?"));
+    const detail = err && err.message ? escapeHtml(String(err.message)) : "";
+    const L = tvUiStrings();
+    const msg = tvSubst(L.widgetError || "Ошибка виджета {{type}}.", { type: typ });
+    return `<div class="widget-error widget-meta">${msg}${detail ? `<div class="widget-error-detail">${detail}</div>` : ""}</div>`;
+  }
+
+  function widgetEffectiveType(widget) {
+    const rk = widget && widget.render_key != null ? String(widget.render_key).trim() : "";
+    if (rk) return rk;
+    return String((widget && widget.type) || "");
+  }
+
+  function renderWidgetHtmlImpl(widget, schedule, screen, holidays = [], announcements = [], marquee = [], schoolNews = [], rssNews = [], ctx = null) {
     const L = tvUiStrings();
     const weight = widget.settings.bold ? "font-weight:700;" : "";
-    if (widget.type === "emergency") {
-      const s = widget.settings || {};
-      const bg = String(s.background || "#b91c1c").trim();
-      const raw = String(s.text || "");
-      const htmlBody = raw
-        .split("\n")
-        .map((line) => escapeHtml(line))
-        .join("<br>") || "&nbsp;";
-      const fs = Math.max(10, Math.min(200, Number(s.fontSize) || 42));
-      const color = String(s.color || "#ffffff").trim();
-      return `<div class="emergency-overlay-inner" style="background:${bg};color:${color};font-size:${fs}px;${weight}"><div class="emergency-overlay-text">${htmlBody}</div></div>`;
-    }
-    if (widget.type === "image") {
-      const s = widget.settings || {};
-      const rawList = Array.isArray(s.images) ? s.images : [];
-      const legacy = String(s.imageUrl || "").trim();
-      const slides = (rawList.length
-        ? rawList
-        : legacy
-          ? [{ name: "", url: legacy }]
-          : []
-      )
-        .map((it) => ({
-          name: String(it && it.name != null ? it.name : "").trim(),
-          url: String(it && it.url != null ? it.url : "").trim(),
-        }))
-        .filter((it) => it.url);
-      const opacityPct = Math.max(0, Math.min(100, Number(s.opacity ?? 85)));
-      const op = opacityPct / 100;
-      const fit = s.objectFit === "cover" ? "cover" : "contain";
-      if (!slides.length) {
-        return `<div class="image-widget-empty widget-meta">${L.imageEmpty}</div>`;
-      }
-      const rotateSec = Math.max(0, Number(s.imagesRotateSec) || 0);
-      let idx = 0;
-      if (slides.length > 1 && rotateSec >= 1) {
-        const slot = Math.floor(Date.now() / 1000 / rotateSec);
-        idx = slot % slides.length;
-      }
-      const pick = slides[idx];
-      const url = pick.url;
-      const label = escapeHtmlAttr(pick.name || L.imageAlt);
-      return `<div class="image-widget-root" style="opacity:${op};width:100%;height:100%;display:flex;align-items:center;justify-content:center;overflow:hidden;">
-    <img class="image-widget-img" src="${escapeHtmlAttr(url)}" alt="${label}" style="object-fit:${fit};max-width:100%;max-height:100%;width:100%;height:100%;pointer-events:none;" />
-  </div>`;
-    }
-    if (widget.type === "date") {
-      return `<div class="widget-center-text" style="font-size:${widget.settings.fontSize}px;color:${widget.settings.color};${weight}">${formatWidgetDateLine()}</div>`;
-    }
-    if (widget.type === "time") {
-      return `<div class="gs-screen-clock widget-center-text" style="font-size:${widget.settings.fontSize}px;color:${widget.settings.color};${weight}"></div>`;
-    }
-    if (widget.type === "text") {
-      return `<div class="widget-center-text" style="font-size:${widget.settings.fontSize}px;color:${widget.settings.color};${weight}">${widget.settings.text}</div>`;
-    }
-    if (widget.type === "blank") {
-      return `<div class="widget-center-text"></div>`;
-    }
-    if (widget.type === "bell_status") {
-      return buildBellStatus(schedule.bell_status, widget.settings);
-    }
-    if (widget.type === "bell_countdown") {
-      return buildBellCountdown(schedule.bell_status, widget.settings);
-    }
-    if (widget.type === "schedule") {
-      const title = schedule.bell_status?.schedule_title || L.scheduleDefault;
-      const nextDayTitle = `${L.nextSchoolDay} ${formatDateLabel(schedule.next_school_day)}`;
-      const todayBlock = schedule.bell_status?.state === "done"
-        ? ""
-        : buildScheduleTable(schedule.today_rows, title, widget.settings);
-      const showTomorrowBlock = widget.settings.showTomorrow !== false
-        && schedule.tomorrow_schedule_visible !== false;
-      const tomorrowBlock = showTomorrowBlock
-        ? buildScheduleTable(schedule.tomorrow_rows, nextDayTitle, widget.settings)
-        : "";
-      return `<div class="schedule-widget-content">${todayBlock}${tomorrowBlock}</div>`;
-    }
-    if (widget.type === "holidays") {
-      return buildUpcomingHolidays(widget.settings, holidays);
-    }
-    if (widget.type === "announcements") {
-      return buildAnnouncements(widget.settings, announcements, widget.id, ctx);
-    }
-    if (widget.type === "marquee") {
-      return buildMarquee(widget, marquee);
-    }
-    return "";
-  }
-
-  function startCarousel(block, widget, childWidgets, schedule, screen, holidays, announcements, marquee) {
-    if (!childWidgets.length) {
-      block.innerHTML = `<div class="widget-meta">${tvUiStrings().carouselNoSlides}</div>`;
-      return;
-    }
-    const startDelayMs = Math.max(0, Number(widget.settings.startDelaySec || 0) * 1000);
-    const now = Date.now();
-    const firstDur = carouselSlideDurationMs(widget, childWidgets[0]);
-    const st = carouselState.get(widget.id) || {
-      initializedAt: now,
-      index: 0,
-      nextSwitchAt: now + startDelayMs + firstDur,
-      timerId: null,
-      animTimeout: null,
-    };
-    st.index = st.index % childWidgets.length;
-    if (!st.initializedAt) st.initializedAt = now;
-    if (st.timerId) window.clearTimeout(st.timerId);
-    if (st.animTimeout) window.clearTimeout(st.animTimeout);
-    st.animTimeout = null;
-    while (now >= st.nextSwitchAt && childWidgets.length) {
-      const slideEnd = st.nextSwitchAt;
-      st.index = (st.index + 1) % childWidgets.length;
-      st.nextSwitchAt = slideEnd + carouselSlideDurationMs(widget, childWidgets[st.index]);
-    }
-    const slides = childWidgets.map((childWidget, index) => {
-      const slide = document.createElement("div");
-      slide.className = `carousel-slide ${index === st.index ? "active" : ""}`;
-      if (childWidget.type === "text") slide.style.background = childWidget.settings.background;
-      slide.innerHTML = renderWidgetHtml(
-        childWidget,
+    const wtype = widgetEffectiveType(widget);
+    const W = global.GuardSchoolWidgets;
+    if (W && typeof W.render === "function") {
+      const pluginHtml = W.render(wtype, {
+        widget,
         schedule,
         screen,
         holidays,
         announcements,
         marquee,
-        { mode: index === st.index ? "carousel_show" : "carousel_init" }
-      );
-      block.appendChild(slide);
-      return slide;
-    });
-    const latestData = () => {
-      try {
-        const p = global && global.__lastScreenPayload;
-        if (p && p.screen) {
-          return {
-            screen: p.screen,
-            schedule: p.schedule,
-            holidays: p.holidays || [],
-            announcements: p.announcements || [],
-            marquee: p.marquee || [],
-            display: p.display || {},
-          };
-        }
-      } catch (_) {}
-      return { screen, schedule, holidays, announcements, marquee, display: getDisplayFromPayload() };
-    };
-    const advance = () => {
-      const current = slides[st.index];
-      st.index = (st.index + 1) % slides.length;
-      const nextWidget = childWidgets[st.index];
-      const waitMs = carouselSlideDurationMs(widget, nextWidget);
-      st.nextSwitchAt = Date.now() + waitMs;
-      const next = slides[st.index];
-      // Обновляем HTML именно при показе: так «Объявления» могут менять блок на каждый показ в карусели.
-      try {
-        const d = latestData();
-        next.innerHTML = renderWidgetHtml(
-          nextWidget,
-          d.schedule,
-          d.screen,
-          d.holidays,
-          d.announcements,
-          d.marquee,
-          { mode: "carousel_show" }
-        );
-      } catch (_) {}
-      const animation = widget.settings.animation === "random"
-        ? RANDOM_CAROUSEL_ANIMATIONS[Math.floor(Math.random() * RANDOM_CAROUSEL_ANIMATIONS.length)]
-        : (widget.settings.animation || "slide");
-      current.classList.remove("active");
-      current.classList.add(`exit-${animation}`);
-      next.classList.add(`enter-${animation}`);
-      next.offsetWidth;
-      next.classList.add("active");
-      next.classList.remove(`enter-${animation}`);
-      if (st.animTimeout) window.clearTimeout(st.animTimeout);
-      st.animTimeout = window.setTimeout(() => {
-        try {
-          current.classList.remove(`exit-${animation}`);
-        } catch (_) {}
-        st.animTimeout = null;
-      }, 700);
-      st.timerId = window.setTimeout(advance, waitMs);
-    };
-    st.timerId = window.setTimeout(advance, Math.max(0, st.nextSwitchAt - now));
-    carouselState.set(widget.id, st);
-  }
-
-  function updateAllClocks(root) {
-    const scope = root && root.querySelectorAll ? root : document;
-    if (!scope.querySelectorAll) return;
-    const text = formatClockTimeString();
-    scope.querySelectorAll(".gs-screen-clock").forEach((el) => {
-      el.textContent = text;
-    });
-  }
-
-  function backdropSettingOff(settings) {
-    if (!settings) return false;
-    const v = settings.backdrop;
-    if (v === false || v === 0) return true;
-    if (v === "false" || v === "0") return true;
-    return false;
-  }
-
-  /**
-   * Подложка: полупрозрачный фон + blur (по умолчанию вкл.).
-   * Для «Текст» после этого задаётся inline background — поэтому сюда же сбрасываем backdrop-filter в inline,
-   * иначе в части браузеров размытие остаётся поверх прозрачного фона.
-   */
-  function applyWidgetBackdropClass(el, widget) {
-    if (!el || !widget) return;
-    const settings = widget.settings || {};
-    const off = backdropSettingOff(settings);
-    el.classList.toggle("no-backdrop", off);
-    if (off) {
-      el.style.setProperty("backdrop-filter", "none");
-      el.style.setProperty("-webkit-backdrop-filter", "none");
-    } else {
-      el.style.removeProperty("backdrop-filter");
-      el.style.removeProperty("-webkit-backdrop-filter");
+        schoolNews,
+        rssNews,
+        ctx,
+        weight,
+        L,
+        wtype,
+      });
+      if (pluginHtml !== undefined) return pluginHtml;
     }
-  }
-
-  /** URL фона: ротация по списку из uploads или одно поле background_image. */
-  function resolveBackgroundImageUrl(screen, gallery) {
-    const urls = Array.isArray(gallery) ? gallery.filter((u) => u && String(u).trim()) : [];
-    const forced = screen && screen.background_force_image ? String(screen.background_force_image).trim() : "";
-    if (forced) return forced;
-    const rotate = Boolean(screen && screen.background_rotate_enabled);
-    let interval = Number(screen && screen.background_rotate_interval_sec);
-    if (!Number.isFinite(interval)) interval = 3600;
-    interval = Math.max(60, Math.min(86400, Math.round(interval)));
-    if (rotate && urls.length >= 2) {
-      const cursor = Number(screen && screen.background_rotate_cursor);
-      const base = Number.isFinite(cursor) ? Math.max(0, Math.floor(cursor)) : 0;
-      const epRaw = Number(screen && screen.background_rotate_epoch);
-      const epoch = Number.isFinite(epRaw) ? Math.max(0, Math.floor(epRaw)) : 0;
-      const nowSec = Math.floor(Date.now() / 1000);
-      const steps = Math.floor(Math.max(0, nowSec - epoch) / interval);
-      return urls[(base + steps) % urls.length] || "";
-    }
-    if (rotate && urls.length === 1) return urls[0];
-    const single = screen && screen.background_image ? String(screen.background_image).trim() : "";
-    if (single) return single;
-    if (urls.length) return urls[0];
     return "";
   }
 
-  function applyTvScreenBackground(el, screen, gallery) {
-    if (!el) return;
-    const u = resolveBackgroundImageUrl(screen, gallery);
-    if (u) el.style.background = `url(${u}) center/cover no-repeat`;
-    else el.style.background = "";
-  }
-
-  function buildTextOutlineShadow(px, color) {
-    const n = Number(px);
-    const p = Number.isFinite(n) ? Math.max(0, Math.min(8, Math.round(n))) : 0;
-    if (p <= 0) return "none";
-    const c = String(color || "rgba(0,0,0,0.85)").trim() || "rgba(0,0,0,0.85)";
-    const parts = [];
-    for (let dx = -p; dx <= p; dx++) {
-      for (let dy = -p; dy <= p; dy++) {
-        if (dx === 0 && dy === 0) continue;
-        // круглый контур, без «квадратного» шума
-        if (dx * dx + dy * dy > p * p) continue;
-        parts.push(`${dx}px ${dy}px 0 ${c}`);
+  function startCarousel(block, widget, childWidgets, schedule, screen, holidays, announcements, marquee, schoolNews, rssNews) {
+    const c = carouselApi();
+    if (!c || !c.start) {
+      if (!childWidgets.length) {
+        block.innerHTML = `<div class="widget-meta">${tvUiStrings().carouselNoSlides}</div>`;
       }
+      return;
     }
-    return parts.join(",") || "none";
+    c.start(block, widget, childWidgets, schedule, screen, holidays, announcements, marquee, schoolNews, rssNews, {
+      renderWidgetHtml,
+      widgetEffectiveType,
+      tvUiStrings,
+      getDisplayFromPayload,
+    });
   }
 
-  function applyTvTextOutline(el, screen) {
-    if (!el) return;
-    const px = screen && screen.tv_text_outline_px != null ? screen.tv_text_outline_px : 0;
-    const col = screen && screen.tv_text_outline_color != null ? screen.tv_text_outline_color : "rgba(0,0,0,0.85)";
-    el.style.setProperty("--gs-tv-text-shadow", buildTextOutlineShadow(px, col));
+  function renderWidgetHtml(widget, schedule, screen, holidays, announcements, marquee, schoolNews, rssNews, ctx) {
+    try {
+      if (!registryKnown(widget && widget.type)) {
+        return renderWidgetMissingPlaceholder(widget);
+      }
+      const html = renderWidgetHtmlImpl(
+        widget,
+        schedule,
+        screen,
+        holidays,
+        announcements,
+        marquee,
+        schoolNews,
+        rssNews,
+        ctx
+      );
+      if (!html || !String(html).trim()) {
+        return renderWidgetMissingPlaceholder(widget);
+      }
+      return html;
+    } catch (e) {
+      try {
+        console.error("[widget]", widget && widget.type, widget && widget.id, e);
+      } catch (_) {}
+      return renderWidgetErrorPlaceholder(widget, e);
+    }
+  }
+
+  if (global.GuardSchoolWidgets) {
+    global.GuardSchoolWidgets.helpers = {
+      formatWidgetDateLine,
+      formatClockTimeString,
+      formatEmergencyCountdown: shell.formatEmergencyCountdown,
+      escapeHtml,
+      escapeHtmlAttr,
+      tvUiStrings,
+      getDisplayFromPayload,
+      adjustedDateFromDisplay,
+      localeTagFromUi,
+      capitalizeFirst,
+      buildBellStatus,
+      buildBellCountdown,
+      buildUpcomingHolidays,
+      formatDateLabel,
+      buildScheduleTable,
+      buildAnnouncements,
+      buildMarquee,
+      schoolNewsImageLayoutSettings,
+      buildSchoolNews,
+      buildRssNews,
+      renderCheckinSubmitWidget,
+      renderCheckinMonitorWidget,
+    };
   }
 
   global.GuardSchoolScreen = {
     clearAllTimers,
     pruneStaleCarouselState,
     pruneStaleWidgetState,
+    setWidgetTypesAvailable,
     renderWidgetHtml,
+    updateAllEmergencyCountdowns: shell.updateAllEmergencyCountdowns,
     widgetIdsHiddenByCarousel,
     sortWidgetsForDom,
+    sortWidgetsForMobileStack,
     orderedCarouselChildWidgets,
-    applyWidgetBackdropClass,
+    applyWidgetBackdropClass: shell.applyWidgetBackdropClass,
     startCarousel,
-    updateAllClocks,
-    resolveBackgroundImageUrl,
-    applyTvScreenBackground,
-    buildTextOutlineShadow,
-    applyTvTextOutline,
+    updateAllClocks: shell.updateAllClocks,
+    resolveBackgroundImageUrl: shell.resolveBackgroundImageUrl,
+    applyTvScreenBackground: shell.applyTvScreenBackground,
+    buildTextOutlineShadow: shell.buildTextOutlineShadow,
+    applyTvTextOutline: shell.applyTvTextOutline,
+    bindCheckinWidgets: shell.bindCheckinWidgets,
   };
-})(window);
+})(typeof window !== "undefined" ? window : globalThis);
