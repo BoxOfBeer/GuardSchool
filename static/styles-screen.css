@@ -335,6 +335,27 @@ body.screen-body {
   min-width: 0;
 }
 
+.gs-device-pwa-install-status[hidden] {
+  display: none !important;
+}
+
+.gs-device-pwa-install-status {
+  padding: 8px 10px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 9px;
+  background: rgba(15, 23, 42, 0.42);
+  color: rgba(226, 232, 240, 0.94);
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  white-space: pre-line;
+}
+
+.gs-device-pwa-install-status[data-kind="error"] {
+  border-color: rgba(251, 191, 36, 0.45);
+  color: #fde68a;
+}
+
 .gs-device-help {
   flex: 0 0 auto;
   width: 34px;

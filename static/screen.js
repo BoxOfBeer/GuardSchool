@@ -319,6 +319,37 @@ function getGsTvBearerFromUrl() {
   }
 }
 
+function gsPersistTvBearerAndScrubAddress(cleanToken, query) {
+  const clean = sanitizeGsTvBearerToken(cleanToken);
+  if (!clean || !query) return false;
+  try {
+    localStorage.setItem(gsScopedKey("tv_bearer"), clean);
+    const slug = getSlug();
+    const code = gsTvPairCodeFromCurrentPath(slug);
+    if (code && slug) {
+      // /t/... запускается через pwa=1 и подхватывает токен из этого закрытого для URL ключа.
+      localStorage.setItem(`gs_pwa_tv_token__${code}__${slug}`, clean);
+      query.set("pwa", "1");
+    }
+  } catch (_) {
+    // Без сохранённого токена не чистим URL: иначе обычное обновление сразу потеряет доступ.
+    return false;
+  }
+  query.delete("gs_tv_token");
+  const qs = query.toString();
+  const safeUrl = window.location.pathname + (qs ? `?${qs}` : "") + window.location.hash;
+  try {
+    window.history.replaceState(null, "", safeUrl);
+  } catch (_) {
+    try {
+      window.history.replaceState({}, "", safeUrl);
+    } catch (_) {
+      return false;
+    }
+  }
+  return true;
+}
+
 /** Параметры гибрида: primary/fallback API и токен ТВ (из URL один раз → localStorage). */
 function initGsHybridFromUrl() {
   try {
@@ -346,9 +377,8 @@ function initGsHybridFromUrl() {
     if (tok && tok.trim()) {
       const clean = sanitizeGsTvBearerToken(tok);
       if (clean) window.__GS_TV_BEARER_URL = clean;
-      try {
-        if (clean) localStorage.setItem(gsScopedKey("tv_bearer"), clean);
-      } catch (_) {}
+      // После первого чтения секрет убирается из адресной строки, Referer и истории браузера.
+      if (clean) gsPersistTvBearerAndScrubAddress(clean, q);
     }
   } catch (_) {}
   try {
@@ -461,11 +491,49 @@ function gsShowScreenDeviceGear(screen) {
   return Boolean(screen && screen.mobile_mode);
 }
 
-function gsRevealPwaInstallRow() {
+function gsPwaIsStandalone() {
+  try {
+    if (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) return true;
+  } catch (_) {}
+  try {
+    return Boolean(window.navigator && window.navigator.standalone === true);
+  } catch (_) {
+    return false;
+  }
+}
+
+function gsPwaCanOfferInstall() {
+  try {
+    if (gsPwaIsStandalone()) return false;
+    const link = document.querySelector("link[rel='manifest']");
+    return Boolean(link && link.href);
+  } catch (_) {
+    return false;
+  }
+}
+
+function gsSetPwaInstallStatus(message, kind) {
+  try {
+    const status = document.getElementById("gs-device-pwa-install-status");
+    if (!status) return;
+    const text = String(message || "").trim();
+    status.textContent = text;
+    status.hidden = !text;
+    status.dataset.kind = kind === "error" ? "error" : "info";
+  } catch (_) {}
+}
+
+function gsSyncPwaInstallRow() {
   try {
     const row = document.getElementById("gs-device-pwa-install-row");
-    if (row) row.hidden = false;
+    if (!row) return;
+    row.hidden = !gsPwaCanOfferInstall();
+    if (row.hidden) gsSetPwaInstallStatus("");
   } catch (_) {}
+}
+
+function gsRevealPwaInstallRow() {
+  gsSyncPwaInstallRow();
 }
 
 /** Ключ манифеста: отдельный beforeinstallprompt на tv-1 и tv-2 (не один на весь домен). */
@@ -501,22 +569,56 @@ async function gsPwaInstallFallbackMessage() {
       appLabel = String((m && (m.short_name || m.name)) || "").trim();
     }
   } catch (_) {}
-  const namePart = appLabel ? `«${appLabel}»` : "нужное приложение";
+  const namePart = appLabel ? `«${appLabel}»` : "это приложение";
+  const ua = String((window.navigator && window.navigator.userAgent) || "");
+  const platform = String((window.navigator && window.navigator.platform) || "");
+  const ios = /iPhone|iPad|iPod/i.test(ua) || (platform === "MacIntel" && Number(window.navigator.maxTouchPoints || 0) > 1);
+  const android = /Android/i.test(ua);
+  const windows = /Windows/i.test(ua) || /^Win/i.test(platform);
+  const mac = !ios && (/Macintosh|Mac OS X/i.test(ua) || /^Mac/i.test(platform));
+  const firefox = /Firefox|FxiOS/i.test(ua);
+  const yandex = /YaBrowser|Yowser/i.test(ua);
+  const edge = /EdgA|EdgiOS|Edg\//i.test(ua);
+  const chrome = /Chrome|Chromium|CriOS/i.test(ua) && !edge && !yandex;
+  const safari = /Safari/i.test(ua) && !chrome && !edge && !firefox && !yandex;
+  let instruction = "";
+
+  if (ios) {
+    instruction = safari
+      ? `В Safari нажмите «Поделиться» → «На экран Домой», включите «Открывать как веб-приложение» и добавьте ${namePart}.`
+      : `На iPhone или iPad откройте эту же страницу в Safari, затем нажмите «Поделиться» → «На экран Домой» и добавьте ${namePart}.`;
+  } else if (yandex) {
+    instruction = android
+      ? `Откройте меню Яндекс Браузера и выберите «Установить приложение» или «Добавить на главный экран» для ${namePart}.`
+      : `В Умной строке Яндекс Браузера нажмите значок установки и выберите «Установить как приложение» для ${namePart}.`;
+  } else if (firefox) {
+    if (android) {
+      instruction = `Откройте меню Firefox и выберите «Установить» для ${namePart}.`;
+    } else if (windows) {
+      instruction = `Нажмите значок веб-приложения справа в адресной строке Firefox, чтобы установить ${namePart}.`;
+    } else {
+      instruction = "Firefox на этой системе не создаёт отдельные веб-приложения. На Mac используйте Safari → «Добавить в Dock», на других системах — Chrome или Edge.";
+    }
+  } else if (safari && mac) {
+    instruction = `В Safari нажмите «Поделиться» → «Добавить в Dock», чтобы установить ${namePart}.`;
+  } else if (android) {
+    instruction = `Откройте меню браузера и выберите «Установить приложение» или «Добавить на главный экран» для ${namePart}.`;
+  } else {
+    instruction = `Откройте меню браузера и выберите «Установить приложение» для ${namePart}. Если пункта нет, приложение уже установлено либо браузер не предлагает установку этой страницы.`;
+  }
+
+  const secureHint = window.isSecureContext
+    ? ""
+    : " Для полноценной установки нужен HTTPS; по обычному HTTP браузер может разрешить только создание простого ярлыка.";
   const slug = getSlug();
   const code = gsPwaTvCodeForPage(slug);
-  let tok = "";
-  try {
-    tok = getGsTvBearer();
-  } catch (_) {}
-  const pairUrl = code ? gsBuildTvPairPageUrl(slug, code, tok, true) : "";
+  // В пользовательской подсказке никогда не показываем bearer-токен.
+  // Безопасная ссылка без токена либо использует сохранённую PWA-сессию, либо запросит PIN повторно.
+  const pairUrl = code ? gsBuildTvPairPageUrl(slug, code, "", true) : "";
   const pairHint = pairUrl
-    ? `Откройте в новой вкладке Chrome (не внутри ранее установленного приложения этого сайта):\n${location.origin}${pairUrl}\n\nи снова нажмите «Создать на рабочем столе».`
-    : "Откройте ссылку /t/…/slug?pwa=1 из админки (не /screen/…) и повторите.";
-  return (
-    `Браузер не открыл диалог установки (так бывает для второго ярлыка на ${location.hostname}).\n\n` +
-    `Установите вручную: меню браузера → «Установить приложение» / «Добавить на главный экран» → ${namePart}.\n\n` +
-    pairHint
-  );
+    ? ` Для отдельного ярлыка другого экрана откройте его установочную ссылку в обычной новой вкладке: ${location.origin}${pairUrl}`
+    : "";
+  return instruction + secureHint + pairHint;
 }
 
 /** Панель ⚙: номер сборки GuardSchool и ревизия данных с сервера (не отдельные виджеты — их версий в API нет). */
@@ -583,9 +685,10 @@ function ensureDeviceSettingsUi() {
       <div class="gs-device-settings-row" id="gs-device-pwa-install-row" hidden>
         <div class="gs-device-settings-field-head">Ярлык на рабочий стол</div>
         <div class="gs-device-inline-actions">
-          <button type="button" class="gs-device-btn-primary" id="gs-device-pwa-install">Создать на рабочем столе</button>
+          <button type="button" class="gs-device-btn-primary" id="gs-device-pwa-install">Установить приложение</button>
           <button type="button" class="gs-device-help" id="gs-device-pwa-help" aria-label="Справка по ярлыку">?</button>
         </div>
+        <div class="gs-device-pwa-install-status" id="gs-device-pwa-install-status" role="status" aria-live="polite" hidden></div>
       </div>
       <div class="gs-device-settings-row" id="gs-device-push-row" hidden>
         <div class="gs-device-field-head-row">
@@ -669,7 +772,7 @@ function ensureDeviceSettingsUi() {
 
     const helpTitles = {
       "gs-device-pwa-help":
-        "Чтобы добавить этот экран как приложение или ярлык, нажмите кнопку слева. Если браузер не открыл диалог установки, откройте меню браузера и выберите «Установить приложение» или «Добавить на главный экран».",
+        "Чтобы добавить этот экран как приложение или ярлык, нажмите кнопку слева. Если браузер не открыл диалог установки, откройте меню браузера и выберите «Установить приложение» или «Добавить на главный экран». После установки экрану всё равно требуется связь с сервером — данные офлайн не кешируются.",
       "gs-push-master-help":
         "Уведомления приходят даже когда страница закрыта (если браузер поддерживает Web Push). Разрешение у браузера запрашивается после «Включить уведомления».",
       "gs-push-help-emergency":
@@ -809,12 +912,16 @@ function ensureDeviceSettingsUi() {
       { capture: true }
     );
 
-    // PWA install UX (Android/PC Chromium).
+    // PWA install UX: системный диалог по явному нажатию в Chromium, тихая встроенная инструкция в остальных браузерах.
     try {
       const row = panel.querySelector("#gs-device-pwa-install-row");
       const installBtn = panel.querySelector("#gs-device-pwa-install");
       if (installBtn) {
         installBtn.addEventListener("click", async () => {
+          const oldLabel = installBtn.textContent;
+          installBtn.disabled = true;
+          installBtn.textContent = "Проверяю…";
+          gsSetPwaInstallStatus("");
           try {
             if (gsPathIsLegacyScreenRoute()) {
               const nav = await gsNavigateToTvPairForPwaInstall();
@@ -824,23 +931,33 @@ function ensureDeviceSettingsUi() {
             const dp = gsPwaDeferredInstallPromptForCurrentPage();
             if (dp && typeof dp.prompt === "function") {
               await dp.prompt();
-              // In Chromium, dp.userChoice is a promise; ignore if absent.
-              try { await dp.userChoice; } catch (_) {}
+              let choice = null;
+              try { choice = await dp.userChoice; } catch (_) {}
               if (key && window.__gsDeferredInstallPromptByKey) {
                 delete window.__gsDeferredInstallPromptByKey[key];
               }
               window.__gsDeferredInstallPrompt = null;
-              if (row) row.hidden = true;
+              if (choice && choice.outcome === "accepted") {
+                if (row) row.hidden = true;
+              } else {
+                gsSetPwaInstallStatus("Установка отменена. Кнопка останется здесь, если захотите вернуться к ней позже.");
+              }
               return;
             }
-            alert(await gsPwaInstallFallbackMessage());
+            gsSetPwaInstallStatus(await gsPwaInstallFallbackMessage());
           } catch (e) {
-            alert(e && e.message ? e.message : String(e));
+            gsSetPwaInstallStatus(
+              "Не удалось запустить установку. " + (e && e.message ? e.message : String(e)),
+              "error"
+            );
+          } finally {
+            installBtn.disabled = false;
+            installBtn.textContent = oldLabel;
           }
         });
       }
-      // beforeinstallprompt может прийти до первого render() / ensureDeviceSettingsUi — тогда row ещё нет в DOM.
-      if (window.__gsDeferredInstallPrompt) gsRevealPwaInstallRow();
+      // Ручная установка доступна и без beforeinstallprompt (Safari/Firefox/часть Chromium-браузеров).
+      gsSyncPwaInstallRow();
     } catch (_) {}
 
     // Push UI.
@@ -1061,6 +1178,7 @@ try {
       const key = gsPwaManifestStorageKey();
       if (key) window.__gsDeferredInstallPromptByKey[key] = e;
       window.__gsDeferredInstallPrompt = e;
+      gsSetPwaInstallStatus("");
       gsRevealPwaInstallRow();
     } catch (_) {}
   });
@@ -1071,8 +1189,17 @@ try {
         delete window.__gsDeferredInstallPromptByKey[key];
       }
       window.__gsDeferredInstallPrompt = null;
+      const row = document.getElementById("gs-device-pwa-install-row");
+      if (row) row.hidden = true;
+      gsSetPwaInstallStatus("");
     } catch (_) {}
   });
+  if (window.matchMedia) {
+    const standaloneMode = window.matchMedia("(display-mode: standalone)");
+    const syncInstallUi = () => gsSyncPwaInstallRow();
+    if (standaloneMode.addEventListener) standaloneMode.addEventListener("change", syncInstallUi);
+    else if (standaloneMode.addListener) standaloneMode.addListener(syncInstallUi);
+  }
 } catch (_) {}
 
 /** Push требует активный SW на этой регистрации — navigator.serviceWorker.ready иногда недостаточен. */
@@ -1125,7 +1252,9 @@ function gsMaybeAttachSaasManifestForScreenSlug(slug) {
     const vv = encodeURIComponent(String(window.__GS_APP_VERSION || "").trim());
     const bearer = (() => { try { return getGsTvBearer(); } catch (_) { return ""; } })();
     const qParts = [];
-    if (bearer) qParts.push(`gs_tv_token=${encodeURIComponent(bearer)}`);
+    // /pwa/t/{code}/... сам определяет организацию по коду — bearer в URL manifest не нужен.
+    // Оставляем его только для legacy /pwa/screen/... без кода, где иначе нельзя определить tenant.
+    if (bearer && !code) qParts.push(`gs_tv_token=${encodeURIComponent(bearer)}`);
     const widgetFilter = (localStorage.getItem(`gs_mw_${s}`) || "").trim();
     if (widgetFilter) qParts.push(`gs_mw=${encodeURIComponent(widgetFilter)}`);
     if (vv) qParts.push(`v=${vv}`);
